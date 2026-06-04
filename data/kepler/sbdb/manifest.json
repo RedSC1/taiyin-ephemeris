@@ -1,0 +1,39 @@
+{
+  "files": [
+    {
+      "catalog_jd_tdb_end": 2464653.0,
+      "catalog_jd_tdb_start": 2457348.0,
+      "generated_at_utc": "2026-06-03T08:08:15.096363+00:00",
+      "object_count": 9,
+      "path": "sbdb-tier0-core.tkc1",
+      "tier": "tier0-core",
+      "validity_days_each_side": 3652.5
+    },
+    {
+      "catalog_jd_tdb_end": 2464653.0,
+      "catalog_jd_tdb_start": 2457348.0,
+      "generated_at_utc": "2026-06-03T08:44:25.878265+00:00",
+      "object_count": 1000,
+      "path": "sbdb-tier1-first1000-numbered.tkc1",
+      "tier": "tier1-first1000-numbered",
+      "validity_days_each_side": 3652.5
+    },
+    {
+      "catalog_jd_tdb_end": 2464803.0,
+      "catalog_jd_tdb_start": 2440569.0,
+      "generated_at_utc": "2026-06-03T08:52:14.585275+00:00",
+      "object_count": 2545,
+      "path": "sbdb-tier2-pha.tkc1",
+      "tier": "tier2-pha",
+      "validity_days_each_side": 3652.5
+    }
+  ],
+  "format": "TKC1",
+  "notes": [
+    "TKC1 SBDB tiers use osculating two-body Kepler elements and are approximate fallback ephemerides.",
+    "Use SPK/OPM4/Horizons-derived data for precision work.",
+    "Numbered asteroid Taiyin target IDs use 2000000 + asteroid_number; unnumbered objects use SBDB spkid."
+  ],
+  "source": "NASA/JPL SBDB Query API",
+  "source_url": "https://ssd-api.jpl.nasa.gov/sbdb_query.api"
+}

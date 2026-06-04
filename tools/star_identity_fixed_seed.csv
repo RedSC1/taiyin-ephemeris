@@ -1,0 +1,21 @@
+tier_flags,canonical_id,display_name,aliases,hip_id,hr_id,hd_id,gaia_dr3_source_id,simbad_id,bayer,flamsteed,constellation,vmag,priority,notes
+fixed_traditional,spica,Spica,"alpha_vir,vir_alpha,hip_65474,hr_5056,hd_116658",65474,5056,116658,,* alf Vir,alpha Vir,,Vir,0.98,100,current builtin ayanamsa/reference star
+fixed_traditional,galactic_center_j2000,Galactic Center (J2000 direction),"galactic_center,gc",,,,,Galactic Center,,,Sgr,,100,current builtin inertial direction placeholder
+fixed_traditional,sgr_a_apparent,Sagittarius A* Apparent,"sgr_a,sagittarius_a_star",,,,,Sgr A*,,,Sgr,,100,current builtin Galactic Center apparent placeholder
+fixed_traditional,regulus,Regulus,"alpha_leo,leo_alpha,hip_49669,hr_3982,hd_87901",49669,3982,87901,,* alf Leo,alpha Leo,,Leo,1.35,90,traditional royal star
+fixed_traditional,aldebaran,Aldebaran,"alpha_tau,tau_alpha,hip_21421,hr_1457,hd_29139",21421,1457,29139,,* alf Tau,alpha Tau,,Tau,0.85,90,traditional royal star
+fixed_traditional,antares,Antares,"alpha_sco,sco_alpha,hip_80763,hr_6134,hd_148478",80763,6134,148478,,* alf Sco,alpha Sco,,Sco,1.06,90,traditional royal star
+fixed_traditional,fomalhaut,Fomalhaut,"alpha_psa,psa_alpha,hip_113368,hr_8728,hd_216956",113368,8728,216956,,* alf PsA,alpha PsA,,PsA,1.16,90,traditional royal star
+fixed_traditional,sirius,Sirius,"alpha_cma,cma_alpha,hip_32349,hr_2491,hd_48915",32349,2491,48915,,* alf CMa,alpha CMa,,CMa,-1.46,80,bright traditional star
+fixed_traditional,vega,Vega,"alpha_lyr,lyr_alpha,hip_91262,hr_7001,hd_172167",91262,7001,172167,,* alf Lyr,alpha Lyr,,Lyr,0.03,80,bright traditional star
+fixed_traditional,algol,Algol,"beta_per,per_beta,hip_14576,hr_936,hd_19356",14576,936,19356,,* bet Per,beta Per,,Per,2.12,80,traditional fixed star
+fixed_traditional,pollux,Pollux,"beta_gem,gem_beta,hip_37826,hr_2990,hd_62509",37826,2990,62509,,* bet Gem,beta Gem,,Gem,1.14,80,bright traditional star
+fixed_traditional,castor,Castor,"alpha_gem,gem_alpha,hip_36850,hr_2891,hd_60179",36850,2891,60179,,* alf Gem,alpha Gem,,Gem,1.58,80,bright traditional star
+fixed_traditional,rigel,Rigel,"beta_ori,ori_beta,hip_24436,hr_1713,hd_34085",24436,1713,34085,,* bet Ori,beta Ori,,Ori,0.13,80,bright traditional star
+fixed_traditional,betelgeuse,Betelgeuse,"alpha_ori,ori_alpha,hip_27989,hr_2061,hd_39801",27989,2061,39801,,* alf Ori,alpha Ori,,Ori,0.50,80,bright traditional star
+fixed_traditional,procyon,Procyon,"alpha_cmi,cmi_alpha,hip_37279,hr_2943,hd_61421",37279,2943,61421,,* alf CMi,alpha CMi,,CMi,0.37,80,bright traditional star
+fixed_traditional,altair,Altair,"alpha_aql,aql_alpha,hip_97649,hr_7557,hd_187642",97649,7557,187642,,* alf Aql,alpha Aql,,Aql,0.76,80,bright traditional star
+fixed_traditional,deneb,Deneb,"alpha_cyg,cyg_alpha,hip_102098,hr_7924,hd_197345",102098,7924,197345,,* alf Cyg,alpha Cyg,,Cyg,1.25,80,bright traditional star
+fixed_traditional,arcturus,Arcturus,"alpha_boo,boo_alpha,hip_69673,hr_5340,hd_124897",69673,5340,124897,,* alf Boo,alpha Boo,,Boo,-0.05,80,bright traditional star
+fixed_traditional,capella,Capella,"alpha_aur,aur_alpha,hip_24608,hr_1708,hd_34029",24608,1708,34029,,* alf Aur,alpha Aur,,Aur,0.08,80,bright traditional star
+fixed_traditional,achernar,Achernar,"alpha_eri,eri_alpha,hip_7588,hr_472,hd_10144",7588,472,10144,,* alf Eri,alpha Eri,,Eri,0.46,80,bright traditional star

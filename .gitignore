@@ -1,0 +1,11 @@
+.claude/
+.opencode/
+build/
+.DS_Store
+*.o
+*.pch
+.cache/
+Testing/
+plans/
+data/stars/
+data/kepler/sbdb/raw/
