@@ -1,6 +1,8 @@
 # taiyin-ephemeris
 
-`taiyin-ephemeris` is the ephemeris runtime layer for OpenDestiny. Version `0.0.1` focuses on source loading, catalog selection, shared caching, apparent-position calculation, and a small runtime pipeline primitive. It is not a complete astrology application layer yet.
+[中文版](README_CN.md)
+
+`taiyin-ephemeris` is the ephemeris runtime layer for OpenDestiny. Version `0.0.1` focuses on source loading, catalog selection, shared caching, apparent-position calculation, and a small runtime pipeline primitive. It is intentionally not a full end-user application framework; astronomy, astrology, and other domain layers can be built on top.
 
 ## 0.0.1 scope
 
@@ -18,11 +20,11 @@ This release is meant to make the low-level ephemeris runtime usable and testabl
 
 ## Non-goals for 0.0.1
 
-The current MVP deliberately avoids building a fixed astrology application model:
+The current MVP deliberately avoids building a fixed downstream application model:
 
 - Ephemeris source paths are explicit. There is no default system scan yet.
 - Full ephemeris datasets are not embedded in the library.
-- The library does not prescribe a chart struct, school/branch model, house system model, or astrology extension registry.
+- The library does not prescribe a chart/application struct, school/branch model, house system model, or domain extension registry.
 - Minor bodies and asteroids depend on the source files the caller provides.
 - The runtime pipeline does not own typed artifacts or connect step outputs automatically. The caller owns chart/scratch data and step wrappers.
 
@@ -141,7 +143,7 @@ PipelineFrame(chart/scratch)
 user-defined BareChart
 ```
 
-This example is intentionally not a complete astrology chart calculation. It demonstrates source-backed runtime evaluation and the user-owned pipeline pattern. Production chart code can add apparent-position correction, houses, aspects, fixed stars, asteroids, or school-specific steps without changing the pipeline runner.
+This example is intentionally not a complete chart calculation. It demonstrates source-backed runtime evaluation and the user-owned pipeline pattern. Production chart code can add apparent-position correction, houses, aspects, fixed stars, asteroids, or school-specific steps without changing the pipeline runner.
 
 ## Architecture
 
