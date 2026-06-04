@@ -210,3 +210,9 @@ TAIYIN_SATURN_SATELLITES_SPK_PATH
 ```sh
 ctest --test-dir build --output-on-failure
 ```
+
+## 许可证
+
+Copyright 2026 RedSC1.
+
+本项目使用 [Apache License 2.0](LICENSE) 许可证。

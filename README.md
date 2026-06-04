@@ -210,3 +210,9 @@ Run everything with:
 ```sh
 ctest --test-dir build --output-on-failure
 ```
+
+## License
+
+Copyright 2026 RedSC1.
+
+Licensed under the [Apache License 2.0](LICENSE).
