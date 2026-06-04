@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-`taiyin-ephemeris` 是 OpenDestiny 的星历运行时层。版本 `0.0.1` 聚焦于星历源加载、目录选择、共享缓存、视位置计算以及一个最小的运行时管线（pipeline）原语。它有意不构建为一个完整的终端用户应用框架；天文、占星及其他领域层可以在此之上搭建。
+`taiyin-ephemeris` 是 OpenDestiny 的星历运行时层。版本 `0.0.1` 聚焦于星历源加载、目录选择、共享缓存、视位置计算以及一个最小的运行时管线（pipeline）原语。它有意不构建为一个完整的终端用户应用框架；天文、占星扩展及其他领域层可以在此之上搭建。
 
 ## 0.0.1 范围
 
@@ -174,7 +174,7 @@ EphemerisResult（星历结果）
 
 ## 精度检查
 
-测试套件包含针对视位置 OPM4 路径的 Swiss Ephemeris 对照覆盖。在当前私有 OPM4 数据集与 Swiss 对照设置下，已测试的主行星与月球在选定历元上与 Swiss 视位置匹配约 `0.0001` 至 `0.0013` 角秒。
+测试套件包含针对视位置 OPM4 路径的 Swiss Ephemeris（`swisseph`）对照覆盖。在当前私有 OPM4 数据集与 `swisseph` 对照设置下，已测试的主行星与月球在选定历元上与 `swisseph` 视位置匹配约 `0.0001` 至 `0.0013` 角秒。
 
 该数值是针对已测试天体、历元、标志与数据版本的对照测试结果，不应理解为对所有源文件、小行星、历元或调用方自定义管线的普适保证。
 
@@ -187,8 +187,8 @@ EphemerisResult（星历结果）
 - `test_custom_source_lifecycle` — 自定义源注销/删除/缓存命中/重新加载行为。
 - `test_pipeline` — 最小管线运行器机制。
 - `test_pipeline_bare_chart` — 模拟多方法 bare chart 管线。
-- `test_pipeline_opm4_vs_swiss` — OPM4 驱动的视位置管线对照 Swiss。
-- `test_apparent_opm4_vs_swiss` — 视位置 OPM4 直接对照 Swiss。
+- `test_pipeline_opm4_vs_swiss` — OPM4 驱动的视位置管线对照 `swisseph`。
+- `test_apparent_opm4_vs_swiss` — 视位置 OPM4 直接对照 `swisseph`。
 
 对照与外部数据测试是可选的。它们会在相关环境变量未设置时自动跳过，例如：
 

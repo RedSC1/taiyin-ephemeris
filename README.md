@@ -2,7 +2,7 @@
 
 [中文版](README_CN.md)
 
-`taiyin-ephemeris` is the ephemeris runtime layer for OpenDestiny. Version `0.0.1` focuses on source loading, catalog selection, shared caching, apparent-position calculation, and a small runtime pipeline primitive. It is intentionally not a full end-user application framework; astronomy, astrology, and other domain layers can be built on top.
+`taiyin-ephemeris` is the ephemeris runtime layer for OpenDestiny. Version `0.0.1` focuses on source loading, catalog selection, shared caching, apparent-position calculation, and a small runtime pipeline primitive. It is intentionally not a full end-user application framework; astronomy, astrology extensions, and other domain layers can be built on top.
 
 ## 0.0.1 scope
 
@@ -174,7 +174,7 @@ Key rule: source files and descriptors are the source of truth. Cache eviction s
 
 ## Accuracy checks
 
-The test suite includes Swiss Ephemeris oracle coverage for the apparent OPM4 path. With the current private OPM4 dataset and Swiss oracle setup, the tested major planets and Moon match Swiss apparent positions at roughly `0.0001` to `0.0013` arcseconds over selected epochs.
+The test suite includes Swiss Ephemeris (`swisseph`) oracle coverage for the apparent OPM4 path. With the current private OPM4 dataset and `swisseph` oracle setup, the tested major planets and Moon match `swisseph` apparent positions at roughly `0.0001` to `0.0013` arcseconds over selected epochs.
 
 That number is an oracle-test result for the tested bodies, epochs, flags, and data versions. It should not be read as a universal guarantee for every source file, asteroid, epoch, or caller-defined pipeline.
 
@@ -187,8 +187,8 @@ Important test groups include:
 - `test_custom_source_lifecycle` — custom source unregister/delete/cache-hit/reload behavior.
 - `test_pipeline` — minimal pipeline runner mechanics.
 - `test_pipeline_bare_chart` — mock multi-method bare chart pipeline.
-- `test_pipeline_opm4_vs_swiss` — OPM4-backed apparent pipeline oracle against Swiss.
-- `test_apparent_opm4_vs_swiss` — direct apparent-position OPM4 oracle against Swiss.
+- `test_pipeline_opm4_vs_swiss` — OPM4-backed apparent pipeline oracle against `swisseph`.
+- `test_apparent_opm4_vs_swiss` — direct apparent-position OPM4 oracle against `swisseph`.
 
 Oracle and external-data tests are optional. They skip themselves unless the relevant environment variables are set, for example:
 
