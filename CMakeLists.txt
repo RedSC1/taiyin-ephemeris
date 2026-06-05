@@ -330,6 +330,11 @@ add_executable(example_bare_chart_pipeline
 )
 target_link_libraries(example_bare_chart_pipeline PRIVATE taiyin_ephemeris)
 
+add_executable(example_apparent_chart_pipeline
+    examples/apparent_chart_pipeline.cpp
+)
+target_link_libraries(example_apparent_chart_pipeline PRIVATE taiyin_ephemeris)
+
 add_executable(validate_private_opm4_vs_spk
     tools/validate_private_opm4_vs_spk.cpp
 )

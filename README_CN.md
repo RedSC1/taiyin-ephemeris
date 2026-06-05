@@ -36,10 +36,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-仅构建 bare-chart 管线示例：
+仅构建管线示例：
 
 ```sh
 cmake --build build --target example_bare_chart_pipeline
+cmake --build build --target example_apparent_chart_pipeline
 ```
 
 ## 快速上手：全局星历运行时
@@ -145,6 +146,49 @@ PipelineFrame(chart/scratch)
 ```
 
 本示例有意不是一个完整的星盘计算。它演示的是源驱动的运行时求值模式与用户拥有的管线模式。生产级星盘代码可以在不改动管线运行器的前提下添加视位置修正、宫位、相位、恒星、小行星或学派特定步骤。
+
+第二个示例会计算 date-of-date 真黄道下的地心视位置：
+
+```text
+examples/apparent_chart_pipeline.cpp
+```
+
+用显式 OPM4 源路径和可选的 TDB 儒略日运行：
+
+```sh
+./build/example_apparent_chart_pipeline /path/to/data_integrated_opm4 2460310.500800740905
+```
+
+或：
+
+```sh
+TAIYIN_OPM4_ROOT=/path/to/data_integrated_opm4 ./build/example_apparent_chart_pipeline
+```
+
+该示例演示如下流程：
+
+```text
+OPM4 源文件
+        |
+        v
+编译后的 OPM4 区块
+        |
+        v
+视位置修正
+（光行时、光行差、太阳引力偏转、
+ 岁差、章动、date-of-date 真黄道）
+        |
+        v
+PipelineFrame(chart/scratch)
+        |
+        +--> compute_apparent_true_ecliptic
+        +--> write_chart
+        |
+        v
+用户自定义 ApparentChart
+```
+
+这个 apparent 示例仍然不是完整的应用层星盘：它不规定宫位、相位、恒星处理或学派特定领域逻辑。
 
 ## 架构
 

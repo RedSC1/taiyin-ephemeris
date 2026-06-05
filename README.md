@@ -36,10 +36,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Build only the bare-chart pipeline example:
+Build only the pipeline examples:
 
 ```sh
 cmake --build build --target example_bare_chart_pipeline
+cmake --build build --target example_apparent_chart_pipeline
 ```
 
 ## Quickstart: global ephemeris runtime
@@ -145,6 +146,49 @@ user-defined BareChart
 ```
 
 This example is intentionally not a complete chart calculation. It demonstrates source-backed runtime evaluation and the user-owned pipeline pattern. Production chart code can add apparent-position correction, houses, aspects, fixed stars, asteroids, or school-specific steps without changing the pipeline runner.
+
+A second example computes apparent geocentric positions in the true ecliptic of date:
+
+```text
+examples/apparent_chart_pipeline.cpp
+```
+
+Run it with an explicit OPM4 source path and optional TDB Julian date:
+
+```sh
+./build/example_apparent_chart_pipeline /path/to/data_integrated_opm4 2460310.500800740905
+```
+
+or:
+
+```sh
+TAIYIN_OPM4_ROOT=/path/to/data_integrated_opm4 ./build/example_apparent_chart_pipeline
+```
+
+It demonstrates this flow:
+
+```text
+OPM4 source files
+        |
+        v
+compiled OPM4 blocks
+        |
+        v
+apparent-position correction
+(light-time, aberration, solar deflection,
+ precession, nutation, true ecliptic of date)
+        |
+        v
+PipelineFrame(chart/scratch)
+        |
+        +--> compute_apparent_true_ecliptic
+        +--> write_chart
+        |
+        v
+user-defined ApparentChart
+```
+
+This apparent example is still not a full application chart layer: it does not prescribe houses, aspects, fixed-star handling, or school-specific domain logic.
 
 ## Architecture
 
