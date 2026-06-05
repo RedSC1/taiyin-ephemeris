@@ -1,12 +1,18 @@
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/coordinates.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/runtime/major_body_apparent.h"
+#include "taiyin/runtime/taiyin_runtime.h"
 #include "taiyin/vector3.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <iostream>
+#include <vector>
 
 namespace {
 
@@ -17,6 +23,119 @@ using namespace taiyin::runtime;
 struct TestEphemerisData {
     double base;
 };
+
+void push_u8(std::vector<uint8_t>* data, uint8_t value) {
+    data->push_back(value);
+}
+
+void push_u16_le(std::vector<uint8_t>* data, uint16_t value) {
+    data->push_back(static_cast<uint8_t>(value & 0xFF));
+    data->push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+}
+
+void push_u32_le(std::vector<uint8_t>* data, uint32_t value) {
+    data->push_back(static_cast<uint8_t>(value & 0xFF));
+    data->push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    data->push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    data->push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+}
+
+void push_i32_le(std::vector<uint8_t>* data, int32_t value) {
+    push_u32_le(data, static_cast<uint32_t>(value));
+}
+
+void push_u64_le(std::vector<uint8_t>* data, uint64_t value) {
+    for (int i = 0; i < 8; ++i) {
+        data->push_back(static_cast<uint8_t>((value >> (i * 8)) & 0xFF));
+    }
+}
+
+void push_f64_le(std::vector<uint8_t>* data, double value) {
+    uint8_t bytes[8];
+    std::memcpy(bytes, &value, sizeof(bytes));
+    for (int i = 0; i < 8; ++i) {
+        data->push_back(bytes[i]);
+    }
+}
+
+void push_i8_coeffs(std::vector<uint8_t>* data, const int8_t* values, int count) {
+    const int width_byte_count = (count + 3) / 4;
+    for (int i = 0; i < width_byte_count; ++i) {
+        data->push_back(0);
+    }
+    for (int i = 0; i < count; ++i) {
+        data->push_back(static_cast<uint8_t>(values[i]));
+    }
+}
+
+std::vector<uint8_t> make_test_opm4_file_bytes(
+    int target_id,
+    int center_id,
+    int method_id,
+    double quant_unit_km
+) {
+    std::vector<uint8_t> payload;
+    push_f64_le(&payload, 100.0);
+    push_f64_le(&payload, 110.0);
+    push_f64_le(&payload, 0.0);
+    push_f64_le(&payload, taiyin::TAIYIN_PI / 2.0);
+    push_f64_le(&payload, 0.0);
+    const int8_t cx[] = { 1, 2 };
+    const int8_t cy[] = { 3, 4 };
+    const int8_t cz[] = { 5 };
+    push_i8_coeffs(&payload, cx, 2);
+    push_i8_coeffs(&payload, cy, 2);
+    push_i8_coeffs(&payload, cz, 1);
+
+    std::vector<uint8_t> data;
+    push_u8(&data, 'O');
+    push_u8(&data, 'P');
+    push_u8(&data, 'M');
+    push_u8(&data, '4');
+    push_u8(&data, 1);
+    push_u8(&data, 0);
+    push_u16_le(&data, 128);
+    push_u64_le(&data, 128);
+    push_u64_le(&data, static_cast<uint64_t>(payload.size()));
+    push_i32_le(&data, target_id);
+    push_i32_le(&data, center_id);
+    push_i32_le(&data, method_id);
+    push_i32_le(&data, 1);
+    push_f64_le(&data, 100.0);
+    push_f64_le(&data, 110.0);
+    push_u32_le(&data, 1);
+    push_u8(&data, 1);
+    push_u8(&data, 0);
+    push_u8(&data, 1);
+    push_u8(&data, 1);
+    push_u8(&data, 1);
+    for (int i = 0; i < 7; ++i) {
+        push_u8(&data, 0);
+    }
+    push_f64_le(&data, quant_unit_km);
+    while (data.size() < 128) {
+        push_u8(&data, 0);
+    }
+    data.insert(data.end(), payload.begin(), payload.end());
+    return data;
+}
+
+bool write_test_opm4_file(
+    const char* path,
+    int target_id,
+    int center_id,
+    int method_id,
+    double quant_unit_km
+) {
+    const std::vector<uint8_t> bytes = make_test_opm4_file_bytes(
+        target_id,
+        center_id,
+        method_id,
+        quant_unit_km);
+    std::ofstream file(path, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(&bytes[0]), static_cast<std::streamsize>(bytes.size()));
+    return static_cast<bool>(file);
+}
 
 void expect_true(bool value, const char* label, int* failures) {
     if (!value) {
@@ -560,6 +679,106 @@ void test_output_frame_id_changes_spherical_output(int* failures) {
     reset_global_astro_model_context();
 }
 
+void test_major_body_apparent_velocity_and_acceleration_flags(int* failures) {
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisService service;
+    setup_earth_sun_service(&catalog, &cache, &service, 425, failures);
+
+    const int bodies[] = { TAIYIN_BODY_SUN };
+    ApparentOptions options;
+    options.flags = TAIYIN_APPARENT_VELOCITY | TAIYIN_APPARENT_ACCELERATION;
+    options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    const TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, 0);
+    expect_status(status, TAIYIN_STATUS_OK, "velocity and acceleration flags status", failures);
+    expect_size(result.body_count, 1, "velocity and acceleration result count", failures);
+    expect_near(result.bodies[0].geometric_state.velocity_au_per_day.x, -14.0, 1.0e-12, "geometric velocity x", failures);
+    expect_near(result.bodies[0].geometric_state.acceleration_au_per_day2.x, -17.0, 1.0e-12, "geometric acceleration x", failures);
+    expect_near(result.bodies[0].apparent_state.velocity_au_per_day.x, -14.0, 1.0e-12, "apparent velocity x", failures);
+    expect_near(result.bodies[0].apparent_state.acceleration_au_per_day2.x, -17.0, 1.0e-12, "apparent acceleration x", failures);
+}
+
+void test_major_body_apparent_aberration_and_deflection_flags(int* failures) {
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+
+    add_cached_descriptor(
+        &catalog,
+        &cache,
+        make_descriptor(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN, 475, 0, 475),
+        10.0,
+        "add aberration Earth/Sun descriptor",
+        failures);
+    add_cached_descriptor(
+        &catalog,
+        &cache,
+        make_descriptor(TAIYIN_BODY_MERCURY_BARYCENTER, TAIYIN_BODY_SUN, 475, 1, 476),
+        100.0,
+        "add aberration Mercury/Sun descriptor",
+        failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    ApparentDeflector deflectors[1];
+    deflectors[0].body_id = TAIYIN_BODY_SUN;
+    deflectors[0].schwarzschild_radius_au = 1.0e-8;
+    deflectors[0].limit = 0.0;
+
+    const int bodies[] = { TAIYIN_BODY_MERCURY_BARYCENTER };
+    ApparentOptions options;
+    options.flags = TAIYIN_APPARENT_ABERRATION | TAIYIN_APPARENT_DEFLECTION;
+    options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+    options.deflectors = deflectors;
+    options.deflector_count = 1;
+    options.solar_deflector_index = 0;
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    const TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, 0);
+    expect_status(status, TAIYIN_STATUS_OK, "aberration and deflection flags status", failures);
+    expect_size(result.body_count, 1, "aberration and deflection result count", failures);
+    expect_true(result.bodies[0].distance_au > 0.0, "aberration and deflection distance positive", failures);
+}
+
+void test_major_body_apparent_requires_deflectors_for_aberration(int* failures) {
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisService service;
+    setup_earth_sun_service(&catalog, &cache, &service, 485, failures);
+
+    const int bodies[] = { TAIYIN_BODY_SUN };
+    ApparentOptions options;
+    options.flags = TAIYIN_APPARENT_ABERRATION;
+    options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    EphemerisEvalDiagnostic diagnostic;
+    const TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, &diagnostic);
+    expect_status(status, TAIYIN_ERROR_INVALID_ARGUMENT, "aberration requires deflectors status", failures);
+    expect_status(diagnostic.status, TAIYIN_ERROR_INVALID_ARGUMENT, "aberration requires deflectors diagnostic", failures);
+}
+
 void test_global_apparent_deflector_arrays(int* failures) {
     reset_global_apparent_options();
     reset_global_astro_model_context();
@@ -637,6 +856,110 @@ void test_explicit_deflector_array_validation(int* failures) {
     reset_global_apparent_deflectors();
 }
 
+void test_major_body_apparent_global_opm4_end_to_end(int* failures) {
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+    reset_global_apparent_deflectors();
+
+    const char* earth_path = "test_major_body_apparent_e2e_earth.opm4";
+    const char* mars_path = "test_major_body_apparent_e2e_mars.opm4";
+    std::remove(earth_path);
+    std::remove(mars_path);
+
+    expect_true(
+        write_test_opm4_file(earth_path, TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN, 1, 1000.0),
+        "write end-to-end Earth OPM4 fixture",
+        failures);
+    expect_true(
+        write_test_opm4_file(mars_path, TAIYIN_BODY_MARS_BARYCENTER, TAIYIN_BODY_SUN, 1, 2000.0),
+        "write end-to-end Mars OPM4 fixture",
+        failures);
+
+    const char* paths[] = { earth_path, mars_path };
+    EphemerisRuntimeConfig runtime_config;
+    runtime_config.cache_max_bytes = 1024 * 1024;
+    runtime_config.source_paths = paths;
+    runtime_config.source_path_count = sizeof(paths) / sizeof(paths[0]);
+    const bool runtime_ok = initialize_global_ephemeris_runtime(runtime_config);
+    expect_true(runtime_ok, "initialize global runtime from end-to-end OPM4 fixtures", failures);
+    expect_size(global_ephemeris_catalog_size(), 2, "end-to-end global catalog descriptor count", failures);
+
+    const int bodies[] = { TAIYIN_BODY_MARS_BARYCENTER };
+    ApparentOptions options;
+    options.flags = TAIYIN_APPARENT_SPHERICAL | TAIYIN_APPARENT_VELOCITY | TAIYIN_APPARENT_ACCELERATION;
+    options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 105.0;
+    request.jd_tt = 105.0;
+    request.observer_id = TAIYIN_BODY_EARTH;
+    request.center_id = TAIYIN_BODY_SUN;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    EphemerisEvalDiagnostic diagnostic;
+    const TaiyinStatus status = eval_global_major_body_apparent_batch(request, &result, &diagnostic);
+    expect_status(status, TAIYIN_STATUS_OK, "global OPM4 major body apparent status", failures);
+    expect_size(result.body_count, 1, "global OPM4 major body apparent result count", failures);
+
+    MajorBodyApparentPosition* mars = find_body(&result, TAIYIN_BODY_MARS_BARYCENTER);
+    expect_true(mars != 0, "global OPM4 Mars result exists", failures);
+    if (runtime_ok && status == TAIYIN_STATUS_OK && mars) {
+        EphemerisRequest earth_request;
+        earth_request.target_id = TAIYIN_BODY_EARTH;
+        earth_request.center_id = TAIYIN_BODY_SUN;
+        earth_request.frame = EphemerisFrame::IcrfJ2000Equatorial;
+        earth_request.jd_tdb = request.jd_tdb;
+        EphemerisRequest mars_request;
+        mars_request.target_id = TAIYIN_BODY_MARS_BARYCENTER;
+        mars_request.center_id = TAIYIN_BODY_SUN;
+        mars_request.frame = EphemerisFrame::IcrfJ2000Equatorial;
+        mars_request.jd_tdb = request.jd_tdb;
+
+        EphemerisResult earth_state;
+        EphemerisResult mars_state;
+        expect_status(
+            eval_global_ephemeris_state(earth_request, &earth_state, 0),
+            TAIYIN_STATUS_OK,
+            "global OPM4 direct Earth eval for expected state",
+            failures);
+        expect_status(
+            eval_global_ephemeris_state(mars_request, &mars_state, 0),
+            TAIYIN_STATUS_OK,
+            "global OPM4 direct Mars eval for expected state",
+            failures);
+
+        const CartesianState expected = cartesian_state_subtract(mars_state.state, earth_state.state);
+        expect_near(mars->geometric_state.position_au.x, expected.position_au.x, 1.0e-18, "global OPM4 geometric position x", failures);
+        expect_near(mars->geometric_state.position_au.y, expected.position_au.y, 1.0e-18, "global OPM4 geometric position y", failures);
+        expect_near(mars->geometric_state.position_au.z, expected.position_au.z, 1.0e-18, "global OPM4 geometric position z", failures);
+        expect_near(mars->geometric_state.velocity_au_per_day.x, expected.velocity_au_per_day.x, 1.0e-18, "global OPM4 geometric velocity x", failures);
+        expect_near(mars->geometric_state.acceleration_au_per_day2.x, expected.acceleration_au_per_day2.x, 1.0e-18, "global OPM4 geometric acceleration x", failures);
+        expect_near(mars->apparent_state.position_au.x, expected.position_au.x, 1.0e-18, "global OPM4 apparent position x", failures);
+        expect_near(mars->apparent_state.position_au.y, expected.position_au.y, 1.0e-18, "global OPM4 apparent position y", failures);
+        expect_near(mars->apparent_state.position_au.z, expected.position_au.z, 1.0e-18, "global OPM4 apparent position z", failures);
+
+        double expected_lon = 0.0;
+        double expected_lat = 0.0;
+        double expected_distance = 0.0;
+        cartesian_to_spherical(expected.position_au, &expected_lon, &expected_lat, &expected_distance);
+        expect_near(mars->longitude_rad, expected_lon, 1.0e-12, "global OPM4 longitude", failures);
+        expect_near(mars->latitude_rad, expected_lat, 1.0e-12, "global OPM4 latitude", failures);
+        expect_near(mars->distance_au, expected_distance, 1.0e-18, "global OPM4 distance", failures);
+        expect_true(global_ephemeris_cache_entry_count() >= 2, "global OPM4 apparent path lazy-loaded cache", failures);
+    }
+
+    std::remove(earth_path);
+    std::remove(mars_path);
+    EphemerisRuntimeConfig empty_config;
+    expect_true(initialize_global_ephemeris_runtime(empty_config), "reset global runtime after OPM4 end-to-end test", failures);
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+    reset_global_apparent_deflectors();
+}
+
 void test_global_apparent_options_clear_model_context_pointer(int* failures) {
     reset_global_apparent_options();
     reset_global_astro_model_context();
@@ -698,8 +1021,12 @@ int main() {
     test_global_apparent_options_are_used_when_request_options_null(&failures);
     test_model_context_fallback_and_explicit_override(&failures);
     test_output_frame_id_changes_spherical_output(&failures);
+    test_major_body_apparent_velocity_and_acceleration_flags(&failures);
+    test_major_body_apparent_aberration_and_deflection_flags(&failures);
+    test_major_body_apparent_requires_deflectors_for_aberration(&failures);
     test_global_apparent_deflector_arrays(&failures);
     test_explicit_deflector_array_validation(&failures);
+    test_major_body_apparent_global_opm4_end_to_end(&failures);
     test_global_apparent_options_clear_model_context_pointer(&failures);
 
     if (failures != 0) {

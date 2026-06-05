@@ -41,6 +41,25 @@ struct EvalContext {
     bool use_global;
 };
 
+struct RuntimeCompiledBlockData {
+    EvalContext context;
+    int body_id;
+    int center_id;
+    mutable TaiyinStatus last_status;
+    mutable EphemerisEvalDiagnostic last_diagnostic;
+    mutable bool cache_hit;
+    mutable bool evaluated;
+
+    RuntimeCompiledBlockData() noexcept
+        : context(),
+          body_id(0),
+          center_id(0),
+          last_status(TAIYIN_STATUS_OK),
+          last_diagnostic(),
+          cache_hit(true),
+          evaluated(false) {}
+};
+
 struct GlobalApparentConfigManager {
     AstroModelContext model_context;
     ApparentOptions apparent_options;
@@ -156,7 +175,13 @@ TaiyinStatus snapshot_global_deflectors(
 }
 
 const uint32_t SUPPORTED_MAJOR_BODY_APPARENT_FLAGS =
-    TAIYIN_APPARENT_LIGHT_TIME | TAIYIN_APPARENT_SPHERICAL;
+    TAIYIN_APPARENT_LIGHT_TIME
+    | TAIYIN_APPARENT_SPHERICAL
+    | TAIYIN_APPARENT_ABERRATION
+    | TAIYIN_APPARENT_DEFLECTION
+    | TAIYIN_APPARENT_VELOCITY
+    | TAIYIN_APPARENT_ACCELERATION
+    | TAIYIN_APPARENT_SHAPIRO_DELAY;
 
 TaiyinStatus resolve_apparent_config(
     const MajorBodyApparentBatchRequest& request,
@@ -311,6 +336,81 @@ TaiyinStatus eval_body_state(
         diagnostic);
 }
 
+bool eval_runtime_block_state(
+    double jd_tdb,
+    const void* data,
+    EphemerisResult* out
+) noexcept {
+    const RuntimeCompiledBlockData* block_data = static_cast<const RuntimeCompiledBlockData*>(data);
+    if (!block_data || !out) {
+        return false;
+    }
+
+    EphemerisEvalDiagnostic diagnostic;
+    const TaiyinStatus status = eval_body_state(
+        block_data->context,
+        block_data->body_id,
+        block_data->center_id,
+        jd_tdb,
+        out,
+        &diagnostic);
+    block_data->last_status = status;
+    block_data->last_diagnostic = diagnostic;
+    block_data->evaluated = true;
+    if (status != TAIYIN_STATUS_OK) {
+        return false;
+    }
+    block_data->cache_hit = block_data->cache_hit && out->cache_hit;
+    return finite_state(out->state);
+}
+
+bool runtime_block_position(double jd_tdb, const void* data, Vector3* out) noexcept {
+    if (!out) {
+        return false;
+    }
+    EphemerisResult result;
+    if (!eval_runtime_block_state(jd_tdb, data, &result)) {
+        return false;
+    }
+    *out = result.state.position_au;
+    return finite_vector(*out);
+}
+
+bool runtime_block_velocity(double jd_tdb, const void* data, Vector3* out) noexcept {
+    if (!out) {
+        return false;
+    }
+    EphemerisResult result;
+    if (!eval_runtime_block_state(jd_tdb, data, &result)) {
+        return false;
+    }
+    *out = result.state.velocity_au_per_day;
+    return finite_vector(*out);
+}
+
+bool runtime_block_acceleration(double jd_tdb, const void* data, Vector3* out) noexcept {
+    if (!out) {
+        return false;
+    }
+    EphemerisResult result;
+    if (!eval_runtime_block_state(jd_tdb, data, &result)) {
+        return false;
+    }
+    *out = result.state.acceleration_au_per_day2;
+    return finite_vector(*out);
+}
+
+internal::CompiledEphemerisBlock make_runtime_compiled_block(RuntimeCompiledBlockData* data) noexcept {
+    internal::CompiledEphemerisBlock block;
+    block.data = data;
+    block.bytes = sizeof(RuntimeCompiledBlockData);
+    block.position = &runtime_block_position;
+    block.velocity = &runtime_block_velocity;
+    block.acceleration = &runtime_block_acceleration;
+    block.format = internal::EphemerisBlockFormat::Custom;
+    return block;
+}
+
 void copy_diagnostic(EphemerisEvalDiagnostic* dst, const EphemerisEvalDiagnostic& src) noexcept {
     if (dst) {
         *dst = src;
@@ -326,17 +426,12 @@ uint32_t mask_bit_for_body_id(int body_id) noexcept {
     return 0u;
 }
 
-Matrix3x3 matrix_from_array(const double values[9]) noexcept {
-    Matrix3x3 matrix = matrix3x3_identity();
-    if (!values) {
-        return matrix;
-    }
-    for (int row = 0; row < 3; ++row) {
-        for (int col = 0; col < 3; ++col) {
-            matrix.m[row][col] = values[row * 3 + col];
-        }
-    }
-    return matrix;
+Vector3 vector_from_array3(const double values[3]) noexcept {
+    Vector3 out;
+    out.x = values ? values[0] : 0.0;
+    out.y = values ? values[1] : 0.0;
+    out.z = values ? values[2] : 0.0;
+    return out;
 }
 
 double resolve_jd_tt(const MajorBodyApparentBatchRequest& request) noexcept {
@@ -350,7 +445,7 @@ TaiyinStatus compute_one_body(
     const MajorBodyApparentBatchRequest& request,
     const ResolvedApparentConfig& config,
     int body_id,
-    const EphemerisResult& observer,
+    const EphemerisResult&,
     MajorBodyApparentPosition* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -362,126 +457,233 @@ TaiyinStatus compute_one_body(
     out->body_id = body_id;
     out->body_mask_bit = mask_bit_for_body_id(body_id);
 
-    EphemerisEvalDiagnostic target_diagnostic;
-    EphemerisResult target_current;
-    TaiyinStatus status = eval_body_state(
-        context,
-        body_id,
-        request.center_id,
-        request.jd_tdb,
-        &target_current,
-        &target_diagnostic);
-    if (status != TAIYIN_STATUS_OK) {
-        out->status = status;
-        out->diagnostic = target_diagnostic;
-        copy_diagnostic(diagnostic, target_diagnostic);
-        return status;
-    }
-    if (!finite_state(target_current.state) || !finite_state(observer.state)) {
-        target_diagnostic.status = TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
-        out->status = target_diagnostic.status;
-        out->diagnostic = target_diagnostic;
-        copy_diagnostic(diagnostic, target_diagnostic);
-        return target_diagnostic.status;
-    }
-
-    out->geometric_state = cartesian_state_subtract(target_current.state, observer.state);
-    out->apparent_state = out->geometric_state;
-    out->cache_hit = target_current.cache_hit && observer.cache_hit;
-    out->light_time_days = 0.0;
-
-    if (vector3_norm(out->geometric_state.position_au) == 0.0) {
-        target_diagnostic.status = TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
-        out->status = target_diagnostic.status;
-        out->diagnostic = target_diagnostic;
-        copy_diagnostic(diagnostic, target_diagnostic);
-        return target_diagnostic.status;
-    }
-
-    if ((config.options.flags & TAIYIN_APPARENT_LIGHT_TIME) != 0u) {
-        const int max_iterations = config.options.max_light_time_iterations > 0
-            ? config.options.max_light_time_iterations
-            : 1;
-        const double tolerance_days = config.options.light_time_tolerance_days > 0.0
-            ? config.options.light_time_tolerance_days
-            : 1.0e-13;
-        double light_time = vector3_norm(out->geometric_state.position_au) * TAIYIN_LIGHT_TIME_DAYS_PER_AU;
-        EphemerisResult target_retarded = target_current;
-        for (int iteration = 0; iteration < max_iterations; ++iteration) {
-            EphemerisEvalDiagnostic retarded_diagnostic;
-            status = eval_body_state(
-                context,
-                body_id,
-                request.center_id,
-                request.jd_tdb - light_time,
-                &target_retarded,
-                &retarded_diagnostic);
-            if (status != TAIYIN_STATUS_OK) {
-                out->status = status;
-                out->diagnostic = retarded_diagnostic;
-                copy_diagnostic(diagnostic, retarded_diagnostic);
-                return status;
-            }
-            const CartesianState candidate = cartesian_state_subtract(target_retarded.state, observer.state);
-            const double next_light_time = vector3_norm(candidate.position_au) * TAIYIN_LIGHT_TIME_DAYS_PER_AU;
-            out->apparent_state = candidate;
-            if (std::fabs(next_light_time - light_time) <= tolerance_days) {
-                light_time = next_light_time;
-                break;
-            }
-            light_time = next_light_time;
+    const uint32_t pipeline_flags = config.options.flags | TAIYIN_APPARENT_SPHERICAL;
+    const bool needs_deflectors = (pipeline_flags & (
+        TAIYIN_APPARENT_ABERRATION
+        | TAIYIN_APPARENT_DEFLECTION
+        | TAIYIN_APPARENT_SHAPIRO_DELAY)) != 0u;
+    if ((pipeline_flags & TAIYIN_APPARENT_SHAPIRO_DELAY) != 0u
+        && (pipeline_flags & TAIYIN_APPARENT_LIGHT_TIME) == 0u) {
+        out->status = TAIYIN_ERROR_INVALID_ARGUMENT;
+        if (diagnostic) {
+            diagnostic->status = out->status;
+            diagnostic->target_id = body_id;
+            diagnostic->center_id = request.observer_id;
+            diagnostic->frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
+            diagnostic->jd_tdb = request.jd_tdb;
         }
-        out->light_time_days = light_time;
-        out->cache_hit = out->cache_hit && target_retarded.cache_hit;
+        return out->status;
+    }
+    if (needs_deflectors && config.deflectors.empty()) {
+        out->status = TAIYIN_ERROR_INVALID_ARGUMENT;
+        if (diagnostic) {
+            diagnostic->status = out->status;
+            diagnostic->target_id = body_id;
+            diagnostic->center_id = request.observer_id;
+            diagnostic->frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
+            diagnostic->jd_tdb = request.jd_tdb;
+        }
+        return out->status;
+    }
+    if (needs_deflectors
+        && (config.solar_deflector_index < 0
+            || static_cast<size_t>(config.solar_deflector_index) >= config.deflectors.size())) {
+        out->status = TAIYIN_ERROR_INVALID_ARGUMENT;
+        if (diagnostic) {
+            diagnostic->status = out->status;
+            diagnostic->target_id = body_id;
+            diagnostic->center_id = request.observer_id;
+            diagnostic->frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
+            diagnostic->jd_tdb = request.jd_tdb;
+        }
+        return out->status;
+    }
+    if (config.deflectors.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        out->status = TAIYIN_ERROR_INVALID_ARGUMENT;
+        if (diagnostic) {
+            diagnostic->status = out->status;
+        }
+        return out->status;
     }
 
-    double output_matrix_values[9];
-    if (!taiyin_calc_apparent_matrices_flat(
-            resolve_jd_tt(request),
-            config.options.flags,
-            config.options.output_frame_id,
-            config.precession.model_id,
-            config.nutation.model_id,
-            config.resolved_obliquity_model_id,
-            config.options.matrix_derivative_step_days,
-            0,
-            0,
-            output_matrix_values,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0)) {
-        target_diagnostic.status = TAIYIN_ERROR_UNSUPPORTED;
-        out->status = target_diagnostic.status;
-        out->diagnostic = target_diagnostic;
-        copy_diagnostic(diagnostic, target_diagnostic);
-        return target_diagnostic.status;
+    RuntimeCompiledBlockData target_data;
+    target_data.context = context;
+    target_data.body_id = body_id;
+    target_data.center_id = request.center_id;
+    RuntimeCompiledBlockData observer_data;
+    observer_data.context = context;
+    observer_data.body_id = request.observer_id;
+    observer_data.center_id = request.center_id;
+    internal::CompiledEphemerisBlock target_block = make_runtime_compiled_block(&target_data);
+    internal::CompiledEphemerisBlock observer_block = make_runtime_compiled_block(&observer_data);
+
+    std::vector<RuntimeCompiledBlockData> deflector_data;
+    std::vector<internal::CompiledEphemerisBlock> deflector_blocks;
+    std::vector<const internal::CompiledEphemerisBlock*> deflector_block_ptrs;
+    std::vector<int> deflector_ids;
+    std::vector<double> deflector_schwarzschild_radius_au;
+    std::vector<double> deflector_limit;
+    try {
+        deflector_data.reserve(config.deflectors.size());
+        deflector_blocks.reserve(config.deflectors.size());
+        deflector_block_ptrs.reserve(config.deflectors.size());
+        deflector_ids.reserve(config.deflectors.size());
+        deflector_schwarzschild_radius_au.reserve(config.deflectors.size());
+        deflector_limit.reserve(config.deflectors.size());
+        for (size_t i = 0; i < config.deflectors.size(); ++i) {
+            RuntimeCompiledBlockData block_data;
+            block_data.context = context;
+            block_data.body_id = config.deflectors[i].body_id;
+            block_data.center_id = request.center_id;
+            deflector_data.push_back(block_data);
+            deflector_blocks.push_back(make_runtime_compiled_block(&deflector_data.back()));
+            deflector_block_ptrs.push_back(&deflector_blocks.back());
+            deflector_ids.push_back(config.deflectors[i].body_id);
+            deflector_schwarzschild_radius_au.push_back(config.deflectors[i].schwarzschild_radius_au);
+            deflector_limit.push_back(config.deflectors[i].limit);
+        }
+    } catch (...) {
+        out->status = TAIYIN_ERROR_OUT_OF_MEMORY;
+        if (diagnostic) {
+            diagnostic->status = out->status;
+        }
+        return out->status;
     }
-    const Matrix3x3 output_matrix = matrix_from_array(output_matrix_values);
-    const Vector3 output_position = transform_position_with_matrix(
-        out->apparent_state.position_au,
-        output_matrix);
-    cartesian_to_spherical(
-        output_position,
+
+    double geometric_pos[3] = { 0.0, 0.0, 0.0 };
+    double geometric_vel[3] = { 0.0, 0.0, 0.0 };
+    double geometric_acc[3] = { 0.0, 0.0, 0.0 };
+    double astrometric_pos[3] = { 0.0, 0.0, 0.0 };
+    double astrometric_vel[3] = { 0.0, 0.0, 0.0 };
+    double astrometric_acc[3] = { 0.0, 0.0, 0.0 };
+    double deflected_pos[3] = { 0.0, 0.0, 0.0 };
+    double deflected_vel[3] = { 0.0, 0.0, 0.0 };
+    double deflected_acc[3] = { 0.0, 0.0, 0.0 };
+    double aberrated_pos[3] = { 0.0, 0.0, 0.0 };
+    double aberrated_vel[3] = { 0.0, 0.0, 0.0 };
+    double aberrated_acc[3] = { 0.0, 0.0, 0.0 };
+    double apparent_pos[3] = { 0.0, 0.0, 0.0 };
+    double apparent_vel[3] = { 0.0, 0.0, 0.0 };
+    double apparent_acc[3] = { 0.0, 0.0, 0.0 };
+    double light_time_rate = 0.0;
+    double light_time_acceleration = 0.0;
+    int light_time_iterations = 0;
+
+    const bool ok = taiyin_calc_apparent_flat(
+        request.jd_tdb,
+        resolve_jd_tt(request),
+        body_id,
+        &target_block,
+        request.observer_id,
+        &observer_block,
+        0,
+        0,
+        0,
+        static_cast<int>(config.deflectors.size()),
+        config.solar_deflector_index,
+        deflector_ids.empty() ? 0 : deflector_ids.data(),
+        deflector_block_ptrs.empty() ? 0 : deflector_block_ptrs.data(),
+        deflector_schwarzschild_radius_au.empty() ? 0 : deflector_schwarzschild_radius_au.data(),
+        deflector_limit.empty() ? 0 : deflector_limit.data(),
+        pipeline_flags,
+        config.options.output_frame_id,
+        config.options.light_time_method_id,
+        config.options.shapiro_delay_model_id,
+        config.options.aberration_model_id,
+        config.options.deflection_model_id,
+        config.precession.model_id,
+        config.nutation.model_id,
+        config.resolved_obliquity_model_id,
+        config.options.max_light_time_iterations,
+        config.options.light_time_tolerance_days,
+        config.options.matrix_derivative_step_days,
+        geometric_pos,
+        geometric_vel,
+        geometric_acc,
+        astrometric_pos,
+        astrometric_vel,
+        astrometric_acc,
+        deflected_pos,
+        deflected_vel,
+        deflected_acc,
+        aberrated_pos,
+        aberrated_vel,
+        aberrated_acc,
+        apparent_pos,
+        apparent_vel,
+        apparent_acc,
         &out->longitude_rad,
         &out->latitude_rad,
-        &out->distance_au);
+        &out->distance_au,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        &out->light_time_days,
+        &light_time_rate,
+        &light_time_acceleration,
+        &light_time_iterations);
+
+    if (!ok) {
+        EphemerisEvalDiagnostic failure_diagnostic;
+        failure_diagnostic.status = TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        failure_diagnostic.target_id = body_id;
+        failure_diagnostic.center_id = request.observer_id;
+        failure_diagnostic.frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
+        failure_diagnostic.jd_tdb = request.jd_tdb;
+        TaiyinStatus failure_status = failure_diagnostic.status;
+        if (target_data.evaluated && target_data.last_status != TAIYIN_STATUS_OK) {
+            failure_status = target_data.last_status;
+            failure_diagnostic = target_data.last_diagnostic;
+        } else if (observer_data.evaluated && observer_data.last_status != TAIYIN_STATUS_OK) {
+            failure_status = observer_data.last_status;
+            failure_diagnostic = observer_data.last_diagnostic;
+        } else {
+            for (size_t i = 0; i < deflector_data.size(); ++i) {
+                if (deflector_data[i].evaluated && deflector_data[i].last_status != TAIYIN_STATUS_OK) {
+                    failure_status = deflector_data[i].last_status;
+                    failure_diagnostic = deflector_data[i].last_diagnostic;
+                    break;
+                }
+            }
+        }
+        out->status = failure_status;
+        out->diagnostic = failure_diagnostic;
+        copy_diagnostic(diagnostic, failure_diagnostic);
+        return failure_status;
+    }
+
+    out->geometric_state.position_au = vector_from_array3(geometric_pos);
+    out->geometric_state.velocity_au_per_day = vector_from_array3(geometric_vel);
+    out->geometric_state.acceleration_au_per_day2 = vector_from_array3(geometric_acc);
+    out->apparent_state.position_au = vector_from_array3(apparent_pos);
+    out->apparent_state.velocity_au_per_day = vector_from_array3(apparent_vel);
+    out->apparent_state.acceleration_au_per_day2 = vector_from_array3(apparent_acc);
+    out->cache_hit = target_data.cache_hit && observer_data.cache_hit;
+    for (size_t i = 0; i < deflector_data.size(); ++i) {
+        out->cache_hit = out->cache_hit && deflector_data[i].cache_hit;
+    }
 
     if (!std::isfinite(out->longitude_rad)
         || !std::isfinite(out->latitude_rad)
         || !std::isfinite(out->distance_au)
         || out->distance_au <= 0.0) {
-        target_diagnostic.status = TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
-        out->status = target_diagnostic.status;
-        out->diagnostic = target_diagnostic;
-        copy_diagnostic(diagnostic, target_diagnostic);
-        return target_diagnostic.status;
+        EphemerisEvalDiagnostic eval_diagnostic;
+        eval_diagnostic.status = TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        eval_diagnostic.target_id = body_id;
+        eval_diagnostic.center_id = request.observer_id;
+        eval_diagnostic.frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
+        eval_diagnostic.jd_tdb = request.jd_tdb;
+        out->status = eval_diagnostic.status;
+        out->diagnostic = eval_diagnostic;
+        copy_diagnostic(diagnostic, eval_diagnostic);
+        return eval_diagnostic.status;
     }
 
     out->status = TAIYIN_STATUS_OK;
-    out->diagnostic = target_diagnostic;
+    out->diagnostic = target_data.last_diagnostic;
     if (diagnostic) {
         *diagnostic = EphemerisEvalDiagnostic();
         diagnostic->status = TAIYIN_STATUS_OK;
