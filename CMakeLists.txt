@@ -43,6 +43,7 @@ add_library(taiyin_ephemeris STATIC
     src/runtime/runtime_registry.cpp
     src/runtime/service_locator.cpp
     src/runtime/ephemeris_service.cpp
+    src/runtime/major_body_apparent.cpp
     src/runtime/pipeline.cpp
     src/runtime/taiyin_runtime.cpp
     src/math_solvers.cpp
@@ -270,6 +271,11 @@ add_executable(test_runtime_services
 )
 target_link_libraries(test_runtime_services PRIVATE taiyin_ephemeris)
 
+add_executable(test_major_body_apparent
+    tests/test_major_body_apparent.cpp
+)
+target_link_libraries(test_major_body_apparent PRIVATE taiyin_ephemeris)
+
 add_executable(test_pipeline
     tests/test_pipeline.cpp
 )
@@ -379,6 +385,7 @@ add_test(NAME math_solvers COMMAND test_math_solvers)
 add_test(NAME celestial_body_registry COMMAND test_celestial_body_registry)
 add_test(NAME runtime_registry COMMAND test_runtime_registry)
 add_test(NAME runtime_services COMMAND test_runtime_services)
+add_test(NAME major_body_apparent COMMAND test_major_body_apparent)
 add_test(NAME pipeline COMMAND test_pipeline)
 add_test(NAME pipeline_bare_chart COMMAND test_pipeline_bare_chart)
 add_test(NAME pipeline_opm4_vs_swiss COMMAND test_pipeline_opm4_vs_swiss)
