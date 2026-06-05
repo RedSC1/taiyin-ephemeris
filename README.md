@@ -1,6 +1,6 @@
 # taiyin-ephemeris
 
-[中文版](README_CN.md)
+[中文版](README_CN.md) · [Roadmap](ROADMAP.md)
 
 `taiyin-ephemeris` is the ephemeris runtime layer for OpenDestiny. Version `0.0.1` focuses on source loading, catalog selection, shared caching, apparent-position calculation, and a small runtime pipeline primitive. It is intentionally not a full end-user application framework; astronomy, astrology extensions, and other domain layers can be built on top.
 

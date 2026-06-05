@@ -1,6 +1,6 @@
 # taiyin-ephemeris
 
-[English](README.md)
+[English](README.md) · [Roadmap](ROADMAP.md)
 
 `taiyin-ephemeris` 是 OpenDestiny 的星历运行时层。版本 `0.0.1` 聚焦于星历源加载、目录选择、共享缓存、视位置计算以及一个最小的运行时管线（pipeline）原语。它有意不构建为一个完整的终端用户应用框架；天文、占星扩展及其他领域层可以在此之上搭建。
 
