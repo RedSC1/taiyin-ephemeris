@@ -1,4 +1,5 @@
 #include "taiyin/angle.h"
+#include "taiyin/body_id.h"
 #include "taiyin/coordinates.h"
 #include "taiyin/runtime/pipeline.h"
 #include "taiyin/runtime/taiyin_runtime.h"
@@ -162,15 +163,15 @@ int main(int argc, char** argv) {
     }
 
     BodySpec bodies[] = {
-        { "Mercury", 1, 10 },
-        { "Venus", 2, 10 },
-        { "Mars", 4, 10 },
-        { "Jupiter", 5, 10 },
-        { "Saturn", 6, 10 },
-        { "Uranus", 7, 10 },
-        { "Neptune", 8, 10 },
-        { "Pluto", 9, 10 },
-        { "Moon", 301, 399 },
+        { "Mercury", TAIYIN_BODY_MERCURY_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Venus", TAIYIN_BODY_VENUS_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Mars", TAIYIN_BODY_MARS_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Jupiter", TAIYIN_BODY_JUPITER_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Saturn", TAIYIN_BODY_SATURN_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Uranus", TAIYIN_BODY_URANUS_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Neptune", TAIYIN_BODY_NEPTUNE_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Pluto", TAIYIN_BODY_PLUTO_BARYCENTER, TAIYIN_BODY_SUN },
+        { "Moon", TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH },
     };
     const size_t body_count = sizeof(bodies) / sizeof(bodies[0]);
 

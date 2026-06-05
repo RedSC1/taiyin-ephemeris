@@ -1,4 +1,5 @@
 #include "taiyin/angle.h"
+#include "taiyin/body_id.h"
 #include "taiyin/physical_constants.h"
 #include "taiyin/runtime/taiyin_runtime.h"
 
@@ -29,9 +30,9 @@ using namespace taiyin::runtime;
 const double JD0 = taiyin::JD_J2000;
 const double DAYS_PER_MILLENNIUM = taiyin::DAYS_PER_JULIAN_MILLENNIUM;
 const char* VSOP87_MERCURY_PATH = taiyin_test::getenv_path("TAIYIN_VSOP87_MERCURY_PATH");
-const int CUSTOM_MERCURY_TARGET_ID = 199;
+const int CUSTOM_MERCURY_TARGET_ID = TAIYIN_BODY_MERCURY;
 const int CUSTOM_MERCURY_METHOD_ID = 88001;
-const int VSOP87_MERCURY_TARGET_ID = 1;
+const int VSOP87_MERCURY_TARGET_ID = TAIYIN_BODY_MERCURY_BARYCENTER;
 const int VSOP87_MERCURY_METHOD_ID = 87001;
 const int CUSTOM_NUTATION_ID = taiyin::dispatch::NUTATION_CUSTOM_START + 501;
 const int CUSTOM_PRECESSION_ID = taiyin::dispatch::PRECESSION_CUSTOM_START + 501;

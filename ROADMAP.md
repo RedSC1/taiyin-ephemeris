@@ -26,17 +26,17 @@ The first public baseline focuses on making the low-level ephemeris runtime usab
 
 ## Near-term code work
 
-### Public body identifiers
+### Body identity model
 
-Replace magic numeric body IDs in public examples and documentation with stable named constants, for example:
+Keep a small public set of stable named constants for common solar-system IDs, for example:
 
 ```cpp
-TAIYIN_BODY_MERCURY
+TAIYIN_BODY_MERCURY_BARYCENTER
 TAIYIN_BODY_SUN
 TAIYIN_BODY_MOON
 ```
 
-This should make request construction and examples easier to read without changing the underlying integer IDs used by existing source descriptors.
+Broad asteroid, satellite, and star coverage should not be hand-written into a giant header. It should come from generated catalog metadata derived from source datasets. Fixed-star access should remain catalog/name based, with runtime route IDs treated as provider-local implementation details rather than universal star IDs.
 
 ### More useful apparent-position examples
 

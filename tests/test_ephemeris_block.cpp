@@ -1,4 +1,5 @@
 #include "taiyin/angle.h"
+#include "taiyin/body_id.h"
 #include "taiyin/physical_constants.h"
 #include "taiyin/internal/ephemeris_block.h"
 #include "taiyin/internal/custom_ephemeris_source_registry.h"
@@ -549,8 +550,8 @@ void test_vsop87_mercury_custom_registry_path() {
     g_vsop87_file_destroy_count = 0;
 
     CustomEphemerisFileSourceDefinition mercury_definition;
-    mercury_definition.target_id = 1;
-    mercury_definition.center_id = 10;
+    mercury_definition.target_id = taiyin::TAIYIN_BODY_MERCURY_BARYCENTER;
+    mercury_definition.center_id = taiyin::TAIYIN_BODY_SUN;
     mercury_definition.method_id = 87001;
     mercury_definition.frame = EphemerisFrame::IcrfJ2000Equatorial;
     mercury_definition.jd_tdb_start = taiyin::JD_J2000 - 36525.0;
@@ -574,7 +575,7 @@ void test_vsop87_mercury_custom_registry_path() {
     synthetic_data.destroy_count = 0;
     CustomEphemerisSourceDefinition synthetic_definition;
     synthetic_definition.target_id = 900087;
-    synthetic_definition.center_id = 10;
+    synthetic_definition.center_id = taiyin::TAIYIN_BODY_SUN;
     synthetic_definition.method_id = 87001;
     synthetic_definition.frame = EphemerisFrame::IcrfJ2000Equatorial;
     synthetic_definition.jd_tdb_start = taiyin::JD_J2000 - 10.0;
@@ -600,8 +601,8 @@ void test_vsop87_mercury_custom_registry_path() {
     service.set_cache(&cache);
 
     EphemerisRequest mercury_request;
-    mercury_request.target_id = 1;
-    mercury_request.center_id = 10;
+    mercury_request.target_id = taiyin::TAIYIN_BODY_MERCURY_BARYCENTER;
+    mercury_request.center_id = taiyin::TAIYIN_BODY_SUN;
     mercury_request.frame = EphemerisFrame::IcrfJ2000Equatorial;
     mercury_request.jd_tdb = taiyin::JD_J2000;
 

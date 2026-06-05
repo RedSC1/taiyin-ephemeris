@@ -1,4 +1,5 @@
 #include "taiyin/angle.h"
+#include "taiyin/body_id.h"
 #include "taiyin/time.h"
 #include "taiyin/internal/custom_ephemeris_source_registry.h"
 #include "taiyin/runtime/pipeline.h"
@@ -20,22 +21,6 @@ const size_t MAX_BODIES = 16;
 const int METHOD_MOCK_SPK = 91001;
 const int METHOD_MOCK_VSOP = 91002;
 const int METHOD_MOCK_KEPLER = 91003;
-
-const int TARGET_MERCURY = 1;
-const int TARGET_VENUS = 2;
-const int TARGET_MARS = 4;
-const int TARGET_JUPITER = 5;
-const int TARGET_SATURN = 6;
-const int TARGET_URANUS = 7;
-const int TARGET_NEPTUNE = 8;
-const int TARGET_PLUTO = 9;
-const int TARGET_SUN = 10;
-const int TARGET_MOON = 301;
-const int TARGET_CERES = 1000001;
-const int TARGET_PALLAS = 1000002;
-const int TARGET_JUNO = 1000003;
-const int TARGET_VESTA = 1000004;
-const int TARGET_CHIRON = 1002060;
 
 struct MockEphemerisData {
     double x;
@@ -292,46 +277,46 @@ void test_pipeline_builds_bare_chart_with_multiple_methods(int* failures) {
     expect_true(set_global_ephemeris_method_priority(METHOD_MOCK_SPK, 300), "set SPK mock priority", failures);
     expect_true(set_global_ephemeris_method_priority(METHOD_MOCK_VSOP, 200), "set VSOP mock priority", failures);
     expect_true(set_global_ephemeris_method_priority(METHOD_MOCK_KEPLER, 100), "set Kepler mock priority", failures);
-    expect_true(set_global_ephemeris_target_method_priority(TARGET_CERES, METHOD_MOCK_KEPLER, 500),
+    expect_true(set_global_ephemeris_target_method_priority(TAIYIN_BODY_CERES, METHOD_MOCK_KEPLER, 500),
                 "target-specific Ceres prefers Kepler", failures);
 
-    const int spk_targets[] = { TARGET_SUN, TARGET_MOON, TARGET_PLUTO, TARGET_CERES };
+    const int spk_targets[] = { TAIYIN_BODY_SUN, TAIYIN_BODY_MOON, TAIYIN_BODY_PLUTO_BARYCENTER, TAIYIN_BODY_CERES };
     for (size_t i = 0; i < sizeof(spk_targets) / sizeof(spk_targets[0]); ++i) {
         expect_true(add_mock_descriptor(spk_targets[i], METHOD_MOCK_SPK), "add SPK-like descriptor", failures);
     }
 
     const int vsop_targets[] = {
-        TARGET_MERCURY, TARGET_VENUS, TARGET_MARS, TARGET_JUPITER,
-        TARGET_SATURN, TARGET_URANUS, TARGET_NEPTUNE
+        TAIYIN_BODY_MERCURY_BARYCENTER, TAIYIN_BODY_VENUS_BARYCENTER, TAIYIN_BODY_MARS_BARYCENTER, TAIYIN_BODY_JUPITER_BARYCENTER,
+        TAIYIN_BODY_SATURN_BARYCENTER, TAIYIN_BODY_URANUS_BARYCENTER, TAIYIN_BODY_NEPTUNE_BARYCENTER
     };
     for (size_t i = 0; i < sizeof(vsop_targets) / sizeof(vsop_targets[0]); ++i) {
         expect_true(add_mock_descriptor(vsop_targets[i], METHOD_MOCK_VSOP), "add VSOP-like descriptor", failures);
     }
 
     const int kepler_targets[] = {
-        TARGET_MERCURY, TARGET_CERES, TARGET_PALLAS, TARGET_JUNO,
-        TARGET_VESTA, TARGET_CHIRON
+        TAIYIN_BODY_MERCURY_BARYCENTER, TAIYIN_BODY_CERES, TAIYIN_BODY_PALLAS, TAIYIN_BODY_JUNO,
+        TAIYIN_BODY_VESTA, TAIYIN_BODY_CHIRON
     };
     for (size_t i = 0; i < sizeof(kepler_targets) / sizeof(kepler_targets[0]); ++i) {
         expect_true(add_mock_descriptor(kepler_targets[i], METHOD_MOCK_KEPLER), "add Kepler-like descriptor", failures);
     }
 
     BodySpec bodies[] = {
-        { "Sun", TARGET_SUN, METHOD_MOCK_SPK, expected_longitude_for(TARGET_SUN, METHOD_MOCK_SPK) },
-        { "Moon", TARGET_MOON, METHOD_MOCK_SPK, expected_longitude_for(TARGET_MOON, METHOD_MOCK_SPK) },
-        { "Mercury", TARGET_MERCURY, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_MERCURY, METHOD_MOCK_VSOP) },
-        { "Venus", TARGET_VENUS, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_VENUS, METHOD_MOCK_VSOP) },
-        { "Mars", TARGET_MARS, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_MARS, METHOD_MOCK_VSOP) },
-        { "Jupiter", TARGET_JUPITER, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_JUPITER, METHOD_MOCK_VSOP) },
-        { "Saturn", TARGET_SATURN, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_SATURN, METHOD_MOCK_VSOP) },
-        { "Uranus", TARGET_URANUS, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_URANUS, METHOD_MOCK_VSOP) },
-        { "Neptune", TARGET_NEPTUNE, METHOD_MOCK_VSOP, expected_longitude_for(TARGET_NEPTUNE, METHOD_MOCK_VSOP) },
-        { "Pluto", TARGET_PLUTO, METHOD_MOCK_SPK, expected_longitude_for(TARGET_PLUTO, METHOD_MOCK_SPK) },
-        { "Ceres", TARGET_CERES, METHOD_MOCK_KEPLER, expected_longitude_for(TARGET_CERES, METHOD_MOCK_KEPLER) },
-        { "Pallas", TARGET_PALLAS, METHOD_MOCK_KEPLER, expected_longitude_for(TARGET_PALLAS, METHOD_MOCK_KEPLER) },
-        { "Juno", TARGET_JUNO, METHOD_MOCK_KEPLER, expected_longitude_for(TARGET_JUNO, METHOD_MOCK_KEPLER) },
-        { "Vesta", TARGET_VESTA, METHOD_MOCK_KEPLER, expected_longitude_for(TARGET_VESTA, METHOD_MOCK_KEPLER) },
-        { "Chiron", TARGET_CHIRON, METHOD_MOCK_KEPLER, expected_longitude_for(TARGET_CHIRON, METHOD_MOCK_KEPLER) },
+        { "Sun", TAIYIN_BODY_SUN, METHOD_MOCK_SPK, expected_longitude_for(TAIYIN_BODY_SUN, METHOD_MOCK_SPK) },
+        { "Moon", TAIYIN_BODY_MOON, METHOD_MOCK_SPK, expected_longitude_for(TAIYIN_BODY_MOON, METHOD_MOCK_SPK) },
+        { "Mercury", TAIYIN_BODY_MERCURY_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_MERCURY_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Venus", TAIYIN_BODY_VENUS_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_VENUS_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Mars", TAIYIN_BODY_MARS_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_MARS_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Jupiter", TAIYIN_BODY_JUPITER_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_JUPITER_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Saturn", TAIYIN_BODY_SATURN_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_SATURN_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Uranus", TAIYIN_BODY_URANUS_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_URANUS_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Neptune", TAIYIN_BODY_NEPTUNE_BARYCENTER, METHOD_MOCK_VSOP, expected_longitude_for(TAIYIN_BODY_NEPTUNE_BARYCENTER, METHOD_MOCK_VSOP) },
+        { "Pluto", TAIYIN_BODY_PLUTO_BARYCENTER, METHOD_MOCK_SPK, expected_longitude_for(TAIYIN_BODY_PLUTO_BARYCENTER, METHOD_MOCK_SPK) },
+        { "Ceres", TAIYIN_BODY_CERES, METHOD_MOCK_KEPLER, expected_longitude_for(TAIYIN_BODY_CERES, METHOD_MOCK_KEPLER) },
+        { "Pallas", TAIYIN_BODY_PALLAS, METHOD_MOCK_KEPLER, expected_longitude_for(TAIYIN_BODY_PALLAS, METHOD_MOCK_KEPLER) },
+        { "Juno", TAIYIN_BODY_JUNO, METHOD_MOCK_KEPLER, expected_longitude_for(TAIYIN_BODY_JUNO, METHOD_MOCK_KEPLER) },
+        { "Vesta", TAIYIN_BODY_VESTA, METHOD_MOCK_KEPLER, expected_longitude_for(TAIYIN_BODY_VESTA, METHOD_MOCK_KEPLER) },
+        { "Chiron", TAIYIN_BODY_CHIRON, METHOD_MOCK_KEPLER, expected_longitude_for(TAIYIN_BODY_CHIRON, METHOD_MOCK_KEPLER) },
     };
     const size_t body_count = sizeof(bodies) / sizeof(bodies[0]);
 

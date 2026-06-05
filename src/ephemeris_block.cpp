@@ -1,5 +1,6 @@
 #include "taiyin/internal/ephemeris_block.h"
 
+#include "taiyin/body_id.h"
 #include "taiyin/internal/opm4.h"
 
 #include <cmath>
@@ -9,7 +10,7 @@
 namespace taiyin {
 namespace internal {
 
-const int PRIVATE_CELESTIAL_BODY_ID_START = 1000000000;
+const int PRIVATE_CELESTIAL_BODY_ID_START = TAIYIN_PRIVATE_CELESTIAL_BODY_ID_START;
 
 struct GlobalIdRegistry {
     std::unordered_map<std::string, int> name_to_id;
@@ -29,52 +30,52 @@ static void register_builtin_alias(GlobalIdRegistry& reg, const char* alias, int
 }
 
 static void init_builtin_body_aliases(GlobalIdRegistry& reg) noexcept {
-    register_builtin_body(reg, "solar_system_barycenter", 0);
-    register_builtin_alias(reg, "ssb", 0);
+    register_builtin_body(reg, "solar_system_barycenter", TAIYIN_BODY_SOLAR_SYSTEM_BARYCENTER);
+    register_builtin_alias(reg, "ssb", TAIYIN_BODY_SSB);
 
-    register_builtin_body(reg, "mercury_barycenter", 1);
-    register_builtin_body(reg, "venus_barycenter", 2);
-    register_builtin_body(reg, "earth_moon_barycenter", 3);
-    register_builtin_alias(reg, "emb", 3);
-    register_builtin_body(reg, "mars_barycenter", 4);
-    register_builtin_body(reg, "jupiter_barycenter", 5);
-    register_builtin_body(reg, "saturn_barycenter", 6);
-    register_builtin_body(reg, "uranus_barycenter", 7);
-    register_builtin_body(reg, "neptune_barycenter", 8);
-    register_builtin_body(reg, "pluto_barycenter", 9);
+    register_builtin_body(reg, "mercury_barycenter", TAIYIN_BODY_MERCURY_BARYCENTER);
+    register_builtin_body(reg, "venus_barycenter", TAIYIN_BODY_VENUS_BARYCENTER);
+    register_builtin_body(reg, "earth_moon_barycenter", TAIYIN_BODY_EARTH_MOON_BARYCENTER);
+    register_builtin_alias(reg, "emb", TAIYIN_BODY_EMB);
+    register_builtin_body(reg, "mars_barycenter", TAIYIN_BODY_MARS_BARYCENTER);
+    register_builtin_body(reg, "jupiter_barycenter", TAIYIN_BODY_JUPITER_BARYCENTER);
+    register_builtin_body(reg, "saturn_barycenter", TAIYIN_BODY_SATURN_BARYCENTER);
+    register_builtin_body(reg, "uranus_barycenter", TAIYIN_BODY_URANUS_BARYCENTER);
+    register_builtin_body(reg, "neptune_barycenter", TAIYIN_BODY_NEPTUNE_BARYCENTER);
+    register_builtin_body(reg, "pluto_barycenter", TAIYIN_BODY_PLUTO_BARYCENTER);
 
-    register_builtin_body(reg, "sun", 10);
-    register_builtin_body(reg, "mercury", 199);
-    register_builtin_body(reg, "venus", 299);
-    register_builtin_body(reg, "moon", 301);
-    register_builtin_alias(reg, "luna", 301);
-    register_builtin_body(reg, "earth", 399);
-    register_builtin_body(reg, "mars", 499);
-    register_builtin_body(reg, "jupiter", 599);
-    register_builtin_body(reg, "saturn", 699);
-    register_builtin_body(reg, "uranus", 799);
-    register_builtin_body(reg, "neptune", 899);
-    register_builtin_body(reg, "pluto", 999);
+    register_builtin_body(reg, "sun", TAIYIN_BODY_SUN);
+    register_builtin_body(reg, "mercury", TAIYIN_BODY_MERCURY);
+    register_builtin_body(reg, "venus", TAIYIN_BODY_VENUS);
+    register_builtin_body(reg, "moon", TAIYIN_BODY_MOON);
+    register_builtin_alias(reg, "luna", TAIYIN_BODY_MOON);
+    register_builtin_body(reg, "earth", TAIYIN_BODY_EARTH);
+    register_builtin_body(reg, "mars", TAIYIN_BODY_MARS);
+    register_builtin_body(reg, "jupiter", TAIYIN_BODY_JUPITER);
+    register_builtin_body(reg, "saturn", TAIYIN_BODY_SATURN);
+    register_builtin_body(reg, "uranus", TAIYIN_BODY_URANUS);
+    register_builtin_body(reg, "neptune", TAIYIN_BODY_NEPTUNE);
+    register_builtin_body(reg, "pluto", TAIYIN_BODY_PLUTO);
 
-    register_builtin_body(reg, "phobos", 401);
-    register_builtin_body(reg, "deimos", 402);
-    register_builtin_body(reg, "io", 501);
-    register_builtin_body(reg, "europa", 502);
-    register_builtin_body(reg, "ganymede", 503);
-    register_builtin_body(reg, "callisto", 504);
-    register_builtin_body(reg, "titan", 606);
-    register_builtin_body(reg, "triton", 801);
-    register_builtin_body(reg, "charon", 901);
+    register_builtin_body(reg, "phobos", TAIYIN_BODY_PHOBOS);
+    register_builtin_body(reg, "deimos", TAIYIN_BODY_DEIMOS);
+    register_builtin_body(reg, "io", TAIYIN_BODY_IO);
+    register_builtin_body(reg, "europa", TAIYIN_BODY_EUROPA);
+    register_builtin_body(reg, "ganymede", TAIYIN_BODY_GANYMEDE);
+    register_builtin_body(reg, "callisto", TAIYIN_BODY_CALLISTO);
+    register_builtin_body(reg, "titan", TAIYIN_BODY_TITAN);
+    register_builtin_body(reg, "triton", TAIYIN_BODY_TRITON);
+    register_builtin_body(reg, "charon", TAIYIN_BODY_CHARON);
 
-    register_builtin_body(reg, "ceres", 2000001);
-    register_builtin_body(reg, "pallas", 2000002);
-    register_builtin_body(reg, "juno", 2000003);
-    register_builtin_body(reg, "vesta", 2000004);
-    register_builtin_body(reg, "eros", 2000433);
-    register_builtin_body(reg, "chiron", 20002060);
-    register_builtin_body(reg, "pholus", 20005145);
-    register_builtin_body(reg, "nessus", 20007066);
-    register_builtin_body(reg, "lilith", 20001181);
+    register_builtin_body(reg, "ceres", TAIYIN_BODY_CERES);
+    register_builtin_body(reg, "pallas", TAIYIN_BODY_PALLAS);
+    register_builtin_body(reg, "juno", TAIYIN_BODY_JUNO);
+    register_builtin_body(reg, "vesta", TAIYIN_BODY_VESTA);
+    register_builtin_body(reg, "eros", TAIYIN_BODY_EROS);
+    register_builtin_body(reg, "chiron", TAIYIN_BODY_CHIRON);
+    register_builtin_body(reg, "pholus", TAIYIN_BODY_PHOLUS);
+    register_builtin_body(reg, "nessus", TAIYIN_BODY_NESSUS);
+    register_builtin_body(reg, "lilith", TAIYIN_BODY_LILITH);
 }
 
 static GlobalIdRegistry& get_global_id_registry() noexcept {

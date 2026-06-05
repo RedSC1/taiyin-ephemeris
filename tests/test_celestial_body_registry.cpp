@@ -1,3 +1,4 @@
+#include "taiyin/body_id.h"
 #include "taiyin/internal/ephemeris_block.h"
 
 #include <cassert>
@@ -53,68 +54,68 @@ int main() {
     using taiyin::internal::register_celestial_body;
     using taiyin::internal::register_celestial_body_alias;
 
-    expect_body_id("solar_system_barycenter", 0);
-    expect_body_id("ssb", 0);
-    expect_eq_string(query_celestial_body_name(0), "solar_system_barycenter", "ssb canonical name");
+    expect_body_id("solar_system_barycenter", taiyin::TAIYIN_BODY_SOLAR_SYSTEM_BARYCENTER);
+    expect_body_id("ssb", taiyin::TAIYIN_BODY_SSB);
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_SSB), "solar_system_barycenter", "ssb canonical name");
 
-    expect_body_id("sun", 10);
-    expect_eq_string(query_celestial_body_name(10), "sun", "sun canonical name");
+    expect_body_id("sun", taiyin::TAIYIN_BODY_SUN);
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_SUN), "sun", "sun canonical name");
 
-    expect_body_id("mercury_barycenter", 1);
-    expect_body_id("venus_barycenter", 2);
-    expect_body_id("earth_moon_barycenter", 3);
-    expect_body_id("emb", 3);
-    expect_body_id("mars_barycenter", 4);
-    expect_body_id("jupiter_barycenter", 5);
-    expect_body_id("saturn_barycenter", 6);
-    expect_body_id("uranus_barycenter", 7);
-    expect_body_id("neptune_barycenter", 8);
-    expect_body_id("pluto_barycenter", 9);
-    expect_eq_string(query_celestial_body_name(3), "earth_moon_barycenter", "emb canonical name");
+    expect_body_id("mercury_barycenter", taiyin::TAIYIN_BODY_MERCURY_BARYCENTER);
+    expect_body_id("venus_barycenter", taiyin::TAIYIN_BODY_VENUS_BARYCENTER);
+    expect_body_id("earth_moon_barycenter", taiyin::TAIYIN_BODY_EARTH_MOON_BARYCENTER);
+    expect_body_id("emb", taiyin::TAIYIN_BODY_EMB);
+    expect_body_id("mars_barycenter", taiyin::TAIYIN_BODY_MARS_BARYCENTER);
+    expect_body_id("jupiter_barycenter", taiyin::TAIYIN_BODY_JUPITER_BARYCENTER);
+    expect_body_id("saturn_barycenter", taiyin::TAIYIN_BODY_SATURN_BARYCENTER);
+    expect_body_id("uranus_barycenter", taiyin::TAIYIN_BODY_URANUS_BARYCENTER);
+    expect_body_id("neptune_barycenter", taiyin::TAIYIN_BODY_NEPTUNE_BARYCENTER);
+    expect_body_id("pluto_barycenter", taiyin::TAIYIN_BODY_PLUTO_BARYCENTER);
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_EMB), "earth_moon_barycenter", "emb canonical name");
 
-    expect_body_id("mercury", 199);
-    expect_body_id("venus", 299);
-    expect_body_id("moon", 301);
-    expect_body_id("luna", 301);
-    expect_body_id("earth", 399);
-    expect_body_id("mars", 499);
-    expect_body_id("jupiter", 599);
-    expect_body_id("saturn", 699);
-    expect_body_id("uranus", 799);
-    expect_body_id("neptune", 899);
-    expect_body_id("pluto", 999);
-    expect_eq_string(query_celestial_body_name(399), "earth", "earth canonical name");
-    expect_eq_string(query_celestial_body_name(301), "moon", "moon canonical name");
+    expect_body_id("mercury", taiyin::TAIYIN_BODY_MERCURY);
+    expect_body_id("venus", taiyin::TAIYIN_BODY_VENUS);
+    expect_body_id("moon", taiyin::TAIYIN_BODY_MOON);
+    expect_body_id("luna", taiyin::TAIYIN_BODY_MOON);
+    expect_body_id("earth", taiyin::TAIYIN_BODY_EARTH);
+    expect_body_id("mars", taiyin::TAIYIN_BODY_MARS);
+    expect_body_id("jupiter", taiyin::TAIYIN_BODY_JUPITER);
+    expect_body_id("saturn", taiyin::TAIYIN_BODY_SATURN);
+    expect_body_id("uranus", taiyin::TAIYIN_BODY_URANUS);
+    expect_body_id("neptune", taiyin::TAIYIN_BODY_NEPTUNE);
+    expect_body_id("pluto", taiyin::TAIYIN_BODY_PLUTO);
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_EARTH), "earth", "earth canonical name");
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_MOON), "moon", "moon canonical name");
 
-    expect_body_id("phobos", 401);
-    expect_body_id("deimos", 402);
-    expect_body_id("io", 501);
-    expect_body_id("europa", 502);
-    expect_body_id("ganymede", 503);
-    expect_body_id("callisto", 504);
-    expect_body_id("titan", 606);
-    expect_body_id("triton", 801);
-    expect_body_id("charon", 901);
+    expect_body_id("phobos", taiyin::TAIYIN_BODY_PHOBOS);
+    expect_body_id("deimos", taiyin::TAIYIN_BODY_DEIMOS);
+    expect_body_id("io", taiyin::TAIYIN_BODY_IO);
+    expect_body_id("europa", taiyin::TAIYIN_BODY_EUROPA);
+    expect_body_id("ganymede", taiyin::TAIYIN_BODY_GANYMEDE);
+    expect_body_id("callisto", taiyin::TAIYIN_BODY_CALLISTO);
+    expect_body_id("titan", taiyin::TAIYIN_BODY_TITAN);
+    expect_body_id("triton", taiyin::TAIYIN_BODY_TRITON);
+    expect_body_id("charon", taiyin::TAIYIN_BODY_CHARON);
 
-    expect_body_id("ceres", 2000001);
-    expect_body_id("pallas", 2000002);
-    expect_body_id("juno", 2000003);
-    expect_body_id("vesta", 2000004);
-    expect_body_id("eros", 2000433);
-    expect_body_id("chiron", 20002060);
-    expect_body_id("pholus", 20005145);
-    expect_body_id("nessus", 20007066);
-    expect_body_id("lilith", 20001181);
-    expect_eq_string(query_celestial_body_name(2000001), "ceres", "ceres canonical name");
+    expect_body_id("ceres", taiyin::TAIYIN_BODY_CERES);
+    expect_body_id("pallas", taiyin::TAIYIN_BODY_PALLAS);
+    expect_body_id("juno", taiyin::TAIYIN_BODY_JUNO);
+    expect_body_id("vesta", taiyin::TAIYIN_BODY_VESTA);
+    expect_body_id("eros", taiyin::TAIYIN_BODY_EROS);
+    expect_body_id("chiron", taiyin::TAIYIN_BODY_CHIRON);
+    expect_body_id("pholus", taiyin::TAIYIN_BODY_PHOLUS);
+    expect_body_id("nessus", taiyin::TAIYIN_BODY_NESSUS);
+    expect_body_id("lilith", taiyin::TAIYIN_BODY_LILITH);
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_CERES), "ceres", "ceres canonical name");
 
-    expect_eq_int(register_celestial_body("earth"), 399, "register built-in earth");
-    expect_eq_int(register_celestial_body("mars_barycenter"), 4, "register built-in mars barycenter");
-    expect_eq_int(register_celestial_body("ceres"), 2000001, "register built-in ceres");
+    expect_eq_int(register_celestial_body("earth"), taiyin::TAIYIN_BODY_EARTH, "register built-in earth");
+    expect_eq_int(register_celestial_body("mars_barycenter"), taiyin::TAIYIN_BODY_MARS_BARYCENTER, "register built-in mars barycenter");
+    expect_eq_int(register_celestial_body("ceres"), taiyin::TAIYIN_BODY_CERES, "register built-in ceres");
 
     const int dynamic_a = register_celestial_body("registry_test_custom_star_a");
     const int dynamic_b = register_celestial_body("registry_test_custom_star_b");
-    expect_true(dynamic_a >= 1000000000, "dynamic private id range a");
-    expect_true(dynamic_b >= 1000000000, "dynamic private id range b");
+    expect_true(dynamic_a >= taiyin::TAIYIN_PRIVATE_CELESTIAL_BODY_ID_START, "dynamic private id range a");
+    expect_true(dynamic_b >= taiyin::TAIYIN_PRIVATE_CELESTIAL_BODY_ID_START, "dynamic private id range b");
     expect_true(dynamic_a != dynamic_b, "dynamic ids are distinct");
     expect_eq_int(
         register_celestial_body("registry_test_custom_star_a"),
@@ -135,9 +136,9 @@ int main() {
         "registry_test_custom_star_a",
         "dynamic alias does not replace canonical name");
 
-    register_celestial_body_alias("registry_test_earth_alias", 399);
-    expect_eq_int(register_celestial_body("registry_test_earth_alias"), 399, "earth alias resolves");
-    expect_eq_string(query_celestial_body_name(399), "earth", "earth alias does not replace canonical name");
+    register_celestial_body_alias("registry_test_earth_alias", taiyin::TAIYIN_BODY_EARTH);
+    expect_eq_int(register_celestial_body("registry_test_earth_alias"), taiyin::TAIYIN_BODY_EARTH, "earth alias resolves");
+    expect_eq_string(query_celestial_body_name(taiyin::TAIYIN_BODY_EARTH), "earth", "earth alias does not replace canonical name");
 
     int unknown_id = -1;
     expect_false(query_celestial_body_id("registry_test_unknown_body", &unknown_id), "unknown body lookup");

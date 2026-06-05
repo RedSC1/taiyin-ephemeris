@@ -47,6 +47,7 @@ cmake --build build --target example_bare_chart_pipeline
 The runtime is initialized once, then explicit source paths are added to the global catalog. The catalog remembers source descriptors; the cache only stores loaded/evaluated blocks and can evict entries without losing the source-of-truth path.
 
 ```cpp
+#include "taiyin/body_id.h"
 #include "taiyin/runtime/taiyin_runtime.h"
 
 using namespace taiyin::internal;
@@ -59,8 +60,8 @@ initialize_global_ephemeris_runtime(config);
 add_global_ephemeris_source_path("/path/to/data_integrated_opm4");
 
 EphemerisRequest request;
-request.target_id = 1;   // Mercury
-request.center_id = 10;  // Sun
+request.target_id = TAIYIN_BODY_MERCURY_BARYCENTER;
+request.center_id = TAIYIN_BODY_SUN;
 request.frame = EphemerisFrame::IcrfJ2000Equatorial;
 request.jd_tdb = 2460310.500800740905;
 

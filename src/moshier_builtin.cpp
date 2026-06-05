@@ -1,4 +1,6 @@
 #include "taiyin/internal/moshier_builtin.h"
+
+#include "taiyin/body_id.h"
 #include "taiyin/internal/ephemeris_block.h"
 #include <algorithm>
 
@@ -6,7 +8,7 @@ namespace taiyin {
 namespace internal {
 namespace {
 
-const int MOSHIER_SUN_CENTER_ID = 10;
+const int MOSHIER_SUN_CENTER_ID = TAIYIN_BODY_SUN;
 
 const int8_t mercury_args[] = {
     static_cast<int8_t>(0), static_cast<int8_t>(3), static_cast<int8_t>(3), static_cast<int8_t>(1), static_cast<int8_t>(1), static_cast<int8_t>(-10), static_cast<int8_t>(3), static_cast<int8_t>(11), static_cast<int8_t>(4), static_cast<int8_t>(0),

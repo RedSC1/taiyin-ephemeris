@@ -47,6 +47,7 @@ cmake --build build --target example_bare_chart_pipeline
 运行时初始化一次，然后将显式源路径添加到全局目录。目录记忆源描述符；缓存仅存储已加载/已计算的区块，可在不丢失源路径信息的前提下驱逐条目。
 
 ```cpp
+#include "taiyin/body_id.h"
 #include "taiyin/runtime/taiyin_runtime.h"
 
 using namespace taiyin::internal;
@@ -59,8 +60,8 @@ initialize_global_ephemeris_runtime(config);
 add_global_ephemeris_source_path("/path/to/data_integrated_opm4");
 
 EphemerisRequest request;
-request.target_id = 1;   // 水星
-request.center_id = 10;  // 太阳
+request.target_id = TAIYIN_BODY_MERCURY_BARYCENTER;
+request.center_id = TAIYIN_BODY_SUN;
 request.frame = EphemerisFrame::IcrfJ2000Equatorial;
 request.jd_tdb = 2460310.500800740905;
 
