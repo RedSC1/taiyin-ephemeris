@@ -1,6 +1,7 @@
 #ifndef TAIYIN_RUNTIME_MAJOR_BODY_APPARENT_H
 #define TAIYIN_RUNTIME_MAJOR_BODY_APPARENT_H
 
+#include "taiyin/apparent_position.h"
 #include "taiyin/body_id.h"
 #include "taiyin/runtime/ephemeris_service.h"
 #include "taiyin/state.h"
@@ -39,17 +40,25 @@ const uint32_t TAIYIN_MAJOR_BODY_ALL =
 
 const uint32_t TAIYIN_MAJOR_BODY_APPARENT_LIGHT_TIME = 1u << 0;
 
-struct TaiyinAstroModelContext {
+struct AstroModelContext {
     int tdb_model_id;
     int precession_model_id;
     int nutation_model_id;
     int obliquity_model_id;
     int frame_route_id;
 
-    TaiyinAstroModelContext() noexcept;
+    AstroModelContext() noexcept;
 };
 
-struct TaiyinApparentOptions {
+struct ApparentDeflector {
+    int body_id;
+    double schwarzschild_radius_au;
+    double limit;
+
+    ApparentDeflector() noexcept;
+};
+
+struct ApparentOptions {
     uint32_t flags;
     int output_frame_id;
     int light_time_method_id;
@@ -59,9 +68,12 @@ struct TaiyinApparentOptions {
     int max_light_time_iterations;
     double light_time_tolerance_days;
     double matrix_derivative_step_days;
-    const TaiyinAstroModelContext* model_context;
+    const AstroModelContext* model_context;
+    const ApparentDeflector* deflectors;
+    size_t deflector_count;
+    int solar_deflector_index;
 
-    TaiyinApparentOptions() noexcept;
+    ApparentOptions() noexcept;
 };
 
 struct MajorBodyApparentBatchRequest {
@@ -71,7 +83,7 @@ struct MajorBodyApparentBatchRequest {
     int center_id;
     const int* body_ids;
     size_t body_count;
-    const TaiyinApparentOptions* options;
+    const ApparentOptions* options;
 
     MajorBodyApparentBatchRequest() noexcept;
 };
@@ -116,13 +128,26 @@ struct MajorBodyApparentBatchResult {
 int major_body_id_for_mask_bit(uint32_t mask_bit) noexcept;
 const char* major_body_name_for_id(int body_id) noexcept;
 
-TaiyinAstroModelContext get_global_astro_model_context() noexcept;
-TaiyinStatus set_global_astro_model_context(const TaiyinAstroModelContext& context) noexcept;
+AstroModelContext get_global_astro_model_context() noexcept;
+TaiyinStatus set_global_astro_model_context(const AstroModelContext& context) noexcept;
 void reset_global_astro_model_context() noexcept;
 
-TaiyinApparentOptions get_global_apparent_options() noexcept;
-TaiyinStatus set_global_apparent_options(const TaiyinApparentOptions& options) noexcept;
+ApparentOptions get_global_apparent_options() noexcept;
+TaiyinStatus set_global_apparent_options(const ApparentOptions& options) noexcept;
 void reset_global_apparent_options() noexcept;
+
+TaiyinStatus set_global_apparent_deflectors(
+    const ApparentDeflector* deflectors,
+    size_t deflector_count,
+    int solar_deflector_index
+) noexcept;
+size_t get_global_apparent_deflector_count() noexcept;
+size_t get_global_apparent_deflectors(
+    ApparentDeflector* out,
+    size_t capacity,
+    int* out_solar_deflector_index
+) noexcept;
+void reset_global_apparent_deflectors() noexcept;
 
 TaiyinStatus eval_major_body_apparent_batch(
     EphemerisService* service,

@@ -11,6 +11,7 @@
 #include <cmath>
 #include <limits>
 #include <mutex>
+#include <vector>
 
 namespace taiyin {
 namespace runtime {
@@ -41,24 +42,33 @@ struct EvalContext {
 };
 
 struct GlobalApparentConfigManager {
-    TaiyinAstroModelContext model_context;
-    TaiyinApparentOptions apparent_options;
+    AstroModelContext model_context;
+    ApparentOptions apparent_options;
+    std::vector<ApparentDeflector> deflectors;
+    int solar_deflector_index;
     std::mutex mutex;
 
     GlobalApparentConfigManager() noexcept
-        : model_context(), apparent_options(), mutex() {}
+        : model_context(), apparent_options(), deflectors(), solar_deflector_index(-1), mutex() {}
 };
 
 struct GlobalApparentConfigSnapshot {
-    TaiyinAstroModelContext model_context;
-    TaiyinApparentOptions apparent_options;
+    AstroModelContext model_context;
+    ApparentOptions apparent_options;
+    std::vector<ApparentDeflector> deflectors;
+    int solar_deflector_index;
+
+    GlobalApparentConfigSnapshot()
+        : model_context(), apparent_options(), deflectors(), solar_deflector_index(-1) {}
 };
 
 struct ResolvedApparentConfig {
-    TaiyinApparentOptions options;
-    TaiyinAstroModelContext requested_models;
+    ApparentOptions options;
+    AstroModelContext requested_models;
     dispatch::PrecessionModelEntry precession;
     dispatch::NutationModelEntry nutation;
+    std::vector<ApparentDeflector> deflectors;
+    int solar_deflector_index;
     int resolved_tdb_model_id;
     int resolved_obliquity_model_id;
     int resolved_frame_route_id;
@@ -68,6 +78,8 @@ struct ResolvedApparentConfig {
           requested_models(),
           precession(),
           nutation(),
+          deflectors(),
+          solar_deflector_index(-1),
           resolved_tdb_model_id(dispatch::TDB_FAST_PERIODIC),
           resolved_obliquity_model_id(0),
           resolved_frame_route_id(dispatch::FRAME_ROUTE_EQUINOX) {}
@@ -86,13 +98,61 @@ GlobalApparentConfigSnapshot snapshot_global_apparent_config() noexcept {
     snapshot.model_context = manager.model_context;
     snapshot.apparent_options = manager.apparent_options;
     snapshot.apparent_options.model_context = 0;
+    snapshot.apparent_options.deflectors = 0;
+    snapshot.apparent_options.deflector_count = 0;
+    snapshot.apparent_options.solar_deflector_index = -1;
     return snapshot;
 }
 
-TaiyinAstroModelContext snapshot_global_astro_model_context() noexcept {
+AstroModelContext snapshot_global_astro_model_context() noexcept {
     GlobalApparentConfigManager& manager = global_apparent_config_manager();
     std::lock_guard<std::mutex> lock(manager.mutex);
     return manager.model_context;
+}
+
+bool valid_solar_deflector_index(size_t deflector_count, int solar_deflector_index) noexcept {
+    return solar_deflector_index < 0
+        || static_cast<size_t>(solar_deflector_index) < deflector_count;
+}
+
+TaiyinStatus copy_explicit_deflectors(
+    const ApparentDeflector* deflectors,
+    size_t deflector_count,
+    int solar_deflector_index,
+    std::vector<ApparentDeflector>* out
+) noexcept {
+    if (!out || (!deflectors && deflector_count > 0) || !valid_solar_deflector_index(deflector_count, solar_deflector_index)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    try {
+        out->clear();
+        for (size_t i = 0; i < deflector_count; ++i) {
+            out->push_back(deflectors[i]);
+        }
+    } catch (...) {
+        out->clear();
+        return TAIYIN_ERROR_OUT_OF_MEMORY;
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+TaiyinStatus snapshot_global_deflectors(
+    std::vector<ApparentDeflector>* out,
+    int* out_solar_deflector_index
+) noexcept {
+    if (!out || !out_solar_deflector_index) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    GlobalApparentConfigManager& manager = global_apparent_config_manager();
+    std::lock_guard<std::mutex> lock(manager.mutex);
+    try {
+        *out = manager.deflectors;
+    } catch (...) {
+        out->clear();
+        return TAIYIN_ERROR_OUT_OF_MEMORY;
+    }
+    *out_solar_deflector_index = manager.solar_deflector_index;
+    return TAIYIN_STATUS_OK;
 }
 
 const uint32_t SUPPORTED_MAJOR_BODY_APPARENT_FLAGS =
@@ -112,12 +172,39 @@ TaiyinStatus resolve_apparent_config(
         out->requested_models = out->options.model_context
             ? *out->options.model_context
             : snapshot_global_astro_model_context();
+        if (out->options.deflectors || out->options.deflector_count > 0) {
+            const TaiyinStatus deflector_status = copy_explicit_deflectors(
+                out->options.deflectors,
+                out->options.deflector_count,
+                out->options.solar_deflector_index,
+                &out->deflectors);
+            if (deflector_status != TAIYIN_STATUS_OK) {
+                return deflector_status;
+            }
+            out->solar_deflector_index = out->options.solar_deflector_index;
+        } else {
+            const TaiyinStatus deflector_status = snapshot_global_deflectors(
+                &out->deflectors,
+                &out->solar_deflector_index);
+            if (deflector_status != TAIYIN_STATUS_OK) {
+                return deflector_status;
+            }
+        }
     } else {
         const GlobalApparentConfigSnapshot snapshot = snapshot_global_apparent_config();
         out->options = snapshot.apparent_options;
         out->requested_models = snapshot.model_context;
+        const TaiyinStatus deflector_status = snapshot_global_deflectors(
+            &out->deflectors,
+            &out->solar_deflector_index);
+        if (deflector_status != TAIYIN_STATUS_OK) {
+            return deflector_status;
+        }
     }
     out->options.model_context = 0;
+    out->options.deflectors = 0;
+    out->options.deflector_count = 0;
+    out->options.solar_deflector_index = -1;
 
     if ((out->options.flags & ~SUPPORTED_MAJOR_BODY_APPARENT_FLAGS) != 0u) {
         return TAIYIN_ERROR_UNSUPPORTED;
@@ -239,6 +326,25 @@ uint32_t mask_bit_for_body_id(int body_id) noexcept {
     return 0u;
 }
 
+Matrix3x3 matrix_from_array(const double values[9]) noexcept {
+    Matrix3x3 matrix = matrix3x3_identity();
+    if (!values) {
+        return matrix;
+    }
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            matrix.m[row][col] = values[row * 3 + col];
+        }
+    }
+    return matrix;
+}
+
+double resolve_jd_tt(const MajorBodyApparentBatchRequest& request) noexcept {
+    return std::isfinite(request.jd_tt) && request.jd_tt != 0.0
+        ? request.jd_tt
+        : request.jd_tdb;
+}
+
 TaiyinStatus compute_one_body(
     const EvalContext& context,
     const MajorBodyApparentBatchRequest& request,
@@ -329,12 +435,36 @@ TaiyinStatus compute_one_body(
         out->cache_hit = out->cache_hit && target_retarded.cache_hit;
     }
 
-    const Matrix3x3 ecliptic_matrix = icrf_to_j2000_ecliptic_matrix();
-    const Vector3 ecliptic_position = transform_position_with_matrix(
+    double output_matrix_values[9];
+    if (!taiyin_calc_apparent_matrices_flat(
+            resolve_jd_tt(request),
+            config.options.flags,
+            config.options.output_frame_id,
+            config.precession.model_id,
+            config.nutation.model_id,
+            config.resolved_obliquity_model_id,
+            config.options.matrix_derivative_step_days,
+            0,
+            0,
+            output_matrix_values,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0)) {
+        target_diagnostic.status = TAIYIN_ERROR_UNSUPPORTED;
+        out->status = target_diagnostic.status;
+        out->diagnostic = target_diagnostic;
+        copy_diagnostic(diagnostic, target_diagnostic);
+        return target_diagnostic.status;
+    }
+    const Matrix3x3 output_matrix = matrix_from_array(output_matrix_values);
+    const Vector3 output_position = transform_position_with_matrix(
         out->apparent_state.position_au,
-        ecliptic_matrix);
+        output_matrix);
     cartesian_to_spherical(
-        ecliptic_position,
+        output_position,
         &out->longitude_rad,
         &out->latitude_rad,
         &out->distance_au);
@@ -463,14 +593,17 @@ TaiyinStatus eval_major_body_apparent_batch_in_context(
 
 }  // namespace
 
-TaiyinAstroModelContext::TaiyinAstroModelContext() noexcept
+AstroModelContext::AstroModelContext() noexcept
     : tdb_model_id(dispatch::TDB_FAST_PERIODIC),
       precession_model_id(dispatch::MODEL_SELECTION_DEFAULT),
       nutation_model_id(dispatch::MODEL_SELECTION_DEFAULT),
       obliquity_model_id(0),
       frame_route_id(dispatch::FRAME_ROUTE_EQUINOX) {}
 
-TaiyinApparentOptions::TaiyinApparentOptions() noexcept
+ApparentDeflector::ApparentDeflector() noexcept
+    : body_id(0), schwarzschild_radius_au(0.0), limit(0.0) {}
+
+ApparentOptions::ApparentOptions() noexcept
     : flags(TAIYIN_APPARENT_LIGHT_TIME | TAIYIN_APPARENT_SPHERICAL),
       output_frame_id(TAIYIN_APPARENT_FRAME_TRUE_ECLIPTIC_OF_DATE),
       light_time_method_id(0),
@@ -480,7 +613,10 @@ TaiyinApparentOptions::TaiyinApparentOptions() noexcept
       max_light_time_iterations(8),
       light_time_tolerance_days(1.0e-13),
       matrix_derivative_step_days(1.0e-3),
-      model_context(0) {}
+      model_context(0),
+      deflectors(0),
+      deflector_count(0),
+      solar_deflector_index(-1) {}
 
 MajorBodyApparentBatchRequest::MajorBodyApparentBatchRequest() noexcept
     : jd_tdb(0.0),
@@ -491,11 +627,11 @@ MajorBodyApparentBatchRequest::MajorBodyApparentBatchRequest() noexcept
       body_count(0),
       options(0) {}
 
-TaiyinAstroModelContext get_global_astro_model_context() noexcept {
+AstroModelContext get_global_astro_model_context() noexcept {
     return snapshot_global_astro_model_context();
 }
 
-TaiyinStatus set_global_astro_model_context(const TaiyinAstroModelContext& context) noexcept {
+TaiyinStatus set_global_astro_model_context(const AstroModelContext& context) noexcept {
     GlobalApparentConfigManager& manager = global_apparent_config_manager();
     std::lock_guard<std::mutex> lock(manager.mutex);
     manager.model_context = context;
@@ -505,26 +641,87 @@ TaiyinStatus set_global_astro_model_context(const TaiyinAstroModelContext& conte
 void reset_global_astro_model_context() noexcept {
     GlobalApparentConfigManager& manager = global_apparent_config_manager();
     std::lock_guard<std::mutex> lock(manager.mutex);
-    manager.model_context = TaiyinAstroModelContext();
+    manager.model_context = AstroModelContext();
 }
 
-TaiyinApparentOptions get_global_apparent_options() noexcept {
+ApparentOptions get_global_apparent_options() noexcept {
     const GlobalApparentConfigSnapshot snapshot = snapshot_global_apparent_config();
     return snapshot.apparent_options;
 }
 
-TaiyinStatus set_global_apparent_options(const TaiyinApparentOptions& options) noexcept {
+TaiyinStatus set_global_apparent_options(const ApparentOptions& options) noexcept {
     GlobalApparentConfigManager& manager = global_apparent_config_manager();
     std::lock_guard<std::mutex> lock(manager.mutex);
     manager.apparent_options = options;
     manager.apparent_options.model_context = 0;
+    manager.apparent_options.deflectors = 0;
+    manager.apparent_options.deflector_count = 0;
+    manager.apparent_options.solar_deflector_index = -1;
     return TAIYIN_STATUS_OK;
 }
 
 void reset_global_apparent_options() noexcept {
     GlobalApparentConfigManager& manager = global_apparent_config_manager();
     std::lock_guard<std::mutex> lock(manager.mutex);
-    manager.apparent_options = TaiyinApparentOptions();
+    manager.apparent_options = ApparentOptions();
+}
+
+TaiyinStatus set_global_apparent_deflectors(
+    const ApparentDeflector* deflectors,
+    size_t deflector_count,
+    int solar_deflector_index
+) noexcept {
+    if ((!deflectors && deflector_count > 0) || !valid_solar_deflector_index(deflector_count, solar_deflector_index)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    std::vector<ApparentDeflector> replacement;
+    try {
+        for (size_t i = 0; i < deflector_count; ++i) {
+            replacement.push_back(deflectors[i]);
+        }
+    } catch (...) {
+        return TAIYIN_ERROR_OUT_OF_MEMORY;
+    }
+
+    GlobalApparentConfigManager& manager = global_apparent_config_manager();
+    std::lock_guard<std::mutex> lock(manager.mutex);
+    manager.deflectors.swap(replacement);
+    manager.solar_deflector_index = solar_deflector_index;
+    return TAIYIN_STATUS_OK;
+}
+
+size_t get_global_apparent_deflector_count() noexcept {
+    GlobalApparentConfigManager& manager = global_apparent_config_manager();
+    std::lock_guard<std::mutex> lock(manager.mutex);
+    return manager.deflectors.size();
+}
+
+size_t get_global_apparent_deflectors(
+    ApparentDeflector* out,
+    size_t capacity,
+    int* out_solar_deflector_index
+) noexcept {
+    GlobalApparentConfigManager& manager = global_apparent_config_manager();
+    std::lock_guard<std::mutex> lock(manager.mutex);
+    if (out_solar_deflector_index) {
+        *out_solar_deflector_index = manager.solar_deflector_index;
+    }
+    const size_t count = manager.deflectors.size();
+    const size_t copy_count = capacity < count ? capacity : count;
+    if (out) {
+        for (size_t i = 0; i < copy_count; ++i) {
+            out[i] = manager.deflectors[i];
+        }
+    }
+    return count;
+}
+
+void reset_global_apparent_deflectors() noexcept {
+    GlobalApparentConfigManager& manager = global_apparent_config_manager();
+    std::lock_guard<std::mutex> lock(manager.mutex);
+    manager.deflectors.clear();
+    manager.solar_deflector_index = -1;
 }
 
 int major_body_id_for_mask_bit(uint32_t mask_bit) noexcept {

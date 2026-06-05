@@ -162,20 +162,63 @@ void setup_earth_sun_service(
     service->set_cache(cache);
 }
 
-void expect_spherical_from_icrf(
+Matrix3x3 matrix_from_array(const double values[9]) {
+    Matrix3x3 matrix = matrix3x3_identity();
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            matrix.m[row][col] = values[row * 3 + col];
+        }
+    }
+    return matrix;
+}
+
+void expect_spherical_from_apparent_matrix(
     const Vector3& icrf_position,
+    const MajorBodyApparentBatchRequest& request,
+    const ApparentOptions& options,
+    const AstroModelContext& models,
     double actual_lon,
     double actual_lat,
     double actual_distance,
     const char* label,
     int* failures
 ) {
-    const Matrix3x3 ecliptic_matrix = icrf_to_j2000_ecliptic_matrix();
-    const Vector3 ecliptic = transform_position_with_matrix(icrf_position, ecliptic_matrix);
+    dispatch::PrecessionModelEntry precession;
+    dispatch::NutationModelEntry nutation;
+    expect_true(dispatch::select_precession_model(models.precession_model_id, &precession), "select expected precession", failures);
+    expect_true(dispatch::select_nutation_model(models.nutation_model_id, &nutation), "select expected nutation", failures);
+
+    double output_matrix_values[9];
+    const double jd_tt = std::isfinite(request.jd_tt) && request.jd_tt != 0.0
+        ? request.jd_tt
+        : request.jd_tdb;
+    expect_true(
+        taiyin_calc_apparent_matrices_flat(
+            jd_tt,
+            options.flags,
+            options.output_frame_id,
+            precession.model_id,
+            nutation.model_id,
+            models.obliquity_model_id,
+            options.matrix_derivative_step_days,
+            0,
+            0,
+            output_matrix_values,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0),
+        "calculate expected apparent output matrix",
+        failures);
+    const Vector3 output_position = transform_position_with_matrix(
+        icrf_position,
+        matrix_from_array(output_matrix_values));
     double expected_lon = 0.0;
     double expected_lat = 0.0;
     double expected_distance = 0.0;
-    cartesian_to_spherical(ecliptic, &expected_lon, &expected_lat, &expected_distance);
+    cartesian_to_spherical(output_position, &expected_lon, &expected_lat, &expected_distance);
     expect_near(actual_lon, expected_lon, 1.0e-12, label, failures);
     expect_near(actual_lat, expected_lat, 1.0e-12, label, failures);
     expect_near(actual_distance, expected_distance, 1.0e-12, label, failures);
@@ -205,11 +248,14 @@ void test_major_body_apparent_geometric_batch(int* failures) {
     service.set_cache(&cache);
 
     const int bodies[] = { TAIYIN_BODY_SUN, TAIYIN_BODY_MERCURY_BARYCENTER };
-    TaiyinApparentOptions options;
+    AstroModelContext models;
+    ApparentOptions options;
     options.flags = 0;
+    options.model_context = &models;
 
     MajorBodyApparentBatchRequest request;
     request.jd_tdb = 150.0;
+    request.jd_tt = 150.25;
     request.body_ids = bodies;
     request.body_count = sizeof(bodies) / sizeof(bodies[0]);
     request.options = &options;
@@ -232,7 +278,16 @@ void test_major_body_apparent_geometric_batch(int* failures) {
         expected.x = -160.0;
         expected.y = -12.0;
         expected.z = -13.0;
-        expect_spherical_from_icrf(expected, sun->longitude_rad, sun->latitude_rad, sun->distance_au, "Sun ecliptic spherical", failures);
+        expect_spherical_from_apparent_matrix(
+            expected,
+            request,
+            options,
+            models,
+            sun->longitude_rad,
+            sun->latitude_rad,
+            sun->distance_au,
+            "Sun apparent spherical",
+            failures);
     }
     if (mercury) {
         expect_status(mercury->status, TAIYIN_STATUS_OK, "Mercury status", failures);
@@ -242,7 +297,16 @@ void test_major_body_apparent_geometric_batch(int* failures) {
         expected.x = 90.0;
         expected.y = 90.0;
         expected.z = 90.0;
-        expect_spherical_from_icrf(expected, mercury->longitude_rad, mercury->latitude_rad, mercury->distance_au, "Mercury ecliptic spherical", failures);
+        expect_spherical_from_apparent_matrix(
+            expected,
+            request,
+            options,
+            models,
+            mercury->longitude_rad,
+            mercury->latitude_rad,
+            mercury->distance_au,
+            "Mercury apparent spherical",
+            failures);
     }
 }
 
@@ -277,7 +341,7 @@ void test_major_body_apparent_light_time_and_composite_moon(int* failures) {
     service.set_cache(&cache);
 
     const int bodies[] = { TAIYIN_BODY_MOON };
-    TaiyinApparentOptions options;
+    ApparentOptions options;
     options.flags = TAIYIN_MAJOR_BODY_APPARENT_LIGHT_TIME;
 
     MajorBodyApparentBatchRequest request;
@@ -303,7 +367,7 @@ void test_major_body_apparent_light_time_and_composite_moon(int* failures) {
 void test_major_body_apparent_rejects_unknown_flags(int* failures) {
     EphemerisService service;
     const int bodies[] = { TAIYIN_BODY_SUN };
-    TaiyinApparentOptions options;
+    ApparentOptions options;
     options.flags = 1u << 31;
 
     MajorBodyApparentBatchRequest request;
@@ -336,7 +400,7 @@ void test_major_body_apparent_reports_per_body_failure(int* failures) {
     service.set_cache(&cache);
 
     const int bodies[] = { TAIYIN_BODY_MERCURY_BARYCENTER };
-    TaiyinApparentOptions options;
+    ApparentOptions options;
     options.flags = 0;
 
     MajorBodyApparentBatchRequest request;
@@ -359,7 +423,7 @@ void test_global_apparent_options_are_used_when_request_options_null(int* failur
     reset_global_apparent_options();
     reset_global_astro_model_context();
 
-    TaiyinApparentOptions global_options;
+    ApparentOptions global_options;
     global_options.flags = 1u << 31;
     expect_status(
         set_global_apparent_options(global_options),
@@ -395,7 +459,7 @@ void test_model_context_fallback_and_explicit_override(int* failures) {
     setup_earth_sun_service(&catalog, &cache, &service, 400, failures);
 
     const int bodies[] = { TAIYIN_BODY_SUN };
-    TaiyinApparentOptions options;
+    ApparentOptions options;
     options.flags = 0;
     options.model_context = 0;
 
@@ -405,7 +469,7 @@ void test_model_context_fallback_and_explicit_override(int* failures) {
     request.body_count = sizeof(bodies) / sizeof(bodies[0]);
     request.options = &options;
 
-    TaiyinAstroModelContext bad_global_models;
+    AstroModelContext bad_global_models;
     bad_global_models.precession_model_id = 999999;
     expect_status(
         set_global_astro_model_context(bad_global_models),
@@ -418,7 +482,7 @@ void test_model_context_fallback_and_explicit_override(int* failures) {
     TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, &diagnostic);
     expect_status(status, TAIYIN_ERROR_UNSUPPORTED, "options null model_context falls back to bad global context", failures);
 
-    TaiyinAstroModelContext explicit_models;
+    AstroModelContext explicit_models;
     explicit_models.precession_model_id = dispatch::MODEL_SELECTION_DEFAULT;
     explicit_models.nutation_model_id = dispatch::MODEL_SELECTION_DEFAULT;
     options.model_context = &explicit_models;
@@ -427,6 +491,150 @@ void test_model_context_fallback_and_explicit_override(int* failures) {
 
     reset_global_apparent_options();
     reset_global_astro_model_context();
+}
+
+void test_output_frame_id_changes_spherical_output(int* failures) {
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisService service;
+    setup_earth_sun_service(&catalog, &cache, &service, 450, failures);
+
+    const int bodies[] = { TAIYIN_BODY_SUN };
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.jd_tt = 150.25;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+
+    ApparentOptions icrf_options;
+    icrf_options.flags = 0;
+    icrf_options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+    request.options = &icrf_options;
+
+    MajorBodyApparentBatchResult icrf_result;
+    TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &icrf_result, 0);
+    expect_status(status, TAIYIN_STATUS_OK, "ICRF output frame status", failures);
+    expect_size(icrf_result.body_count, 1, "ICRF output frame count", failures);
+
+    Vector3 expected_icrf;
+    expected_icrf.x = -160.0;
+    expected_icrf.y = -12.0;
+    expected_icrf.z = -13.0;
+    double expected_lon = 0.0;
+    double expected_lat = 0.0;
+    double expected_distance = 0.0;
+    cartesian_to_spherical(expected_icrf, &expected_lon, &expected_lat, &expected_distance);
+    expect_near(icrf_result.bodies[0].longitude_rad, expected_lon, 1.0e-12, "ICRF longitude", failures);
+    expect_near(icrf_result.bodies[0].latitude_rad, expected_lat, 1.0e-12, "ICRF latitude", failures);
+    expect_near(icrf_result.bodies[0].distance_au, expected_distance, 1.0e-12, "ICRF distance", failures);
+
+    AstroModelContext models;
+    ApparentOptions ecliptic_options;
+    ecliptic_options.flags = 0;
+    ecliptic_options.output_frame_id = TAIYIN_APPARENT_FRAME_TRUE_ECLIPTIC_OF_DATE;
+    ecliptic_options.model_context = &models;
+    request.options = &ecliptic_options;
+
+    MajorBodyApparentBatchResult ecliptic_result;
+    status = eval_major_body_apparent_batch(&service, request, &ecliptic_result, 0);
+    expect_status(status, TAIYIN_STATUS_OK, "true ecliptic output frame status", failures);
+    expect_spherical_from_apparent_matrix(
+        expected_icrf,
+        request,
+        ecliptic_options,
+        models,
+        ecliptic_result.bodies[0].longitude_rad,
+        ecliptic_result.bodies[0].latitude_rad,
+        ecliptic_result.bodies[0].distance_au,
+        "true ecliptic output frame spherical",
+        failures);
+    expect_true(
+        std::fabs(ecliptic_result.bodies[0].latitude_rad - icrf_result.bodies[0].latitude_rad) > 1.0e-6,
+        "output frame changes latitude",
+        failures);
+
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+}
+
+void test_global_apparent_deflector_arrays(int* failures) {
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+    reset_global_apparent_deflectors();
+
+    ApparentDeflector deflectors[2];
+    deflectors[0].body_id = TAIYIN_BODY_SUN;
+    deflectors[0].schwarzschild_radius_au = 1.0e-8;
+    deflectors[0].limit = 0.25;
+    deflectors[1].body_id = TAIYIN_BODY_JUPITER_BARYCENTER;
+    deflectors[1].schwarzschild_radius_au = 1.0e-11;
+    deflectors[1].limit = 0.5;
+
+    expect_status(
+        set_global_apparent_deflectors(deflectors, 2, 0),
+        TAIYIN_STATUS_OK,
+        "set global apparent deflectors",
+        failures);
+    expect_size(get_global_apparent_deflector_count(), 2, "global apparent deflector count", failures);
+
+    ApparentDeflector copied[2];
+    int solar_index = -2;
+    const size_t required = get_global_apparent_deflectors(copied, 2, &solar_index);
+    expect_size(required, 2, "get global apparent deflectors required count", failures);
+    expect_true(solar_index == 0, "global apparent deflector solar index", failures);
+    expect_true(copied[0].body_id == TAIYIN_BODY_SUN, "copied Sun deflector id", failures);
+    expect_near(copied[0].schwarzschild_radius_au, 1.0e-8, 0.0, "copied Sun deflector radius", failures);
+    expect_near(copied[0].limit, 0.25, 0.0, "copied Sun deflector limit", failures);
+    expect_true(copied[1].body_id == TAIYIN_BODY_JUPITER_BARYCENTER, "copied Jupiter deflector id", failures);
+
+    expect_status(
+        set_global_apparent_deflectors(0, 1, -1),
+        TAIYIN_ERROR_INVALID_ARGUMENT,
+        "reject null global deflector array with count",
+        failures);
+    expect_status(
+        set_global_apparent_deflectors(deflectors, 2, 2),
+        TAIYIN_ERROR_INVALID_ARGUMENT,
+        "reject out-of-range solar deflector index",
+        failures);
+
+    reset_global_apparent_deflectors();
+    expect_size(get_global_apparent_deflector_count(), 0, "reset global apparent deflectors", failures);
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+}
+
+void test_explicit_deflector_array_validation(int* failures) {
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+    reset_global_apparent_deflectors();
+
+    EphemerisService service;
+    const int bodies[] = { TAIYIN_BODY_SUN };
+    ApparentOptions options;
+    options.flags = 0;
+    options.deflectors = 0;
+    options.deflector_count = 1;
+    options.solar_deflector_index = -1;
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    EphemerisEvalDiagnostic diagnostic;
+    const TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, &diagnostic);
+    expect_status(status, TAIYIN_ERROR_INVALID_ARGUMENT, "explicit deflector array requires pointer", failures);
+    expect_status(diagnostic.status, TAIYIN_ERROR_INVALID_ARGUMENT, "explicit deflector array diagnostic", failures);
+
+    reset_global_apparent_options();
+    reset_global_astro_model_context();
+    reset_global_apparent_deflectors();
 }
 
 void test_global_apparent_options_clear_model_context_pointer(int* failures) {
@@ -438,19 +646,30 @@ void test_global_apparent_options_clear_model_context_pointer(int* failures) {
     EphemerisService service;
     setup_earth_sun_service(&catalog, &cache, &service, 500, failures);
 
-    TaiyinAstroModelContext bad_models;
+    AstroModelContext bad_models;
     bad_models.precession_model_id = 999999;
-    TaiyinApparentOptions global_options;
+    ApparentDeflector deflectors[1];
+    deflectors[0].body_id = TAIYIN_BODY_SUN;
+    deflectors[0].schwarzschild_radius_au = 1.0e-8;
+    deflectors[0].limit = 0.1;
+
+    ApparentOptions global_options;
     global_options.flags = 0;
     global_options.model_context = &bad_models;
+    global_options.deflectors = deflectors;
+    global_options.deflector_count = 1;
+    global_options.solar_deflector_index = 0;
     expect_status(
         set_global_apparent_options(global_options),
         TAIYIN_STATUS_OK,
         "set global apparent options with pointer",
         failures);
 
-    TaiyinApparentOptions stored_options = get_global_apparent_options();
+    ApparentOptions stored_options = get_global_apparent_options();
     expect_true(stored_options.model_context == 0, "global apparent options clear model_context pointer", failures);
+    expect_true(stored_options.deflectors == 0, "global apparent options clear deflectors pointer", failures);
+    expect_size(stored_options.deflector_count, 0, "global apparent options clear deflector count", failures);
+    expect_true(stored_options.solar_deflector_index == -1, "global apparent options clear solar deflector index", failures);
 
     const int bodies[] = { TAIYIN_BODY_SUN };
     MajorBodyApparentBatchRequest request;
@@ -478,6 +697,9 @@ int main() {
     test_major_body_apparent_reports_per_body_failure(&failures);
     test_global_apparent_options_are_used_when_request_options_null(&failures);
     test_model_context_fallback_and_explicit_override(&failures);
+    test_output_frame_id_changes_spherical_output(&failures);
+    test_global_apparent_deflector_arrays(&failures);
+    test_explicit_deflector_array_validation(&failures);
     test_global_apparent_options_clear_model_context_pointer(&failures);
 
     if (failures != 0) {
