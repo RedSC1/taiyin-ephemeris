@@ -181,7 +181,8 @@ const uint32_t SUPPORTED_MAJOR_BODY_APPARENT_FLAGS =
     | TAIYIN_APPARENT_DEFLECTION
     | TAIYIN_APPARENT_VELOCITY
     | TAIYIN_APPARENT_ACCELERATION
-    | TAIYIN_APPARENT_SHAPIRO_DELAY;
+    | TAIYIN_APPARENT_SHAPIRO_DELAY
+    | TAIYIN_APPARENT_TOPOCENTRIC;
 
 TaiyinStatus resolve_apparent_config(
     const MajorBodyApparentBatchRequest& request,
@@ -434,6 +435,15 @@ Vector3 vector_from_array3(const double values[3]) noexcept {
     return out;
 }
 
+void vector_to_array3(const Vector3& value, double out[3]) noexcept {
+    if (!out) {
+        return;
+    }
+    out[0] = value.x;
+    out[1] = value.y;
+    out[2] = value.z;
+}
+
 double resolve_jd_tt(const MajorBodyApparentBatchRequest& request) noexcept {
     return std::isfinite(request.jd_tt) && request.jd_tt != 0.0
         ? request.jd_tt
@@ -504,6 +514,27 @@ TaiyinStatus compute_one_body(
             diagnostic->status = out->status;
         }
         return out->status;
+    }
+    if ((pipeline_flags & TAIYIN_APPARENT_TOPOCENTRIC) != 0u
+        && !finite_state(config.options.observer_offset)) {
+        out->status = TAIYIN_ERROR_INVALID_ARGUMENT;
+        if (diagnostic) {
+            diagnostic->status = out->status;
+            diagnostic->target_id = body_id;
+            diagnostic->center_id = request.observer_id;
+            diagnostic->frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
+            diagnostic->jd_tdb = request.jd_tdb;
+        }
+        return out->status;
+    }
+
+    double observer_offset_pos[3] = { 0.0, 0.0, 0.0 };
+    double observer_offset_vel[3] = { 0.0, 0.0, 0.0 };
+    double observer_offset_acc[3] = { 0.0, 0.0, 0.0 };
+    if ((pipeline_flags & TAIYIN_APPARENT_TOPOCENTRIC) != 0u) {
+        vector_to_array3(config.options.observer_offset.position_au, observer_offset_pos);
+        vector_to_array3(config.options.observer_offset.velocity_au_per_day, observer_offset_vel);
+        vector_to_array3(config.options.observer_offset.acceleration_au_per_day2, observer_offset_acc);
     }
 
     RuntimeCompiledBlockData target_data;
@@ -576,9 +607,9 @@ TaiyinStatus compute_one_body(
         &target_block,
         request.observer_id,
         &observer_block,
-        0,
-        0,
-        0,
+        observer_offset_pos,
+        observer_offset_vel,
+        observer_offset_acc,
         static_cast<int>(config.deflectors.size()),
         config.solar_deflector_index,
         deflector_ids.empty() ? 0 : deflector_ids.data(),
@@ -816,6 +847,7 @@ ApparentOptions::ApparentOptions() noexcept
       light_time_tolerance_days(1.0e-13),
       matrix_derivative_step_days(1.0e-3),
       model_context(0),
+      observer_offset(),
       deflectors(0),
       deflector_count(0),
       solar_deflector_index(-1) {}

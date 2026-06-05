@@ -12,6 +12,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -706,6 +707,72 @@ void test_major_body_apparent_velocity_and_acceleration_flags(int* failures) {
     expect_near(result.bodies[0].apparent_state.acceleration_au_per_day2.x, -17.0, 1.0e-12, "apparent acceleration x", failures);
 }
 
+void test_major_body_apparent_topocentric_offset(int* failures) {
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisService service;
+    setup_earth_sun_service(&catalog, &cache, &service, 430, failures);
+
+    const int bodies[] = { TAIYIN_BODY_SUN };
+    ApparentOptions options;
+    options.flags = TAIYIN_APPARENT_TOPOCENTRIC | TAIYIN_APPARENT_VELOCITY | TAIYIN_APPARENT_ACCELERATION;
+    options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+    options.observer_offset.position_au.x = 0.25;
+    options.observer_offset.position_au.y = -0.5;
+    options.observer_offset.position_au.z = 1.0;
+    options.observer_offset.velocity_au_per_day.x = 0.1;
+    options.observer_offset.velocity_au_per_day.y = -0.2;
+    options.observer_offset.velocity_au_per_day.z = 0.3;
+    options.observer_offset.acceleration_au_per_day2.x = 0.01;
+    options.observer_offset.acceleration_au_per_day2.y = -0.02;
+    options.observer_offset.acceleration_au_per_day2.z = 0.03;
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    const TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, 0);
+    expect_status(status, TAIYIN_STATUS_OK, "topocentric offset status", failures);
+    expect_size(result.body_count, 1, "topocentric offset result count", failures);
+    expect_near(result.bodies[0].geometric_state.position_au.x, -160.25, 1.0e-12, "topocentric geometric position x", failures);
+    expect_near(result.bodies[0].geometric_state.position_au.y, -11.5, 1.0e-12, "topocentric geometric position y", failures);
+    expect_near(result.bodies[0].geometric_state.position_au.z, -14.0, 1.0e-12, "topocentric geometric position z", failures);
+    expect_near(result.bodies[0].geometric_state.velocity_au_per_day.x, -14.1, 1.0e-12, "topocentric geometric velocity x", failures);
+    expect_near(result.bodies[0].geometric_state.velocity_au_per_day.y, -14.8, 1.0e-12, "topocentric geometric velocity y", failures);
+    expect_near(result.bodies[0].geometric_state.velocity_au_per_day.z, -16.3, 1.0e-12, "topocentric geometric velocity z", failures);
+    expect_near(result.bodies[0].geometric_state.acceleration_au_per_day2.x, -17.01, 1.0e-12, "topocentric geometric acceleration x", failures);
+    expect_near(result.bodies[0].geometric_state.acceleration_au_per_day2.y, -17.98, 1.0e-12, "topocentric geometric acceleration y", failures);
+    expect_near(result.bodies[0].geometric_state.acceleration_au_per_day2.z, -19.03, 1.0e-12, "topocentric geometric acceleration z", failures);
+}
+
+void test_major_body_apparent_rejects_nonfinite_topocentric_offset(int* failures) {
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisService service;
+    setup_earth_sun_service(&catalog, &cache, &service, 435, failures);
+
+    const int bodies[] = { TAIYIN_BODY_SUN };
+    ApparentOptions options;
+    options.flags = TAIYIN_APPARENT_TOPOCENTRIC;
+    options.output_frame_id = TAIYIN_APPARENT_FRAME_ICRF;
+    options.observer_offset.position_au.x = std::numeric_limits<double>::quiet_NaN();
+
+    MajorBodyApparentBatchRequest request;
+    request.jd_tdb = 150.0;
+    request.body_ids = bodies;
+    request.body_count = sizeof(bodies) / sizeof(bodies[0]);
+    request.options = &options;
+
+    MajorBodyApparentBatchResult result;
+    EphemerisEvalDiagnostic diagnostic;
+    const TaiyinStatus status = eval_major_body_apparent_batch(&service, request, &result, &diagnostic);
+    expect_status(status, TAIYIN_ERROR_INVALID_ARGUMENT, "nonfinite topocentric offset status", failures);
+    expect_status(diagnostic.status, TAIYIN_ERROR_INVALID_ARGUMENT, "nonfinite topocentric offset diagnostic", failures);
+}
+
 void test_major_body_apparent_aberration_and_deflection_flags(int* failures) {
     EphemerisBlockCatalog catalog;
     EphemerisBlockCache cache(1024 * 1024);
@@ -1022,6 +1089,8 @@ int main() {
     test_model_context_fallback_and_explicit_override(&failures);
     test_output_frame_id_changes_spherical_output(&failures);
     test_major_body_apparent_velocity_and_acceleration_flags(&failures);
+    test_major_body_apparent_topocentric_offset(&failures);
+    test_major_body_apparent_rejects_nonfinite_topocentric_offset(&failures);
     test_major_body_apparent_aberration_and_deflection_flags(&failures);
     test_major_body_apparent_requires_deflectors_for_aberration(&failures);
     test_global_apparent_deflector_arrays(&failures);

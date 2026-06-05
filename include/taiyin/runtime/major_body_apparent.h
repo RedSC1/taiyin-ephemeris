@@ -69,6 +69,7 @@ struct ApparentOptions {
     double light_time_tolerance_days;
     double matrix_derivative_step_days;
     const AstroModelContext* model_context;
+    CartesianState observer_offset;
     const ApparentDeflector* deflectors;
     size_t deflector_count;
     int solar_deflector_index;
