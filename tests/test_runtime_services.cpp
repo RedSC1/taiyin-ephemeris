@@ -1,4 +1,5 @@
 #include "taiyin/angle.h"
+#include "taiyin/body_id.h"
 #include "taiyin/physical_constants.h"
 #include "taiyin/runtime/ephemeris_service.h"
 #include "taiyin/runtime/service_locator.h"
@@ -41,6 +42,13 @@ void expect_false(bool value, const char* label, int* failures) {
 }
 
 void expect_u32(uint32_t actual, uint32_t expected, const char* label, int* failures) {
+    if (actual != expected) {
+        std::cerr << "FAIL: " << label << ": actual=" << actual << " expected=" << expected << "\n";
+        ++(*failures);
+    }
+}
+
+void expect_status(TaiyinStatus actual, TaiyinStatus expected, const char* label, int* failures) {
     if (actual != expected) {
         std::cerr << "FAIL: " << label << ": actual=" << actual << " expected=" << expected << "\n";
         ++(*failures);
@@ -220,12 +228,18 @@ void destroy_test_ephemeris_data(void* data) noexcept {
     delete test_data;
 }
 
-EphemerisBlockDescriptor make_test_descriptor(int method_id, int bucket_id) {
+EphemerisBlockDescriptor make_test_descriptor_for(
+    int target_id,
+    int center_id,
+    int method_id,
+    int bucket_id,
+    uint64_t source_id
+) {
     EphemerisBlockDescriptor descriptor;
-    descriptor.route_key = EphemerisRouteKey(499, 0, method_id, bucket_id);
-    descriptor.source_key = EphemerisBlockKey(1, static_cast<uint64_t>(bucket_id + 1), 1, 0);
-    descriptor.target_id = 499;
-    descriptor.center_id = 0;
+    descriptor.route_key = EphemerisRouteKey(target_id, center_id, method_id, bucket_id);
+    descriptor.source_key = EphemerisBlockKey(source_id, static_cast<uint64_t>(bucket_id + 1), 1, 0);
+    descriptor.target_id = target_id;
+    descriptor.center_id = center_id;
     descriptor.method_id = method_id;
     descriptor.frame = EphemerisFrame::IcrfJ2000Equatorial;
     descriptor.format = EphemerisBlockFormat::Kepler;
@@ -233,6 +247,10 @@ EphemerisBlockDescriptor make_test_descriptor(int method_id, int bucket_id) {
     descriptor.jd_tdb_end = 200.0;
     descriptor.path = "test";
     return descriptor;
+}
+
+EphemerisBlockDescriptor make_test_descriptor(int method_id, int bucket_id) {
+    return make_test_descriptor_for(499, 0, method_id, bucket_id, 1);
 }
 
 EphemerisBlockDescriptor make_test_opm4_descriptor_for(
@@ -370,7 +388,7 @@ void test_ephemeris_service_cache_eval(int* failures) {
     request.jd_tdb = 150.0;
 
     EphemerisResult result;
-    expect_true(service.eval_state(request, &result), "ephemeris service eval_state cache hit", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &result, 0)), "ephemeris service eval_state cache hit", failures);
     expect_true(result.cache_hit, "ephemeris service reports cache hit", failures);
     expect_u32(static_cast<uint32_t>(result.descriptor.method_id), 11, "ephemeris service result descriptor", failures);
     expect_near(result.state.position_au.x, 170.0, "ephemeris position x", failures);
@@ -379,7 +397,13 @@ void test_ephemeris_service_cache_eval(int* failures) {
 
     EphemerisRequest missing = request;
     missing.jd_tdb = 250.0;
-    expect_false(service.eval_state(missing, &result), "ephemeris service eval_state misses outside descriptor range", failures);
+    EphemerisEvalDiagnostic diagnostic;
+    const TaiyinStatus status = service.eval_state(missing, &result, &diagnostic);
+    expect_status(status, TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP, "coverage gap status", failures);
+    expect_status(diagnostic.status, TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP, "coverage gap diagnostic status", failures);
+    expect_u32(static_cast<uint32_t>(diagnostic.candidate_count), 1, "coverage gap candidate count", failures);
+    expect_near(diagnostic.nearest_coverage_start, 100.0, "coverage gap nearest start", failures);
+    expect_near(diagnostic.nearest_coverage_end, 200.0, "coverage gap nearest end", failures);
     expect_false(result.cache_hit, "failed eval clears cache hit", failures);
 }
 
@@ -404,7 +428,7 @@ void test_ephemeris_service_cache_miss_loads_descriptor(int* failures) {
     request.jd_tdb = 105.0;
 
     EphemerisResult result;
-    expect_true(service.eval_state(request, &result), "ephemeris service loads descriptor on cache miss", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &result, 0)), "ephemeris service loads descriptor on cache miss", failures);
     expect_false(result.cache_hit, "first descriptor load reports cache miss", failures);
     expect_size(cache.entry_count(), 1, "descriptor load inserts one cache entry", failures);
     expect_u32(static_cast<uint32_t>(result.descriptor.target_id), 201, "loaded descriptor target", failures);
@@ -412,7 +436,7 @@ void test_ephemeris_service_cache_miss_loads_descriptor(int* failures) {
     expect_near_tol(result.state.velocity_au_per_day.x, 0.002 / taiyin::TAIYIN_AU_KM, 1.0e-20, "loaded OPM4 velocity x", failures);
 
     EphemerisResult second_result;
-    expect_true(service.eval_state(request, &second_result), "ephemeris service reuses loaded cache bucket", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &second_result, 0)), "ephemeris service reuses loaded cache bucket", failures);
     expect_true(second_result.cache_hit, "second descriptor eval reports cache hit", failures);
     expect_size(cache.entry_count(), 1, "second eval keeps one cache entry", failures);
     expect_near_tol(second_result.state.position_au.y, 0.015 / taiyin::TAIYIN_AU_KM, 1.0e-20, "cached OPM4 position y", failures);
@@ -448,13 +472,13 @@ void test_ephemeris_service_falls_back_after_failed_preferred_descriptor(int* fa
     request.jd_tdb = 105.0;
 
     EphemerisSelectionResult selection;
-    expect_true(service.select_calculation_route(request, &selection), "selector falls back after broken preferred descriptor", failures);
+    expect_true(taiyin::taiyin_status_ok(service.select_calculation_route(request, &selection, 0)), "selector falls back after broken preferred descriptor", failures);
     expect_true(selection.cache_hit, "fallback selected from cache", failures);
     expect_false(selection.loaded, "fallback route did not load", failures);
     expect_u32(static_cast<uint32_t>(selection.source_descriptor.method_id), 20, "fallback source method selected", failures);
 
     EphemerisResult result;
-    expect_true(service.eval_state(request, &result), "eval fallback after broken preferred descriptor", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &result, 0)), "eval fallback after broken preferred descriptor", failures);
     expect_true(result.cache_hit, "eval fallback reports cache hit", failures);
     expect_u32(static_cast<uint32_t>(result.descriptor.method_id), 20, "eval fallback descriptor method", failures);
     expect_near(result.state.position_au.x, 135.0, "fallback eval position x", failures);
@@ -491,12 +515,161 @@ void test_ephemeris_service_priority_first_over_lower_cached_descriptor(int* fai
     request.jd_tdb = 105.0;
 
     EphemerisResult result;
-    expect_true(service.eval_state(request, &result), "priority-first selector loads high-priority descriptor", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &result, 0)), "priority-first selector loads high-priority descriptor", failures);
     expect_false(result.cache_hit, "high-priority load reports cache miss despite lower cached source", failures);
     expect_u32(static_cast<uint32_t>(result.descriptor.method_id), 40, "high-priority descriptor selected", failures);
     expect_near_tol(result.state.position_au.x, 0.005 / taiyin::TAIYIN_AU_KM, 1.0e-20, "high-priority OPM4 position x", failures);
 
     std::remove(path);
+}
+
+EphemerisRequest make_request(int target_id, int center_id, double jd_tdb = 150.0) {
+    EphemerisRequest request;
+    request.target_id = target_id;
+    request.center_id = center_id;
+    request.frame = EphemerisFrame::IcrfJ2000Equatorial;
+    request.jd_tdb = jd_tdb;
+    return request;
+}
+
+void add_cached_descriptor(
+    EphemerisBlockCatalog* catalog,
+    EphemerisBlockCache* cache,
+    const EphemerisBlockDescriptor& descriptor,
+    double base,
+    const char* label,
+    int* failures
+) {
+    expect_true(catalog && cache, label, failures);
+    expect_true(catalog->add(descriptor), label, failures);
+    StorageEphemerisBlock storage = make_test_storage(base);
+    expect_true(cache->insert(descriptor.route_key, descriptor.jd_tdb_start, descriptor.jd_tdb_end, &storage), label, failures);
+}
+
+void test_ephemeris_service_composite_earth_from_emb_moon(int* failures) {
+    const int method_id = 80;
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisBlockDescriptor emb = make_test_descriptor_for(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN, method_id, 0, 80);
+    EphemerisBlockDescriptor moon_geo = make_test_descriptor_for(TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH, method_id, 0, 81);
+    add_cached_descriptor(&catalog, &cache, emb, 100.0, "add cached EMB descriptor", failures);
+    add_cached_descriptor(&catalog, &cache, moon_geo, 200.0, "add cached Moon/Earth descriptor", failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    EphemerisResult result;
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(make_request(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN), &result, 0)), "composite Earth eval succeeds", failures);
+    expect_true(result.cache_hit, "composite Earth reports component cache hit", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.target_id), TAIYIN_BODY_EARTH, "composite Earth descriptor target", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.center_id), TAIYIN_BODY_SUN, "composite Earth descriptor center", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.method_id), method_id, "composite Earth descriptor method", failures);
+
+    const double factor = 1.0 / (1.0 + TAIYIN_EARTH_MOON_MASS_RATIO);
+    expect_near(result.state.position_au.x, 250.0 - 350.0 * factor, "composite Earth position x", failures);
+    expect_near(result.state.position_au.y, 102.0 - 202.0 * factor, "composite Earth position y", failures);
+    expect_near(result.state.velocity_au_per_day.x, 104.0 - 204.0 * factor, "composite Earth velocity x", failures);
+    expect_near(result.state.acceleration_au_per_day2.z, 109.0 - 209.0 * factor, "composite Earth acceleration z", failures);
+}
+
+void test_ephemeris_service_composite_moon_from_emb_moon(int* failures) {
+    const int method_id = 81;
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisBlockDescriptor emb = make_test_descriptor_for(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN, method_id, 0, 82);
+    EphemerisBlockDescriptor moon_geo = make_test_descriptor_for(TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH, method_id, 0, 83);
+    add_cached_descriptor(&catalog, &cache, emb, 100.0, "add cached EMB descriptor for Moon", failures);
+    add_cached_descriptor(&catalog, &cache, moon_geo, 200.0, "add cached Moon/Earth descriptor for Moon", failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    EphemerisResult result;
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(make_request(TAIYIN_BODY_MOON, TAIYIN_BODY_SUN), &result, 0)), "composite Moon eval succeeds", failures);
+    expect_true(result.cache_hit, "composite Moon reports component cache hit", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.target_id), TAIYIN_BODY_MOON, "composite Moon descriptor target", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.center_id), TAIYIN_BODY_SUN, "composite Moon descriptor center", failures);
+
+    const double factor = TAIYIN_EARTH_MOON_MASS_RATIO / (1.0 + TAIYIN_EARTH_MOON_MASS_RATIO);
+    expect_near(result.state.position_au.x, 250.0 + 350.0 * factor, "composite Moon position x", failures);
+    expect_near(result.state.velocity_au_per_day.y, 105.0 + 205.0 * factor, "composite Moon velocity y", failures);
+    expect_near(result.state.acceleration_au_per_day2.z, 109.0 + 209.0 * factor, "composite Moon acceleration z", failures);
+}
+
+void test_ephemeris_service_prefers_direct_earth_over_composite(int* failures) {
+    const int method_id = 82;
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisBlockDescriptor direct_earth = make_test_descriptor_for(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN, method_id, 0, 84);
+    EphemerisBlockDescriptor emb = make_test_descriptor_for(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN, method_id, 1, 85);
+    EphemerisBlockDescriptor moon_geo = make_test_descriptor_for(TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH, method_id, 1, 86);
+    add_cached_descriptor(&catalog, &cache, direct_earth, 400.0, "add cached direct Earth descriptor", failures);
+    add_cached_descriptor(&catalog, &cache, emb, 100.0, "add cached EMB descriptor with direct Earth", failures);
+    add_cached_descriptor(&catalog, &cache, moon_geo, 200.0, "add cached Moon/Earth descriptor with direct Earth", failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    EphemerisResult result;
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(make_request(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN), &result, 0)), "direct Earth eval succeeds", failures);
+    expect_true(result.cache_hit, "direct Earth reports cache hit", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.target_id), TAIYIN_BODY_EARTH, "direct Earth descriptor target", failures);
+    expect_near(result.state.position_au.x, 550.0, "direct Earth position wins over composite", failures);
+    expect_near(result.state.velocity_au_per_day.y, 405.0, "direct Earth velocity wins over composite", failures);
+}
+
+void test_ephemeris_service_composite_missing_component_fails(int* failures) {
+    const int method_id = 83;
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisBlockDescriptor emb = make_test_descriptor_for(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN, method_id, 0, 87);
+    add_cached_descriptor(&catalog, &cache, emb, 100.0, "add cached EMB descriptor without Moon", failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    EphemerisResult result;
+    expect_false(taiyin::taiyin_status_ok(service.eval_state(make_request(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN), &result, 0)), "composite Earth fails without Moon/Earth", failures);
+}
+
+void test_ephemeris_service_emb_request_remains_direct(int* failures) {
+    const int method_id = 84;
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisBlockDescriptor emb = make_test_descriptor_for(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN, method_id, 0, 88);
+    EphemerisBlockDescriptor moon_geo = make_test_descriptor_for(TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH, method_id, 0, 89);
+    add_cached_descriptor(&catalog, &cache, emb, 100.0, "add cached direct EMB descriptor", failures);
+    add_cached_descriptor(&catalog, &cache, moon_geo, 200.0, "add cached Moon/Earth descriptor with EMB", failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    EphemerisResult result;
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(make_request(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN), &result, 0)), "direct EMB eval succeeds", failures);
+    expect_true(result.cache_hit, "direct EMB reports cache hit", failures);
+    expect_u32(static_cast<uint32_t>(result.descriptor.target_id), TAIYIN_BODY_EMB, "EMB descriptor target remains EMB", failures);
+    expect_near(result.state.position_au.x, 250.0, "EMB position is not converted to Earth", failures);
+}
+
+void test_ephemeris_service_composite_method_mismatch_fails(int* failures) {
+    EphemerisBlockCatalog catalog;
+    EphemerisBlockCache cache(1024 * 1024);
+    EphemerisBlockDescriptor emb = make_test_descriptor_for(TAIYIN_BODY_EMB, TAIYIN_BODY_SUN, 85, 0, 90);
+    EphemerisBlockDescriptor moon_geo = make_test_descriptor_for(TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH, 86, 0, 91);
+    add_cached_descriptor(&catalog, &cache, emb, 100.0, "add cached mismatched EMB descriptor", failures);
+    add_cached_descriptor(&catalog, &cache, moon_geo, 200.0, "add cached mismatched Moon/Earth descriptor", failures);
+
+    EphemerisService service;
+    service.set_catalog(&catalog);
+    service.set_cache(&cache);
+
+    EphemerisResult result;
+    expect_false(taiyin::taiyin_status_ok(service.eval_state(make_request(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN), &result, 0)), "composite Earth fails on method mismatch", failures);
 }
 
 void test_global_ephemeris_runtime_initializes_without_paths(int* failures) {
@@ -518,7 +691,7 @@ void test_global_ephemeris_runtime_initializes_without_paths(int* failures) {
     request.frame = EphemerisFrame::IcrfJ2000Equatorial;
     request.jd_tdb = 105.0;
     EphemerisResult result;
-    expect_false(eval_global_ephemeris_state(request, &result), "global eval without descriptors fails", failures);
+    expect_false(taiyin::taiyin_status_ok(eval_global_ephemeris_state(request, &result, 0)), "global eval without descriptors fails", failures);
 }
 
 void test_global_ephemeris_runtime_explicit_directory_lazy_load(int* failures) {
@@ -544,13 +717,13 @@ void test_global_ephemeris_runtime_explicit_directory_lazy_load(int* failures) {
     request.jd_tdb = 105.0;
 
     EphemerisResult first;
-    expect_true(eval_global_ephemeris_state(request, &first), "global eval lazy loads explicit directory descriptor", failures);
+    expect_true(taiyin::taiyin_status_ok(eval_global_ephemeris_state(request, &first, 0)), "global eval lazy loads explicit directory descriptor", failures);
     expect_false(first.cache_hit, "first global directory eval reports cache miss", failures);
     expect_u32(static_cast<uint32_t>(first.descriptor.target_id), 710001, "global directory descriptor selected", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "global directory eval inserts cache entry", failures);
 
     EphemerisResult second;
-    expect_true(eval_global_ephemeris_state(request, &second), "global eval reuses explicit directory cache", failures);
+    expect_true(taiyin::taiyin_status_ok(eval_global_ephemeris_state(request, &second, 0)), "global eval reuses explicit directory cache", failures);
     expect_true(second.cache_hit, "second global directory eval reports cache hit", failures);
 
     std::remove(path.c_str());
@@ -578,7 +751,7 @@ void test_global_ephemeris_runtime_explicit_file_lazy_load(int* failures) {
     request.frame = EphemerisFrame::IcrfJ2000Equatorial;
     request.jd_tdb = 105.0;
     EphemerisResult result;
-    expect_true(eval_global_ephemeris_state(request, &result), "global eval lazy loads explicit file descriptor", failures);
+    expect_true(taiyin::taiyin_status_ok(eval_global_ephemeris_state(request, &result, 0)), "global eval lazy loads explicit file descriptor", failures);
     expect_false(result.cache_hit, "first global file eval reports cache miss", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "global file eval inserts cache entry", failures);
 
@@ -625,6 +798,12 @@ int main() {
     test_ephemeris_service_cache_miss_loads_descriptor(&failures);
     test_ephemeris_service_falls_back_after_failed_preferred_descriptor(&failures);
     test_ephemeris_service_priority_first_over_lower_cached_descriptor(&failures);
+    test_ephemeris_service_composite_earth_from_emb_moon(&failures);
+    test_ephemeris_service_composite_moon_from_emb_moon(&failures);
+    test_ephemeris_service_prefers_direct_earth_over_composite(&failures);
+    test_ephemeris_service_composite_missing_component_fails(&failures);
+    test_ephemeris_service_emb_request_remains_direct(&failures);
+    test_ephemeris_service_composite_method_mismatch_fails(&failures);
     test_global_ephemeris_runtime_initializes_without_paths(&failures);
     test_global_ephemeris_runtime_explicit_directory_lazy_load(&failures);
     test_global_ephemeris_runtime_explicit_file_lazy_load(&failures);

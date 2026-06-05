@@ -107,31 +107,31 @@ void test_memory_source_reload_after_eviction(int* failures) {
     request.jd_tdb = JD0 + 10.0;
 
     EphemerisResult first_result;
-    expect_true(service.eval_state(request, &first_result), "first memory source eval", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &first_result, 0)), "first memory source eval", failures);
     expect_false(first_result.cache_hit, "first eval loads from memory source", failures);
     expect_true(cache.entry_count() == 1, "first eval inserts one oversized entry", failures);
 
     EphemerisResult first_hit;
-    expect_true(service.eval_state(request, &first_hit), "first memory source cache hit", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &first_hit, 0)), "first memory source cache hit", failures);
     expect_true(first_hit.cache_hit, "second first eval hits cache", failures);
     expect_near(first_hit.state.position_au.x, first_result.state.position_au.x, 0.0, "cached state stable", failures);
 
     EphemerisRequest second_request = request;
     second_request.target_id = 2000102;
     EphemerisResult second_result;
-    expect_true(service.eval_state(second_request, &second_result), "second memory source eval evicts first", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(second_request, &second_result, 0)), "second memory source eval evicts first", failures);
     expect_false(second_result.cache_hit, "second source loads from memory source", failures);
     expect_true(cache.entry_count() == 1, "oversized second keeps one entry", failures);
 
     EphemerisResult reloaded_first;
-    expect_true(service.eval_state(request, &reloaded_first), "first source reloads after eviction", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &reloaded_first, 0)), "first source reloads after eviction", failures);
     expect_false(reloaded_first.cache_hit, "reloaded first reports cache miss", failures);
     expect_near(reloaded_first.state.position_au.x, first_result.state.position_au.x, 0.0, "reloaded state stable", failures);
 
     expect_true(unregister_memory_kepler_source(first_id), "unregister first source", failures);
     cache.clear();
     EphemerisResult missing_result;
-    expect_false(service.eval_state(request, &missing_result), "unregistered source cannot reload", failures);
+    expect_false(taiyin::taiyin_status_ok(service.eval_state(request, &missing_result, 0)), "unregistered source cannot reload", failures);
 
     clear_memory_kepler_sources();
 }

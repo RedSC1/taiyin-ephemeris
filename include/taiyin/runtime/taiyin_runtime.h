@@ -46,7 +46,11 @@ public:
 
     bool initialize_ephemeris(const EphemerisRuntimeConfig& config) noexcept;
     bool add_ephemeris_source_path(const char* path, bool strict_discovery = false) noexcept;
-    bool eval_ephemeris_state(const EphemerisRequest& request, EphemerisResult* out) noexcept;
+    TaiyinStatus eval_ephemeris_state(
+        const EphemerisRequest& request,
+        EphemerisResult* out,
+        EphemerisEvalDiagnostic* diagnostic
+    ) noexcept;
 
     ServiceId ephemeris_service_id() const noexcept;
     void clear_registries() noexcept;
@@ -66,7 +70,11 @@ private:
 TaiyinRuntime& default_taiyin_runtime() noexcept;
 bool initialize_global_ephemeris_runtime(const EphemerisRuntimeConfig& config) noexcept;
 bool add_global_ephemeris_source_path(const char* path) noexcept;
-bool eval_global_ephemeris_state(const EphemerisRequest& request, EphemerisResult* out) noexcept;
+TaiyinStatus eval_global_ephemeris_state(
+    const EphemerisRequest& request,
+    EphemerisResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
 
 bool add_global_ephemeris_descriptor(const internal::EphemerisBlockDescriptor& descriptor) noexcept;
 bool set_global_ephemeris_method_priority(int method_id, int priority) noexcept;

@@ -5,6 +5,7 @@
 #include "taiyin/internal/ephemeris_catalog.h"
 #include "taiyin/internal/route_inflight_map.h"
 #include "taiyin/state.h"
+#include "taiyin/status.h"
 
 namespace taiyin {
 namespace runtime {
@@ -41,6 +42,35 @@ struct EphemerisSelectionResult {
         : source_descriptor(), bucket_descriptor(), cache_hit(false), loaded(false) {}
 };
 
+struct EphemerisEvalDiagnostic {
+    TaiyinStatus status;
+    int target_id;
+    int center_id;
+    internal::EphemerisFrame frame;
+    double jd_tdb;
+    int candidate_count;
+    int attempted_method_id;
+    double nearest_coverage_start;
+    double nearest_coverage_end;
+    int component_target_id;
+    int component_center_id;
+    int component_method_id;
+
+    EphemerisEvalDiagnostic() noexcept
+        : status(TAIYIN_STATUS_OK),
+          target_id(0),
+          center_id(0),
+          frame(internal::EphemerisFrame::FrameUnknown),
+          jd_tdb(0.0),
+          candidate_count(0),
+          attempted_method_id(0),
+          nearest_coverage_start(0.0),
+          nearest_coverage_end(0.0),
+          component_target_id(0),
+          component_center_id(0),
+          component_method_id(0) {}
+};
+
 class EphemerisService {
 public:
     EphemerisService() noexcept;
@@ -61,13 +91,38 @@ public:
         const EphemerisRequest& request,
         const internal::EphemerisBlockDescriptor** out
     ) const noexcept;
-    bool select_calculation_route(
+    TaiyinStatus select_calculation_route(
         const EphemerisRequest& request,
-        EphemerisSelectionResult* out
+        EphemerisSelectionResult* out,
+        EphemerisEvalDiagnostic* diagnostic
     ) noexcept;
-    bool eval_state(const EphemerisRequest& request, EphemerisResult* out) noexcept;
+    TaiyinStatus eval_state(
+        const EphemerisRequest& request,
+        EphemerisResult* out,
+        EphemerisEvalDiagnostic* diagnostic
+    ) noexcept;
 
 private:
+    TaiyinStatus eval_direct_state(
+        const EphemerisRequest& request,
+        EphemerisSelectionResult* selection,
+        CartesianState* out,
+        EphemerisEvalDiagnostic* diagnostic
+    ) noexcept;
+    TaiyinStatus eval_descriptor_state_direct(
+        const internal::EphemerisBlockDescriptor& source,
+        double jd_tdb,
+        int priority_bias,
+        EphemerisSelectionResult* selection,
+        CartesianState* out,
+        EphemerisEvalDiagnostic* diagnostic
+    ) noexcept;
+    TaiyinStatus eval_composite_state(
+        const EphemerisRequest& request,
+        EphemerisResult* out,
+        EphemerisEvalDiagnostic* diagnostic
+    ) noexcept;
+
     const internal::EphemerisBlockCatalog* catalog_;
     const internal::EphemerisPriorityRegistry* priorities_;
     internal::EphemerisBlockCache* cache_;

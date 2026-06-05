@@ -235,7 +235,7 @@ void test_same_key_service_loads_once(int* failures) {
                 std::this_thread::yield();
             }
             taiyin::runtime::EphemerisResult result;
-            if (!service.eval_state(make_request(910100), &result)) {
+            if (service.eval_state(make_request(910100), &result, 0) != taiyin::TAIYIN_STATUS_OK) {
                 read_failures.fetch_add(1);
                 return;
             }
@@ -288,7 +288,7 @@ void test_different_keys_service_load_independently(int* failures) {
             std::this_thread::yield();
         }
         taiyin::runtime::EphemerisResult result;
-        if (!service.eval_state(make_request(910201), &result)
+        if (service.eval_state(make_request(910201), &result, 0) != taiyin::TAIYIN_STATUS_OK
             || std::fabs(result.state.position_au.x - 10.0) > 1.0e-12) {
             read_failures.fetch_add(1);
         }
@@ -298,7 +298,7 @@ void test_different_keys_service_load_independently(int* failures) {
             std::this_thread::yield();
         }
         taiyin::runtime::EphemerisResult result;
-        if (!service.eval_state(make_request(910202), &result)
+        if (service.eval_state(make_request(910202), &result, 0) != taiyin::TAIYIN_STATUS_OK
             || std::fabs(result.state.position_au.x - 20.0) > 1.0e-12) {
             read_failures.fetch_add(1);
         }
@@ -349,7 +349,7 @@ void test_failed_preferred_load_wakes_and_falls_back(int* failures) {
                 std::this_thread::yield();
             }
             taiyin::runtime::EphemerisResult result;
-            if (!service.eval_state(make_request(910300), &result)) {
+            if (service.eval_state(make_request(910300), &result, 0) != taiyin::TAIYIN_STATUS_OK) {
                 read_failures.fetch_add(1);
                 return;
             }
@@ -394,7 +394,7 @@ void test_global_runtime_loads_once(int* failures) {
                 std::this_thread::yield();
             }
             taiyin::runtime::EphemerisResult result;
-            if (!taiyin::runtime::eval_global_ephemeris_state(make_request(910400), &result)) {
+            if (taiyin::runtime::eval_global_ephemeris_state(make_request(910400), &result, 0) != taiyin::TAIYIN_STATUS_OK) {
                 read_failures.fetch_add(1);
                 return;
             }

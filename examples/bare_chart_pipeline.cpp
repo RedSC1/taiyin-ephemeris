@@ -76,7 +76,7 @@ bool eval_bodies_step(PipelineFrame* frame, void* step_data) {
         request.jd_tdb = data->jd_tdb;
 
         EphemerisResult result;
-        if (!eval_global_ephemeris_state(request, &result)) {
+        if (eval_global_ephemeris_state(request, &result, 0) != taiyin::TAIYIN_STATUS_OK) {
             std::cerr << "warning: skipped " << data->bodies[i].name
                       << " target=" << request.target_id
                       << " center=" << request.center_id << "\n";

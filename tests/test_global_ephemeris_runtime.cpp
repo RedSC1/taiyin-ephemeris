@@ -37,6 +37,10 @@ const int VSOP87_MERCURY_METHOD_ID = 87001;
 const int CUSTOM_NUTATION_ID = taiyin::dispatch::NUTATION_CUSTOM_START + 501;
 const int CUSTOM_PRECESSION_ID = taiyin::dispatch::PRECESSION_CUSTOM_START + 501;
 
+bool eval_global_ephemeris_state_ok(const EphemerisRequest& request, EphemerisResult* out) noexcept {
+    return taiyin::taiyin_status_ok(taiyin::runtime::eval_global_ephemeris_state(request, out, 0));
+}
+
 const double VSOP87_L0[12] = {
     4.40260884240, 3.17614669689, 1.75347045953, 6.20347611291,
     0.59954649739, 0.87401675650, 5.48129387159, 5.31188628676,
@@ -665,7 +669,7 @@ void test_locked_global_helper_apis(int* failures) {
     EphemerisBlockDescriptor bucket;
     expect_true(make_global_bucket_for_request(request, &bucket), "locked helper makes cache bucket", failures);
     EphemerisResult result;
-    expect_true(eval_global_ephemeris_state(request, &result), "locked helper eval loads cache", failures);
+    expect_true(eval_global_ephemeris_state_ok(request, &result), "locked helper eval loads cache", failures);
     expect_true(global_ephemeris_cache_contains(bucket.route_key), "locked helper cache contains loaded route", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "locked helper cache entry count after load", failures);
     expect_true(global_ephemeris_cache_total_bytes() > 0, "locked helper cache total bytes after load", failures);
@@ -723,21 +727,21 @@ void test_custom_mercury_global_runtime_reload_after_eviction(int* failures) {
     EphemerisRequest evicting_request = make_request(830002);
 
     EphemerisResult mercury_first;
-    expect_true(eval_global_ephemeris_state(mercury_request, &mercury_first), "user A eval custom Mercury", failures);
+    expect_true(eval_global_ephemeris_state_ok(mercury_request, &mercury_first), "user A eval custom Mercury", failures);
     expect_false(mercury_first.cache_hit, "custom Mercury first eval cache miss", failures);
     expect_int(g_custom_mercury_file_load_count, 1, "custom Mercury file loaded once", failures);
     expect_true(global_ephemeris_cache_contains(mercury_descriptor.route_key), "global cache contains custom Mercury route", failures);
     expect_near(mercury_first.state.position_au.x, 0.39, 1.0e-14, "custom Mercury initial radius", failures);
 
     EphemerisResult mercury_hit;
-    expect_true(eval_global_ephemeris_state(mercury_request, &mercury_hit), "user B eval custom Mercury cache hit", failures);
+    expect_true(eval_global_ephemeris_state_ok(mercury_request, &mercury_hit), "user B eval custom Mercury cache hit", failures);
     expect_true(mercury_hit.cache_hit, "user B custom Mercury eval is shared cache hit", failures);
     expect_int(g_custom_mercury_file_load_count, 1, "custom Mercury cache hit does not reload file", failures);
 
     EphemerisBlockDescriptor evicting_bucket;
     expect_true(make_global_bucket_for_request(evicting_request, &evicting_bucket), "make Mercury evicting bucket", failures);
     EphemerisResult evicting_result;
-    expect_true(eval_global_ephemeris_state(evicting_request, &evicting_result), "user B eval evicting source", failures);
+    expect_true(eval_global_ephemeris_state_ok(evicting_request, &evicting_result), "user B eval evicting source", failures);
     expect_false(evicting_result.cache_hit, "evicting source first eval cache miss", failures);
     expect_true(!global_ephemeris_cache_contains(mercury_descriptor.route_key), "custom Mercury evicted from tiny global cache", failures);
     expect_true(global_ephemeris_cache_contains(evicting_bucket.route_key), "evicting source in tiny global cache", failures);
@@ -745,7 +749,7 @@ void test_custom_mercury_global_runtime_reload_after_eviction(int* failures) {
 
     write_custom_mercury_file(mercury_path, JD0, 0.0, 87.969, 0.42);
     EphemerisResult mercury_reload;
-    expect_true(eval_global_ephemeris_state(mercury_request, &mercury_reload), "user A reload custom Mercury after eviction", failures);
+    expect_true(eval_global_ephemeris_state_ok(mercury_request, &mercury_reload), "user A reload custom Mercury after eviction", failures);
     expect_false(mercury_reload.cache_hit, "custom Mercury reload after eviction is cache miss", failures);
     expect_int(g_custom_mercury_file_load_count, 2, "custom Mercury file reloaded from descriptor path", failures);
     expect_true(global_ephemeris_cache_contains(mercury_descriptor.route_key), "global cache contains reloaded custom Mercury", failures);
@@ -810,7 +814,7 @@ void test_vsop87_mercury_custom_method_global_cache(int* failures) {
     EphemerisRequest evicting_request = make_request(830003);
 
     EphemerisResult mercury_first;
-    expect_true(eval_global_ephemeris_state(mercury_request, &mercury_first), "user A eval VSOP87A Mercury custom method", failures);
+    expect_true(eval_global_ephemeris_state_ok(mercury_request, &mercury_first), "user A eval VSOP87A Mercury custom method", failures);
     expect_false(mercury_first.cache_hit, "VSOP87A Mercury first global eval cache miss", failures);
     expect_int(g_vsop87_file_load_count, 1, "VSOP87A Mercury file loaded once through global runtime", failures);
     expect_int(mercury_first.descriptor.method_id, VSOP87_MERCURY_METHOD_ID, "VSOP87A Mercury custom method selected", failures);
@@ -820,21 +824,21 @@ void test_vsop87_mercury_custom_method_global_cache(int* failures) {
     expect_near(mercury_first.state.position_au.z, -0.20048931479048393, 1.0e-13, "VSOP87A Mercury global J2000 z", failures);
 
     EphemerisResult mercury_hit;
-    expect_true(eval_global_ephemeris_state(mercury_request, &mercury_hit), "user B eval VSOP87A Mercury shared cache", failures);
+    expect_true(eval_global_ephemeris_state_ok(mercury_request, &mercury_hit), "user B eval VSOP87A Mercury shared cache", failures);
     expect_true(mercury_hit.cache_hit, "user B VSOP87A Mercury eval is shared cache hit", failures);
     expect_int(g_vsop87_file_load_count, 1, "VSOP87A Mercury cache hit does not reload file", failures);
 
     EphemerisBlockDescriptor evicting_bucket;
     expect_true(make_global_bucket_for_request(evicting_request, &evicting_bucket), "make VSOP87 Mercury evicting bucket", failures);
     EphemerisResult evicting_result;
-    expect_true(eval_global_ephemeris_state(evicting_request, &evicting_result), "user B evicts VSOP87A Mercury custom block", failures);
+    expect_true(eval_global_ephemeris_state_ok(evicting_request, &evicting_result), "user B evicts VSOP87A Mercury custom block", failures);
     expect_false(evicting_result.cache_hit, "VSOP87 Mercury evicting source first eval cache miss", failures);
     expect_true(!global_ephemeris_cache_contains(mercury_descriptor.route_key), "VSOP87A Mercury block evicted from tiny global cache", failures);
     expect_true(global_ephemeris_cache_contains(evicting_bucket.route_key), "VSOP87 Mercury evicting source in tiny cache", failures);
     expect_int(g_vsop87_file_destroy_count, 1, "VSOP87A Mercury cache clone destroyed on global eviction", failures);
 
     EphemerisResult mercury_reload;
-    expect_true(eval_global_ephemeris_state(mercury_request, &mercury_reload), "user A reloads VSOP87A Mercury after global eviction", failures);
+    expect_true(eval_global_ephemeris_state_ok(mercury_request, &mercury_reload), "user A reloads VSOP87A Mercury after global eviction", failures);
     expect_false(mercury_reload.cache_hit, "VSOP87A Mercury reload after global eviction is cache miss", failures);
     expect_int(g_vsop87_file_load_count, 2, "VSOP87A Mercury reload reads file again", failures);
     expect_true(global_ephemeris_cache_contains(mercury_descriptor.route_key), "global cache contains reloaded VSOP87A Mercury custom block", failures);
@@ -899,7 +903,7 @@ void test_concurrent_vsop87_mercury_global_eval_readers(int* failures) {
 
             for (int i = 0; i < iterations; ++i) {
                 EphemerisResult result;
-                if (!eval_global_ephemeris_state(mercury_request, &result)) {
+                if (!eval_global_ephemeris_state_ok(mercury_request, &result)) {
                     ++read_failures;
                     continue;
                 }
@@ -995,16 +999,16 @@ void test_global_weighted_cache_keeps_high_priority_method(int* failures) {
     third_request.jd_tdb = JD0;
 
     EphemerisResult high_first;
-    expect_true(eval_global_ephemeris_state(high_request, &high_first), "load high-priority weighted source", failures);
+    expect_true(eval_global_ephemeris_state_ok(high_request, &high_first), "load high-priority weighted source", failures);
     expect_false(high_first.cache_hit, "high-priority weighted source first miss", failures);
     EphemerisResult low_first;
-    expect_true(eval_global_ephemeris_state(low_request, &low_first), "load low-priority weighted source", failures);
+    expect_true(eval_global_ephemeris_state_ok(low_request, &low_first), "load low-priority weighted source", failures);
     expect_false(low_first.cache_hit, "low-priority weighted source first miss", failures);
     expect_true(global_ephemeris_cache_contains(high_descriptor.route_key), "weighted cache contains high before eviction", failures);
     expect_true(global_ephemeris_cache_contains(low_descriptor.route_key), "weighted cache contains low before eviction", failures);
 
     EphemerisResult third_first;
-    expect_true(eval_global_ephemeris_state(third_request, &third_first), "load third weighted source", failures);
+    expect_true(eval_global_ephemeris_state_ok(third_request, &third_first), "load third weighted source", failures);
     expect_false(third_first.cache_hit, "third weighted source first miss", failures);
     expect_true(global_ephemeris_cache_contains(high_descriptor.route_key), "weighted cache keeps older high-priority source", failures);
     expect_true(!global_ephemeris_cache_contains(low_descriptor.route_key), "weighted cache evicts newer low-priority source", failures);
@@ -1026,7 +1030,7 @@ void test_no_default_scan_and_bindings(int* failures) {
     expect_global_service_bindings("no-path global service binding", failures);
 
     EphemerisResult result;
-    expect_false(eval_global_ephemeris_state(make_request(820001), &result), "no-path eval fails without descriptor", failures);
+    expect_false(eval_global_ephemeris_state_ok(make_request(820001), &result), "no-path eval fails without descriptor", failures);
 }
 
 void test_explicit_multi_path_initialization_registers_sources_only(int* failures) {
@@ -1084,12 +1088,12 @@ void test_two_user_requests_share_global_cache(int* failures) {
 
     EphemerisRequest request = make_request(820201);
     EphemerisResult result_a;
-    expect_true(eval_global_ephemeris_state(request, &result_a), "user A loads shared cache source", failures);
+    expect_true(eval_global_ephemeris_state_ok(request, &result_a), "user A loads shared cache source", failures);
     expect_false(result_a.cache_hit, "user A first eval is cache miss", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "user A inserts one shared cache entry", failures);
 
     EphemerisResult result_b;
-    expect_true(eval_global_ephemeris_state(request, &result_b), "user B reuses shared cache source", failures);
+    expect_true(eval_global_ephemeris_state_ok(request, &result_b), "user B reuses shared cache source", failures);
     expect_true(result_b.cache_hit, "user B eval is shared cache hit", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "user B keeps one shared cache entry", failures);
     expect_near(result_a.state.position_au.x, result_b.state.position_au.x, 0.0, "shared cache position x stable", failures);
@@ -1126,7 +1130,7 @@ void test_concurrent_global_eval_readers(int* failures) {
 
             for (int i = 0; i < iterations; ++i) {
                 EphemerisResult result;
-                if (!eval_global_ephemeris_state(make_request(820701), &result)) {
+                if (!eval_global_ephemeris_state_ok(make_request(820701), &result)) {
                     ++read_failures;
                     continue;
                 }
@@ -1177,27 +1181,27 @@ void test_two_users_eviction_and_reload_from_source_path(int* failures) {
     expect_true(user_a_service.cache() == user_b_service.cache(), "user eviction services share cache", failures);
 
     EphemerisResult first_a;
-    expect_true(eval_global_ephemeris_state(request_a, &first_a), "user A loads source A", failures);
+    expect_true(eval_global_ephemeris_state_ok(request_a, &first_a), "user A loads source A", failures);
     expect_false(first_a.cache_hit, "user A source A first eval miss", failures);
     expect_true(global_ephemeris_cache_contains(bucket_a.route_key), "tiny cache contains source A", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "tiny cache has one entry after source A", failures);
 
     EphemerisResult first_b;
-    expect_true(eval_global_ephemeris_state(request_b, &first_b), "user B loads source B and evicts A", failures);
+    expect_true(eval_global_ephemeris_state_ok(request_b, &first_b), "user B loads source B and evicts A", failures);
     expect_false(first_b.cache_hit, "user B source B first eval miss", failures);
     expect_true(!global_ephemeris_cache_contains(bucket_a.route_key), "source A evicted by user B", failures);
     expect_true(global_ephemeris_cache_contains(bucket_b.route_key), "tiny cache contains source B", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "tiny cache has one entry after source B", failures);
 
     EphemerisResult reload_a;
-    expect_true(eval_global_ephemeris_state(request_a, &reload_a), "user A reloads source A after eviction", failures);
+    expect_true(eval_global_ephemeris_state_ok(request_a, &reload_a), "user A reloads source A after eviction", failures);
     expect_false(reload_a.cache_hit, "user A source A reload miss", failures);
     expect_true(global_ephemeris_cache_contains(bucket_a.route_key), "source A reloaded into tiny cache", failures);
     expect_true(!global_ephemeris_cache_contains(bucket_b.route_key), "source B evicted by user A reload", failures);
     expect_near(reload_a.state.position_au.x, first_a.state.position_au.x, 0.0, "source A reload state stable", failures);
 
     EphemerisResult reload_b;
-    expect_true(eval_global_ephemeris_state(request_b, &reload_b), "user B reloads source B after eviction", failures);
+    expect_true(eval_global_ephemeris_state_ok(request_b, &reload_b), "user B reloads source B after eviction", failures);
     expect_false(reload_b.cache_hit, "user B source B reload miss", failures);
     expect_true(!global_ephemeris_cache_contains(bucket_a.route_key), "source A evicted by user B reload", failures);
     expect_true(global_ephemeris_cache_contains(bucket_b.route_key), "source B reloaded into tiny cache", failures);
@@ -1226,7 +1230,7 @@ void test_add_source_path_preserves_existing_cache(int* failures) {
     expect_true(initialize_global_ephemeris_runtime(config), "initialize add-source runtime", failures);
 
     EphemerisResult first_a;
-    expect_true(eval_global_ephemeris_state(make_request(820301), &first_a), "load source A before adding B", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820301), &first_a), "load source A before adding B", failures);
     expect_false(first_a.cache_hit, "source A first eval cache miss", failures);
     expect_size(global_ephemeris_catalog_size(), 1, "add-source catalog starts with one descriptor", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "source A load inserts one cache entry", failures);
@@ -1236,11 +1240,11 @@ void test_add_source_path_preserves_existing_cache(int* failures) {
     expect_size(global_ephemeris_cache_entry_count(), 1, "adding source path preserves existing cache", failures);
 
     EphemerisResult second_a;
-    expect_true(eval_global_ephemeris_state(make_request(820301), &second_a), "source A remains evaluable after adding B", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820301), &second_a), "source A remains evaluable after adding B", failures);
     expect_true(second_a.cache_hit, "source A cache survives adding B", failures);
 
     EphemerisResult first_b;
-    expect_true(eval_global_ephemeris_state(make_request(820302), &first_b), "source B lazy loads after add path", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820302), &first_b), "source B lazy loads after add path", failures);
     expect_false(first_b.cache_hit, "source B first eval cache miss", failures);
     expect_size(global_ephemeris_cache_entry_count(), 2, "source B load adds second cache entry", failures);
 
@@ -1264,7 +1268,7 @@ void test_reinitialize_clears_catalog_and_cache(int* failures) {
     expect_true(initialize_global_ephemeris_runtime(config), "initialize before reset", failures);
     EphemerisBlockCache* cache_before_reset = global_ephemeris_cache();
     EphemerisResult loaded;
-    expect_true(eval_global_ephemeris_state(make_request(820401), &loaded), "load before reset", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820401), &loaded), "load before reset", failures);
     expect_size(global_ephemeris_catalog_size(), 1, "catalog populated before reset", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "cache populated before reset", failures);
 
@@ -1279,7 +1283,7 @@ void test_reinitialize_clears_catalog_and_cache(int* failures) {
     expect_global_service_bindings("reset keeps global service bindings", failures);
 
     EphemerisResult after_reset;
-    expect_false(eval_global_ephemeris_state(make_request(820401), &after_reset), "old target fails after reset", failures);
+    expect_false(eval_global_ephemeris_state_ok(make_request(820401), &after_reset), "old target fails after reset", failures);
 
     remove_file_if_present(path);
     remove_dir_if_present(root);
@@ -1298,7 +1302,7 @@ void test_failed_initialization_rolls_back_to_empty_runtime(int* failures) {
     good_config.source_path_count = 1;
     expect_true(initialize_global_ephemeris_runtime(good_config), "initialize before failed init", failures);
     EphemerisResult before_fail;
-    expect_true(eval_global_ephemeris_state(make_request(820501), &before_fail), "load before failed init", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820501), &before_fail), "load before failed init", failures);
     expect_size(global_ephemeris_catalog_size(), 1, "catalog populated before failed init", failures);
     expect_size(global_ephemeris_cache_entry_count(), 1, "cache populated before failed init", failures);
 
@@ -1314,7 +1318,7 @@ void test_failed_initialization_rolls_back_to_empty_runtime(int* failures) {
     expect_global_service_bindings("failed init keeps global service bindings", failures);
 
     EphemerisResult after_fail;
-    expect_false(eval_global_ephemeris_state(make_request(820501), &after_fail), "old source unavailable after failed init rollback", failures);
+    expect_false(eval_global_ephemeris_state_ok(make_request(820501), &after_fail), "old source unavailable after failed init rollback", failures);
 
     remove_file_if_present(path);
     remove_dir_if_present(root);
@@ -1338,13 +1342,13 @@ void test_global_priority_override_selects_high_priority_source(int* failures) {
     expect_true(set_global_ephemeris_method_priority(99, 200), "set custom method priority", failures);
 
     EphemerisResult result;
-    expect_true(eval_global_ephemeris_state(make_request(820601), &result), "global priority eval succeeds", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820601), &result), "global priority eval succeeds", failures);
     expect_false(result.cache_hit, "priority winner first eval cache miss", failures);
     expect_int(result.descriptor.method_id, 99, "priority override selects custom method", failures);
     expect_near(result.state.position_au.x, 0.005 / taiyin::TAIYIN_AU_KM, 1.0e-20, "priority winner position", failures);
 
     EphemerisResult second;
-    expect_true(eval_global_ephemeris_state(make_request(820601), &second), "global priority second eval succeeds", failures);
+    expect_true(eval_global_ephemeris_state_ok(make_request(820601), &second), "global priority second eval succeeds", failures);
     expect_true(second.cache_hit, "priority winner second eval cache hit", failures);
     expect_int(second.descriptor.method_id, 99, "priority override remains selected", failures);
 

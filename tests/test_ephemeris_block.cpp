@@ -607,27 +607,27 @@ void test_vsop87_mercury_custom_registry_path() {
     mercury_request.jd_tdb = taiyin::JD_J2000;
 
     EphemerisResult mercury_result;
-    expect_true(service.eval_state(mercury_request, &mercury_result), "eval VSOP87A Mercury through file-backed custom cache");
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(mercury_request, &mercury_result, 0)), "eval VSOP87A Mercury through file-backed custom cache");
     expect_true(!mercury_result.cache_hit, "VSOP87A Mercury first file-backed eval is cache miss");
     expect_true(g_vsop87_file_load_count == 1, "VSOP87A Mercury file loaded once");
     expect_near(mercury_result.state.position_au.x, -0.13009360356893562, 1e-13, "VSOP87A Mercury file-backed J2000 x");
     expect_true(cache.contains(mercury_descriptor.route_key), "cache contains VSOP87A Mercury file-backed block");
 
     EphemerisResult mercury_hit;
-    expect_true(service.eval_state(mercury_request, &mercury_hit), "eval VSOP87A Mercury file-backed cache hit");
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(mercury_request, &mercury_hit, 0)), "eval VSOP87A Mercury file-backed cache hit");
     expect_true(mercury_hit.cache_hit, "VSOP87A Mercury second file-backed eval is cache hit");
     expect_true(g_vsop87_file_load_count == 1, "VSOP87A Mercury cache hit does not reload file");
 
     EphemerisRequest synthetic_request = mercury_request;
     synthetic_request.target_id = 900087;
     EphemerisResult synthetic_result;
-    expect_true(service.eval_state(synthetic_request, &synthetic_result), "eval synthetic source to evict VSOP87A Mercury");
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(synthetic_request, &synthetic_result, 0)), "eval synthetic source to evict VSOP87A Mercury");
     expect_true(!cache.contains(mercury_descriptor.route_key), "VSOP87A Mercury file-backed block evicted");
     expect_true(cache.contains(synthetic_descriptor.route_key), "cache contains synthetic eviction source");
     expect_true(g_vsop87_file_destroy_count == 1, "VSOP87A Mercury cache clone destroyed on eviction");
 
     EphemerisResult mercury_reload;
-    expect_true(service.eval_state(mercury_request, &mercury_reload), "reload VSOP87A Mercury custom source from descriptor path after eviction");
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(mercury_request, &mercury_reload, 0)), "reload VSOP87A Mercury custom source from descriptor path after eviction");
     expect_true(!mercury_reload.cache_hit, "VSOP87A Mercury reload is cache miss");
     expect_true(g_vsop87_file_load_count == 2, "VSOP87A Mercury reload reads file again");
     expect_true(cache.contains(mercury_descriptor.route_key), "cache contains reloaded VSOP87A Mercury block");

@@ -274,7 +274,7 @@ void bind_service(
 
 bool eval_x(EphemerisService* service, int target_id, double* out_x, int* out_method_id) {
     EphemerisResult result;
-    if (!service->eval_state(make_request(target_id), &result)) {
+    if (service->eval_state(make_request(target_id), &result, 0) != taiyin::TAIYIN_STATUS_OK) {
         return false;
     }
     if (out_x) {

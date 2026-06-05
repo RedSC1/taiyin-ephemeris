@@ -266,7 +266,7 @@ void test_custom_source_cache_eviction_reload(int* failures) {
     request_a.jd_tdb = JD0;
 
     EphemerisResult result_a;
-    expect_true(service.eval_state(request_a, &result_a), "eval custom source A", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request_a, &result_a, 0)), "eval custom source A", failures);
     expect_false(result_a.cache_hit, "first custom source A eval is cache miss", failures);
     expect_true(cache.entry_count() == 1, "cache has source A entry", failures);
     expect_true(cache.contains(descriptor_a.route_key), "cache contains source A route", failures);
@@ -275,14 +275,14 @@ void test_custom_source_cache_eviction_reload(int* failures) {
     expect_true(a_clone_count == 2, "cache cloned source A", failures);
 
     EphemerisResult result_a_hit;
-    expect_true(service.eval_state(request_a, &result_a_hit), "eval custom source A cache hit", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request_a, &result_a_hit, 0)), "eval custom source A cache hit", failures);
     expect_true(result_a_hit.cache_hit, "second custom source A eval is cache hit", failures);
     expect_true(a_clone_count == 2, "cache hit does not clone source A", failures);
 
     EphemerisRequest request_b = request_a;
     request_b.target_id = 900003;
     EphemerisResult result_b;
-    expect_true(service.eval_state(request_b, &result_b), "eval custom source B", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request_b, &result_b, 0)), "eval custom source B", failures);
     expect_false(result_b.cache_hit, "first custom source B eval is cache miss", failures);
     expect_true(cache.entry_count() == 1, "tiny cache keeps one custom entry after source B", failures);
     expect_false(cache.contains(descriptor_a.route_key), "source A evicted after source B", failures);
@@ -294,7 +294,7 @@ void test_custom_source_cache_eviction_reload(int* failures) {
 
     request_a.jd_tdb = JD0 + 0.25 * source_a.period_days;
     EphemerisResult result_a_reload;
-    expect_true(service.eval_state(request_a, &result_a_reload), "reload evicted custom source A", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request_a, &result_a_reload, 0)), "reload evicted custom source A", failures);
     expect_false(result_a_reload.cache_hit, "reloaded custom source A is cache miss", failures);
     expect_true(cache.entry_count() == 1, "tiny cache keeps one custom entry after reload", failures);
     expect_true(cache.contains(descriptor_a.route_key), "cache contains reloaded source A route", failures);
@@ -313,7 +313,7 @@ void test_custom_source_cache_eviction_reload(int* failures) {
     expect_true(b_destroy_count == 2, "registry clear destroyed source B registry clone", failures);
 
     EphemerisResult missing_result;
-    expect_false(service.eval_state(request_a, &missing_result), "missing registry source cannot reload descriptor", failures);
+    expect_false(taiyin::taiyin_status_ok(service.eval_state(request_a, &missing_result, 0)), "missing registry source cannot reload descriptor", failures);
 }
 
 void test_file_backed_custom_source_reload(int* failures) {
@@ -377,27 +377,27 @@ void test_file_backed_custom_source_reload(int* failures) {
     request.jd_tdb = JD0;
 
     EphemerisResult first;
-    expect_true(service.eval_state(request, &first), "eval file-backed custom source", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &first, 0)), "eval file-backed custom source", failures);
     expect_false(first.cache_hit, "first file-backed eval is cache miss", failures);
     expect_true(g_file_load_count == 1, "file-backed source loaded once", failures);
     expect_true(cache.contains(file_descriptor.route_key), "cache contains file-backed route", failures);
     expect_near(first.state.position_au.x, 3.0, 1e-14, "file-backed first radius", failures);
 
     EphemerisResult hit;
-    expect_true(service.eval_state(request, &hit), "eval file-backed custom cache hit", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &hit, 0)), "eval file-backed custom cache hit", failures);
     expect_true(hit.cache_hit, "second file-backed eval is cache hit", failures);
     expect_true(g_file_load_count == 1, "cache hit does not reload file", failures);
 
     EphemerisRequest evicting_request = request;
     evicting_request.target_id = 900006;
     EphemerisResult evicting;
-    expect_true(service.eval_state(evicting_request, &evicting), "evict file-backed custom source", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(evicting_request, &evicting, 0)), "evict file-backed custom source", failures);
     expect_false(cache.contains(file_descriptor.route_key), "file-backed source evicted", failures);
     expect_true(g_file_destroy_count == 1, "file-backed cache clone destroyed on eviction", failures);
 
     write_ziqi_file(path, JD0, 0.0, 365.25, 4.0);
     EphemerisResult reloaded;
-    expect_true(service.eval_state(request, &reloaded), "reload file-backed custom source from descriptor path", failures);
+    expect_true(taiyin::taiyin_status_ok(service.eval_state(request, &reloaded, 0)), "reload file-backed custom source from descriptor path", failures);
     expect_false(reloaded.cache_hit, "file-backed reload is cache miss", failures);
     expect_true(g_file_load_count == 2, "file-backed reload reads file again", failures);
     expect_true(cache.contains(file_descriptor.route_key), "cache contains reloaded file-backed route", failures);

@@ -265,11 +265,12 @@ bool TaiyinRuntime::add_ephemeris_source_path(const char* path, bool strict_disc
     return add_descriptors_from_source_path(path, strict_discovery, &ephemeris_catalog_);
 }
 
-bool TaiyinRuntime::eval_ephemeris_state(
+TaiyinStatus TaiyinRuntime::eval_ephemeris_state(
     const EphemerisRequest& request,
-    EphemerisResult* out
+    EphemerisResult* out,
+    EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    return ephemeris_service_.eval_state(request, out);
+    return ephemeris_service_.eval_state(request, out, diagnostic);
 }
 
 ServiceId TaiyinRuntime::ephemeris_service_id() const noexcept {
@@ -304,9 +305,13 @@ bool add_global_ephemeris_source_path(const char* path) noexcept {
     return default_taiyin_runtime().add_ephemeris_source_path(path, false);
 }
 
-bool eval_global_ephemeris_state(const EphemerisRequest& request, EphemerisResult* out) noexcept {
+TaiyinStatus eval_global_ephemeris_state(
+    const EphemerisRequest& request,
+    EphemerisResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
     internal::ReadLockGuard lock(global_ephemeris_runtime_rwlock());
-    return default_taiyin_runtime().eval_ephemeris_state(request, out);
+    return default_taiyin_runtime().eval_ephemeris_state(request, out, diagnostic);
 }
 
 bool add_global_ephemeris_descriptor(const internal::EphemerisBlockDescriptor& descriptor) noexcept {

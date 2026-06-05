@@ -225,7 +225,7 @@ bool eval_bodies_step(PipelineFrame* frame, void* step_data) {
         request.center_id = 0;
         request.frame = EphemerisFrame::IcrfJ2000Equatorial;
         request.jd_tdb = data->jd_tdb;
-        if (!eval_global_ephemeris_state(request, &scratch->ephemeris[i])) {
+        if (eval_global_ephemeris_state(request, &scratch->ephemeris[i], 0) != taiyin::TAIYIN_STATUS_OK) {
             return false;
         }
         scratch->cache_hits[i] = scratch->ephemeris[i].cache_hit;

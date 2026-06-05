@@ -362,7 +362,7 @@ void run_concurrent_mercury_eval(int thread_count, std::atomic<int>* failures) {
                 std::this_thread::yield();
             }
             EphemerisResult result;
-            if (!eval_global_ephemeris_state(make_mercury_request(), &result)) {
+            if (eval_global_ephemeris_state(make_mercury_request(), &result, 0) != taiyin::TAIYIN_STATUS_OK) {
                 failures->fetch_add(1);
                 return;
             }
