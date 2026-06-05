@@ -9,7 +9,7 @@
 This release is meant to make the low-level ephemeris runtime usable and testable:
 
 - OPM4 ephemeris source discovery and loading.
-- SPK, Kebyshev/Kepler-style, star, and custom ephemeris source plumbing.
+- SPK, Chebyshev/Kepler-style, star, and custom ephemeris source plumbing.
 - A global ephemeris runtime shared by callers.
 - A global catalog/cache path where source descriptors remain the source of truth and cache entries can be evicted/reloaded.
 - Method priority selection, including target-specific overrides.
