@@ -55,6 +55,14 @@ void expect_status(TaiyinStatus actual, TaiyinStatus expected, const char* label
     }
 }
 
+void expect_contains(const char* text, const char* needle, const char* label, int* failures) {
+    if (!text || !needle || !std::strstr(text, needle)) {
+        std::cerr << "FAIL: " << label << ": text=\"" << (text ? text : "")
+                  << "\" needle=\"" << (needle ? needle : "") << "\"\n";
+        ++(*failures);
+    }
+}
+
 void expect_size(size_t actual, size_t expected, const char* label, int* failures) {
     if (actual != expected) {
         std::cerr << "FAIL: " << label << ": actual=" << actual << " expected=" << expected << "\n";
@@ -340,6 +348,43 @@ void test_taiyin_runtime_facade(int* failures) {
 
     TaiyinRuntime& global = default_taiyin_runtime();
     expect_true(global.ephemeris_service_id().is_valid(), "default runtime ephemeris service id valid", failures);
+}
+
+void test_status_and_diagnostic_formatting(int* failures) {
+    expect_true(std::strcmp(taiyin_status_name(TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP),
+                            "TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP") == 0,
+                "status name for coverage gap", failures);
+    expect_contains(taiyin_status_message(TAIYIN_EPHEMERIS_ERROR_NO_ROUTE),
+                    "no ephemeris route", "status message for no route", failures);
+    expect_true(taiyin_status_category(TAIYIN_EPHEMERIS_ERROR_LOAD_FAILED)
+                    == TAIYIN_STATUS_CATEGORY_EPHEMERIS,
+                "status category for ephemeris error", failures);
+
+    EphemerisEvalDiagnostic diagnostic;
+    diagnostic.status = TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP;
+    diagnostic.target_id = 399;
+    diagnostic.center_id = 10;
+    diagnostic.frame = EphemerisFrame::IcrfJ2000Equatorial;
+    diagnostic.jd_tdb = 2460310.5;
+    diagnostic.candidate_count = 1;
+    diagnostic.attempted_method_id = 90004;
+    diagnostic.nearest_coverage_start = 2451545.0;
+    diagnostic.nearest_coverage_end = 2460000.0;
+
+    const size_t required_without_buffer = format_ephemeris_eval_diagnostic(diagnostic, 0, 0);
+    expect_true(required_without_buffer > 0, "diagnostic formatter measures null buffer", failures);
+
+    char small[16];
+    const size_t required_with_small = format_ephemeris_eval_diagnostic(diagnostic, small, sizeof(small));
+    expect_size(required_with_small, required_without_buffer, "diagnostic formatter returns required length when truncated", failures);
+    expect_true(small[sizeof(small) - 1] == '\0', "diagnostic formatter null-terminates truncated buffer", failures);
+
+    char message[512];
+    const size_t written = format_ephemeris_eval_diagnostic(diagnostic, message, sizeof(message));
+    expect_true(written > 0 && written < sizeof(message), "diagnostic formatter writes full message", failures);
+    expect_contains(message, "TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP", "diagnostic formatter includes status name", failures);
+    expect_contains(message, "target=399 center=10", "diagnostic formatter includes route", failures);
+    expect_contains(message, "nearest_coverage=[2451545", "diagnostic formatter includes coverage", failures);
 }
 
 void test_ephemeris_service_descriptor_lookup(int* failures) {
@@ -793,6 +838,7 @@ int main() {
     int failures = 0;
     test_service_locator(&failures);
     test_taiyin_runtime_facade(&failures);
+    test_status_and_diagnostic_formatting(&failures);
     test_ephemeris_service_descriptor_lookup(&failures);
     test_ephemeris_service_cache_eval(&failures);
     test_ephemeris_service_cache_miss_loads_descriptor(&failures);

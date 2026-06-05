@@ -6,6 +6,9 @@
 #include "taiyin/physical_constants.h"
 
 #include <algorithm>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -34,6 +37,41 @@ EphemerisRequest make_component_request(
     request.frame = frame;
     request.jd_tdb = jd_tdb;
     return request;
+}
+
+bool append_diagnostic_text(
+    char* buffer,
+    size_t buffer_size,
+    size_t* offset,
+    const char* format,
+    ...
+) noexcept {
+    if (!offset || !format) {
+        return false;
+    }
+
+    char part[512];
+    va_list args;
+    va_start(args, format);
+    const int written = std::vsnprintf(part, sizeof(part), format, args);
+    va_end(args);
+    if (written < 0) {
+        return false;
+    }
+
+    const size_t actual = static_cast<size_t>(written);
+    if (buffer && buffer_size > 0 && *offset < buffer_size - 1) {
+        const size_t available = buffer_size - 1 - *offset;
+        const size_t part_len = actual < sizeof(part) ? actual : sizeof(part) - 1;
+        const size_t copy_len = part_len < available ? part_len : available;
+        if (copy_len > 0) {
+            std::memcpy(buffer + *offset, part, copy_len);
+        }
+        buffer[*offset + copy_len] = '\0';
+    }
+
+    *offset += actual;
+    return true;
 }
 
 void reset_diagnostic(
@@ -178,6 +216,76 @@ int cache_priority_bias_for_descriptor(
 }
 
 }  // namespace
+
+size_t format_ephemeris_eval_diagnostic(
+    const EphemerisEvalDiagnostic& diagnostic,
+    char* buffer,
+    size_t buffer_size
+) noexcept {
+    if (buffer && buffer_size > 0) {
+        buffer[0] = '\0';
+    }
+
+    size_t length = 0;
+    if (!append_diagnostic_text(
+            buffer,
+            buffer_size,
+            &length,
+            "%s (%d): %s; target=%d center=%d frame=%d jd_tdb=%.17g",
+            taiyin_status_name(diagnostic.status),
+            static_cast<int>(diagnostic.status),
+            taiyin_status_message(diagnostic.status),
+            diagnostic.target_id,
+            diagnostic.center_id,
+            static_cast<int>(diagnostic.frame),
+            diagnostic.jd_tdb)) {
+        return 0;
+    }
+
+    if (diagnostic.candidate_count > 0) {
+        append_diagnostic_text(
+            buffer,
+            buffer_size,
+            &length,
+            "; candidates=%d",
+            diagnostic.candidate_count);
+    }
+    if (diagnostic.attempted_method_id != 0) {
+        append_diagnostic_text(
+            buffer,
+            buffer_size,
+            &length,
+            "; method=%d",
+            diagnostic.attempted_method_id);
+    }
+    if (diagnostic.nearest_coverage_start != 0.0 || diagnostic.nearest_coverage_end != 0.0) {
+        append_diagnostic_text(
+            buffer,
+            buffer_size,
+            &length,
+            "; nearest_coverage=[%.17g, %.17g)",
+            diagnostic.nearest_coverage_start,
+            diagnostic.nearest_coverage_end);
+    }
+    if (diagnostic.component_target_id != 0 || diagnostic.component_center_id != 0
+        || diagnostic.component_method_id != 0) {
+        append_diagnostic_text(
+            buffer,
+            buffer_size,
+            &length,
+            "; component target=%d center=%d method=%d",
+            diagnostic.component_target_id,
+            diagnostic.component_center_id,
+            diagnostic.component_method_id);
+    }
+
+    if (buffer && buffer_size > 0) {
+        if (length >= buffer_size) {
+            buffer[buffer_size - 1] = '\0';
+        }
+    }
+    return length;
+}
 
 EphemerisService::EphemerisService() noexcept
     : catalog_(0), priorities_(0), cache_(0), inflight_() {}

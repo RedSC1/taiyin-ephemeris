@@ -50,6 +50,56 @@ inline bool taiyin_status_ok(TaiyinStatus status) noexcept {
     return status == TAIYIN_STATUS_OK;
 }
 
+inline const char* taiyin_status_name(TaiyinStatus status) noexcept {
+    switch (status) {
+    case TAIYIN_STATUS_OK: return "TAIYIN_STATUS_OK";
+    case TAIYIN_ERROR_INVALID_ARGUMENT: return "TAIYIN_ERROR_INVALID_ARGUMENT";
+    case TAIYIN_ERROR_OUT_OF_MEMORY: return "TAIYIN_ERROR_OUT_OF_MEMORY";
+    case TAIYIN_ERROR_INTERNAL: return "TAIYIN_ERROR_INTERNAL";
+    case TAIYIN_ERROR_UNSUPPORTED: return "TAIYIN_ERROR_UNSUPPORTED";
+    case TAIYIN_EPHEMERIS_ERROR_NO_ROUTE: return "TAIYIN_EPHEMERIS_ERROR_NO_ROUTE";
+    case TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP: return "TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP";
+    case TAIYIN_EPHEMERIS_ERROR_LOAD_FAILED: return "TAIYIN_EPHEMERIS_ERROR_LOAD_FAILED";
+    case TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED: return "TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED";
+    case TAIYIN_EPHEMERIS_ERROR_COMPOSITE_MISSING_COMPONENT: return "TAIYIN_EPHEMERIS_ERROR_COMPOSITE_MISSING_COMPONENT";
+    case TAIYIN_EPHEMERIS_ERROR_COMPOSITE_COVERAGE_GAP: return "TAIYIN_EPHEMERIS_ERROR_COMPOSITE_COVERAGE_GAP";
+    case TAIYIN_EPHEMERIS_ERROR_COMPOSITE_METHOD_MISMATCH: return "TAIYIN_EPHEMERIS_ERROR_COMPOSITE_METHOD_MISMATCH";
+    case TAIYIN_FILE_ERROR_NOT_FOUND: return "TAIYIN_FILE_ERROR_NOT_FOUND";
+    case TAIYIN_FILE_ERROR_BAD_FORMAT: return "TAIYIN_FILE_ERROR_BAD_FORMAT";
+    case TAIYIN_FILE_ERROR_UNSUPPORTED_FORMAT: return "TAIYIN_FILE_ERROR_UNSUPPORTED_FORMAT";
+    case TAIYIN_FILE_ERROR_DISCOVERY_FAILED: return "TAIYIN_FILE_ERROR_DISCOVERY_FAILED";
+    case TAIYIN_RUNTIME_ERROR_NOT_INITIALIZED: return "TAIYIN_RUNTIME_ERROR_NOT_INITIALIZED";
+    case TAIYIN_RUNTIME_ERROR_CACHE_INSERT_FAILED: return "TAIYIN_RUNTIME_ERROR_CACHE_INSERT_FAILED";
+    case TAIYIN_RUNTIME_ERROR_REGISTRY_FAILED: return "TAIYIN_RUNTIME_ERROR_REGISTRY_FAILED";
+    default: return "TAIYIN_STATUS_UNKNOWN";
+    }
+}
+
+inline const char* taiyin_status_message(TaiyinStatus status) noexcept {
+    switch (status) {
+    case TAIYIN_STATUS_OK: return "ok";
+    case TAIYIN_ERROR_INVALID_ARGUMENT: return "invalid argument";
+    case TAIYIN_ERROR_OUT_OF_MEMORY: return "out of memory";
+    case TAIYIN_ERROR_INTERNAL: return "internal error";
+    case TAIYIN_ERROR_UNSUPPORTED: return "unsupported operation";
+    case TAIYIN_EPHEMERIS_ERROR_NO_ROUTE: return "no ephemeris route matches the request";
+    case TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP: return "ephemeris route exists but does not cover the requested time";
+    case TAIYIN_EPHEMERIS_ERROR_LOAD_FAILED: return "ephemeris block load failed";
+    case TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED: return "ephemeris block evaluation failed";
+    case TAIYIN_EPHEMERIS_ERROR_COMPOSITE_MISSING_COMPONENT: return "composite ephemeris component is missing";
+    case TAIYIN_EPHEMERIS_ERROR_COMPOSITE_COVERAGE_GAP: return "composite ephemeris component does not cover the requested time";
+    case TAIYIN_EPHEMERIS_ERROR_COMPOSITE_METHOD_MISMATCH: return "composite ephemeris components use incompatible methods";
+    case TAIYIN_FILE_ERROR_NOT_FOUND: return "file not found";
+    case TAIYIN_FILE_ERROR_BAD_FORMAT: return "bad file format";
+    case TAIYIN_FILE_ERROR_UNSUPPORTED_FORMAT: return "unsupported file format";
+    case TAIYIN_FILE_ERROR_DISCOVERY_FAILED: return "file discovery failed";
+    case TAIYIN_RUNTIME_ERROR_NOT_INITIALIZED: return "runtime service is not initialized";
+    case TAIYIN_RUNTIME_ERROR_CACHE_INSERT_FAILED: return "runtime cache insert failed";
+    case TAIYIN_RUNTIME_ERROR_REGISTRY_FAILED: return "runtime registry operation failed";
+    default: return "unknown Taiyin status";
+    }
+}
+
 inline TaiyinStatusCategory taiyin_status_category(TaiyinStatus status) noexcept {
     if (status == TAIYIN_STATUS_OK) {
         return TAIYIN_STATUS_CATEGORY_OK;

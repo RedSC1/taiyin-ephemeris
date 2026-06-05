@@ -7,6 +7,8 @@
 #include "taiyin/state.h"
 #include "taiyin/status.h"
 
+#include <stddef.h>
+
 namespace taiyin {
 namespace runtime {
 
@@ -70,6 +72,12 @@ struct EphemerisEvalDiagnostic {
           component_center_id(0),
           component_method_id(0) {}
 };
+
+size_t format_ephemeris_eval_diagnostic(
+    const EphemerisEvalDiagnostic& diagnostic,
+    char* buffer,
+    size_t buffer_size
+) noexcept;
 
 class EphemerisService {
 public:
