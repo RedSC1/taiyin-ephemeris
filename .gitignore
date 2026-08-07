@@ -1,0 +1,8 @@
+.claude/
+build/
+build-*/
+.DS_Store
+*.o
+*.pch
+.cache/
+Testing/

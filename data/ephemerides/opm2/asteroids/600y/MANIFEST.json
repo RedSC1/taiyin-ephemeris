@@ -1,0 +1,651 @@
+{
+  "bodies": {
+    "ceres": {
+      "body_id": 2000001,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605535.5,
+        "jd_start": 2386035.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.007724938702907609,
+        "p50": 0.0020624431684156657,
+        "p95": 0.0037460859810450192,
+        "p99": 0.004561561998100549
+      },
+      "file": "ceres.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.007152330015607079,
+        "p50": 0.0020823049807676304,
+        "p95": 0.003798395509111141,
+        "p99": 0.004661619063586882
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099964.5,
+      "phase_frac": 0.1,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 439,
+      "shape_degree": 20,
+      "size_bytes": 32707,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "kind": "jpl_system_spk",
+          "path": "nasa-bsp/asteroids/sb441-n16.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/ceres/ceres_backward_-3100014_-1200525.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/ceres/ceres_forward_5008242_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": -1200526.0,
+          "jd_start": -3100014.5,
+          "sample_count": 3798978,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "sample_count": 12417537,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 5008243.0,
+          "sample_count": 5983546,
+          "source_id": 3
+        }
+      ]
+    },
+    "chiron": {
+      "body_id": 20002060,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605485.5,
+        "jd_start": 2386285.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.001389778108392929,
+        "p50": 0.00024306748416271084,
+        "p95": 0.000529911296317712,
+        "p99": 0.0006951749616876845
+      },
+      "file": "chiron.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.001381329849310405,
+        "p50": 0.00024677905315972166,
+        "p95": 0.0005436873015675928,
+        "p99": 0.0007203463585784076
+      },
+      "method": "raw_xyz_cheb",
+      "origin_jd": -3100014.5,
+      "phase_frac": 0.0,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 100.0,
+      "segments": 2192,
+      "shape_degree": null,
+      "size_bytes": 89582,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "kind": "jpl_horizons_spk",
+          "path": "nasa-bsp/asteroids/chiron.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/chiron/chiron_backward_-3100014_2378131.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/chiron/chiron_forward_2488434_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": 2378131.0,
+          "jd_start": -3100014.5,
+          "sample_count": 10956292,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "sample_count": 220607,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 2488435.0,
+          "sample_count": 11023162,
+          "source_id": 3
+        }
+      ]
+    },
+    "eros": {
+      "body_id": 2000433,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605701.85,
+        "jd_start": 2386186.6
+      },
+      "dense_validation_arcsec": {
+        "max": 0.007234606027330587,
+        "p50": 0.001534652624964423,
+        "p95": 0.003426090086343129,
+        "p99": 0.004593465015716008
+      },
+      "file": "eros.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0067139403298489215,
+        "p50": 0.0015074487914764688,
+        "p95": 0.0032557825698144843,
+        "p99": 0.004283021284567475
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099868.4,
+      "phase_frac": 0.4,
+      "quant": {
+        "base_km": 1.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 365.25,
+      "segments": 601,
+      "shape_degree": 20,
+      "size_bytes": 74581,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 2688976.5,
+          "jd_start": 2287184.5,
+          "kind": "jpl_system_spk",
+          "path": "nasa-bsp/asteroids/sb441-n373s.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/eros/eros_backward_-3100014_2287184.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/eros/eros_forward_2688976_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": 2287184.0,
+          "jd_start": -3100014.5,
+          "sample_count": 10774398,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 2688976.5,
+          "jd_start": 2287184.5,
+          "sample_count": 803585,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 2688977.0,
+          "sample_count": 10622078,
+          "source_id": 3
+        }
+      ]
+    },
+    "juno": {
+      "body_id": 2000003,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605885.5,
+        "jd_start": 2385885.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.01047562544599059,
+        "p50": 0.0022258427092280903,
+        "p95": 0.00441681691872709,
+        "p99": 0.0055740618052214225
+      },
+      "file": "juno.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.009688623257891096,
+        "p50": 0.0022089470292335003,
+        "p95": 0.004397200497946925,
+        "p99": 0.005580394151737263
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099614.5,
+      "phase_frac": 0.8,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 440,
+      "shape_degree": 20,
+      "size_bytes": 41191,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "kind": "jpl_system_spk",
+          "path": "nasa-bsp/asteroids/sb441-n16.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/juno/juno_backward_-3100014_-1200525.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/juno/juno_forward_5008242_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": -1200526.0,
+          "jd_start": -3100014.5,
+          "sample_count": 3798978,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "sample_count": 12417537,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 5008243.0,
+          "sample_count": 5983546,
+          "source_id": 3
+        }
+      ]
+    },
+    "lilith_1181": {
+      "body_id": 20001181,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605560.5,
+        "jd_start": 2386060.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.008394802689732134,
+        "p50": 0.0021877103329772207,
+        "p95": 0.004160668518818499,
+        "p99": 0.005181331306430455
+      },
+      "file": "lilith_1181.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.00798870946740657,
+        "p50": 0.002194319114017158,
+        "p95": 0.004213748518290486,
+        "p99": 0.005289932927081263
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099939.5,
+      "phase_frac": 0.15,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 439,
+      "shape_degree": 20,
+      "size_bytes": 37156,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "kind": "jpl_horizons_spk",
+          "path": "nasa-bsp/asteroids/lilith_1181.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/lilith/lilith_backward_-3100014_2378131.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/lilith/lilith_forward_2488434_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": 2378131.0,
+          "jd_start": -3100014.5,
+          "sample_count": 10956292,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "sample_count": 220607,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 2488435.0,
+          "sample_count": 11023162,
+          "source_id": 3
+        }
+      ]
+    },
+    "nessus": {
+      "body_id": 20007066,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605835.5,
+        "jd_start": 2385835.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.0014468270928811372,
+        "p50": 0.00020925558373075965,
+        "p95": 0.0005510598467839286,
+        "p99": 0.0007776273231110103
+      },
+      "file": "nessus.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.001366915307917591,
+        "p50": 0.00021040575753690678,
+        "p95": 0.0005539747788526038,
+        "p99": 0.0007780530465380118
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099664.5,
+      "phase_frac": 0.7,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 440,
+      "shape_degree": 20,
+      "size_bytes": 26401,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "kind": "jpl_horizons_spk",
+          "path": "nasa-bsp/asteroids/nessus.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/nessus/nessus_backward_-3100014_2378131.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/nessus/nessus_forward_2488434_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": 2378131.0,
+          "jd_start": -3100014.5,
+          "sample_count": 10956292,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "sample_count": 220607,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 2488435.0,
+          "sample_count": 11023162,
+          "source_id": 3
+        }
+      ]
+    },
+    "pallas": {
+      "body_id": 2000002,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605735.5,
+        "jd_start": 2386235.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.009206956835242492,
+        "p50": 0.0021792615845986334,
+        "p95": 0.0041893783397152365,
+        "p99": 0.005220065954911837
+      },
+      "file": "pallas.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.008620219007859297,
+        "p50": 0.0021878591001432387,
+        "p95": 0.004239790399753503,
+        "p99": 0.005305508042571938
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099764.5,
+      "phase_frac": 0.5,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 439,
+      "shape_degree": 20,
+      "size_bytes": 39842,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "kind": "jpl_system_spk",
+          "path": "nasa-bsp/asteroids/sb441-n16.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/pallas/pallas_backward_-3100014_-1200525.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/pallas/pallas_forward_5008242_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": -1200526.0,
+          "jd_start": -3100014.5,
+          "sample_count": 3798978,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "sample_count": 12417537,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 5008243.0,
+          "sample_count": 5983546,
+          "source_id": 3
+        }
+      ]
+    },
+    "pholus": {
+      "body_id": 20005145,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605835.5,
+        "jd_start": 2385835.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.0017818928198440258,
+        "p50": 0.000253614980037711,
+        "p95": 0.0007106368675127401,
+        "p99": 0.0010361996886973997
+      },
+      "file": "pholus.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.001653080029356385,
+        "p50": 0.0002564742424754294,
+        "p95": 0.00071723311232789,
+        "p99": 0.0010508919027959708
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099664.5,
+      "phase_frac": 0.7,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 440,
+      "shape_degree": 20,
+      "size_bytes": 28488,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "kind": "jpl_horizons_spk",
+          "path": "nasa-bsp/asteroids/pholus.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/pholus/pholus_backward_-3100014_2378131.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/pholus/pholus_forward_2488434_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": 2378131.0,
+          "jd_start": -3100014.5,
+          "sample_count": 10956292,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 2488434.5,
+          "jd_start": 2378131.5,
+          "sample_count": 220607,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 2488435.0,
+          "sample_count": 11023162,
+          "source_id": 3
+        }
+      ]
+    },
+    "vesta": {
+      "body_id": 2000004,
+      "canonical_metadata_schema_version": 2,
+      "center": "sun",
+      "coverage": {
+        "jd_end": 2605460.5,
+        "jd_start": 2385960.5
+      },
+      "dense_validation_arcsec": {
+        "max": 0.008766464757646754,
+        "p50": 0.0024095229690484607,
+        "p95": 0.004469972982573282,
+        "p99": 0.005432864740928178
+      },
+      "file": "vesta.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.008543192592712029,
+        "p50": 0.002412761564300758,
+        "p95": 0.0045429901773157205,
+        "p99": 0.005545733761266963
+      },
+      "method": "fixed_frame_shape",
+      "origin_jd": -3099539.5,
+      "phase_frac": 0.95,
+      "quant": {
+        "base_km": 3.0,
+        "pattern": "flat"
+      },
+      "residual_degree": 24,
+      "segment_days": 500.0,
+      "segments": 439,
+      "shape_degree": 20,
+      "size_bytes": 34627,
+      "source_id": {
+        "1": {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "kind": "jpl_system_spk",
+          "path": "nasa-bsp/asteroids/sb441-n16.bsp"
+        },
+        "2": {
+          "kind": "self_integrated_backward",
+          "path": "integrated-v2/vesta/vesta_backward_-3100014_-1200525.npz"
+        },
+        "3": {
+          "kind": "self_integrated_forward",
+          "path": "integrated-v2/vesta/vesta_forward_5008242_8000015.npz"
+        }
+      },
+      "source_intervals": [
+        {
+          "jd_end_inclusive": -1200526.0,
+          "jd_start": -3100014.5,
+          "sample_count": 3798978,
+          "source_id": 2
+        },
+        {
+          "jd_end_inclusive": 5008242.5,
+          "jd_start": -1200525.5,
+          "sample_count": 12417537,
+          "source_id": 1
+        },
+        {
+          "jd_end_inclusive": 8000015.5,
+          "jd_start": 5008243.0,
+          "sample_count": 5983546,
+          "source_id": 3
+        }
+      ]
+    }
+  },
+  "canonical_end": 8000015.5,
+  "canonical_start": -3100014.5,
+  "dense_step_days": 1.0,
+  "origin_rule": "origin_jd = canonical_start + phase_frac * segment_days",
+  "product_end": 7999535.5,
+  "range": {
+    "days": 219150.0,
+    "jd_end": 2605445.0,
+    "jd_start": 2386295.0
+  },
+  "schema_version": 1,
+  "shard_grid": {
+    "count": 51,
+    "days": 219150.0,
+    "jd_start": -3092455.0
+  },
+  "shard_index": 25
+}

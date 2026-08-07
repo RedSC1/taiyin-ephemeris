@@ -1,0 +1,11 @@
+{
+    local:
+        taiyin_ganzhi_rules_*;
+        taiyin_bazi_rules_*;
+        taiyin_dynamic_bitset_*;
+        TAIYIN_GANZHI_RULES_*;
+        TAIYIN_BAZI_RULES_*;
+        TAIYIN_DYNAMIC_BITSET_*;
+        $TAIYIN_BAZI_RULES$_*;
+        $TAIYIN_DYNAMIC_BITSET$_*;
+};

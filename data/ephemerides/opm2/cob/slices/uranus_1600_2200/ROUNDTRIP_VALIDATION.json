@@ -1,0 +1,26 @@
+{
+  "bodies": {
+    "uranus": {
+      "coverage": {
+        "jd_end": 2524582.5,
+        "jd_start": 2305447.5
+      },
+      "nodes": 219136,
+      "position_error_arcsec_at_1au": {
+        "max": 0.0007384792809393008,
+        "p50": 0.0004460939202116097,
+        "p95": 0.0006542660034878243,
+        "p99": 0.0007163807569086984
+      },
+      "position_error_km": {
+        "max": 0.5355975650651826,
+        "p50": 0.3235389585362769,
+        "p95": 0.47452012184727765,
+        "p99": 0.5195701476848731
+      },
+      "step_days": 1.0
+    }
+  },
+  "description": "File-level COB OPM2 reader roundtrip validation against source BSP.",
+  "schema_version": 1
+}

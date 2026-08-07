@@ -1,0 +1,199 @@
+{
+  "lineT": [
+    {
+      "args": [
+        0.12,
+        -0.08,
+        -0.65,
+        0.21,
+        0.37,
+        0
+      ],
+      "value": -0.33543750709237763
+    },
+    {
+      "args": [
+        0.12,
+        -0.08,
+        -0.65,
+        0.21,
+        0.37,
+        1
+      ],
+      "value": 0.7417812704871483
+    },
+    {
+      "args": [
+        0.9,
+        0.7,
+        0.1,
+        0.2,
+        0.1,
+        0
+      ],
+      "value": null
+    }
+  ],
+  "lecXY": [
+    {
+      "args": {
+        "moonLon": 3.2201,
+        "moonLat": -0.0043,
+        "moonDistAu": 0.002569555,
+        "sunLon": 0.0784,
+        "sunLat": 0.00012,
+        "sunDistAu": 1.0032,
+        "earthRadiusKm": 6378.137,
+        "sunRadiusKm": 695700,
+        "moonRadiusKm": 1737.4,
+        "shadowEarthScale": 1.01,
+        "shadowSunScale": 1,
+        "shadowParallaxScale": 1
+      },
+      "value": {
+        "x": 0.00010734614806184882,
+        "y": -0.00418,
+        "rmin": 0.004181378145480712,
+        "moonRadius": 0.004519740804790809,
+        "umbraRadius": 0.012164640250493264,
+        "penumbraRadius": 0.021433224166694468,
+        "moonDistAu": 0.002569555,
+        "sunDistAu": 1.0032
+      }
+    },
+    {
+      "args": {
+        "moonLon": 0.02,
+        "moonLat": 0.012,
+        "moonDistAu": 0.00271,
+        "sunLon": 3.14,
+        "sunLat": -0.004,
+        "sunDistAu": 0.985,
+        "earthRadiusKm": 6378.137,
+        "sunRadiusKm": 695700,
+        "moonRadiusKm": 1737.4,
+        "shadowEarthScale": 1,
+        "shadowSunScale": 1,
+        "shadowParallaxScale": 1
+      },
+      "value": {
+        "x": 0.021591962628563274,
+        "y": 0.008,
+        "rmin": 0.023026351212323524,
+        "moonRadius": 0.004285509434697878,
+        "umbraRadius": 0.011054098374603588,
+        "penumbraRadius": 0.02049425198458518,
+        "moonDistAu": 0.00271,
+        "sunDistAu": 0.985
+      }
+    },
+    {
+      "args": {
+        "moonLon": -2.9,
+        "moonLat": 0.031,
+        "moonDistAu": 0.00245,
+        "sunLon": 0.24,
+        "sunLat": -0.02,
+        "sunDistAu": 1.015,
+        "earthRadiusKm": 6378.137,
+        "sunRadiusKm": 695700,
+        "moonRadiusKm": 1737.4,
+        "shadowEarthScale": 1,
+        "shadowSunScale": 1.0008,
+        "shadowParallaxScale": 0.998
+      },
+      "value": {
+        "x": 0.0015921358063533566,
+        "y": 0.011,
+        "rmin": 0.011114625338978928,
+        "moonRadius": 0.00474029170502435,
+        "umbraRadius": 0.012857933488407532,
+        "penumbraRadius": 0.02202589262276697,
+        "moonDistAu": 0.00245,
+        "sunDistAu": 1.015
+      }
+    }
+  ],
+  "lecMax": [
+    {
+      "args": {
+        "z1": {
+          "x": 0.00010734614806184882,
+          "y": -0.00418,
+          "rmin": 0.004181378145480712,
+          "moonRadius": 0.004519740804790809,
+          "umbraRadius": 0.012164640250493264,
+          "penumbraRadius": 0.021433224166694468,
+          "moonDistAu": 0.002569555,
+          "sunDistAu": 1.0032
+        },
+        "z2": {
+          "x": 0.000557345175400288,
+          "y": -0.0039900000000000005,
+          "rmin": 0.004028738468123984,
+          "moonRadius": 0.004519661654118948,
+          "umbraRadius": 0.012164346813670806,
+          "penumbraRadius": 0.02143293082124382,
+          "moonDistAu": 0.0025696,
+          "sunDistAu": 1.0032
+        },
+        "dt": 0.0006944444444444445
+      },
+      "value": {
+        "geometry": {
+          "x": 0.00010734614806184882,
+          "y": -0.00418,
+          "rmin": 0.004181378145480712,
+          "moonRadius": 0.004519740804790809,
+          "umbraRadius": 0.012164640250493264,
+          "penumbraRadius": 0.021433224166694468,
+          "moonDistAu": 0.002569555,
+          "sunDistAu": 1.0032
+        },
+        "vx": 0.6479985993673525,
+        "vy": 0.27359999999999884,
+        "dt": 0.0021709307604240264
+      }
+    },
+    {
+      "args": {
+        "z1": {
+          "x": 0.021591962628563274,
+          "y": 0.008,
+          "rmin": 0.023026351212323524,
+          "moonRadius": 0.004285509434697878,
+          "umbraRadius": 0.011054098374603588,
+          "penumbraRadius": 0.02049425198458518,
+          "moonDistAu": 0.00271,
+          "sunDistAu": 0.985
+        },
+        "z2": {
+          "x": 0.021291937734790763,
+          "y": 0.008199999999999999,
+          "rmin": 0.02281636720650785,
+          "moonRadius": 0.004285193188150016,
+          "umbraRadius": 0.011052937528275474,
+          "penumbraRadius": 0.020493091483948848,
+          "moonDistAu": 0.0027102,
+          "sunDistAu": 0.985
+        },
+        "dt": 0.001388888888888889
+      },
+      "value": {
+        "geometry": {
+          "x": 0.021591962628563274,
+          "y": 0.008,
+          "rmin": 0.023026351212323524,
+          "moonRadius": 0.004285509434697878,
+          "umbraRadius": 0.011054098374603588,
+          "penumbraRadius": 0.02049425198458518,
+          "moonDistAu": 0.00271,
+          "sunDistAu": 0.985
+        },
+        "vx": -0.2160179235162074,
+        "vy": 0.14399999999999913,
+        "dt": 0.05211074643203852
+      }
+    }
+  ]
+}

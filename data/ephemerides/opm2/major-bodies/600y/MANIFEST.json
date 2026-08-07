@@ -1,0 +1,222 @@
+{
+  "bodies": {
+    "emb": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2598025.4570906167,
+        "jd_start": 2378139.1437737527
+      },
+      "file": "emb.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3100025.1870008665,
+        "period_days": 365.259656672531,
+        "segment_count": 602
+      },
+      "model_id": 2,
+      "size_bytes": 77324,
+      "storage_kind": 2,
+      "target_id": 3,
+      "time_scale_id": 1
+    },
+    "jupiter": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2599895.0,
+        "jd_start": 2377895.0
+      },
+      "file": "jupiter.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2377895.0,
+        "period_days": 3000.0,
+        "segment_count": 74
+      },
+      "model_id": 2,
+      "size_bytes": 10156,
+      "storage_kind": 2,
+      "target_id": 5,
+      "time_scale_id": 1
+    },
+    "mars": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2597849.1625827192,
+        "jd_start": 2378010.4342432637
+      },
+      "file": "mars.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3099408.881539479,
+        "period_days": 686.996026060798,
+        "segment_count": 320
+      },
+      "model_id": 2,
+      "size_bytes": 40775,
+      "storage_kind": 2,
+      "target_id": 4,
+      "time_scale_id": 1
+    },
+    "mercury": {
+      "center_id": 10,
+      "coverage": {
+        "jd_end": 2597707.332573687,
+        "jd_start": 2378399.7442572084
+      },
+      "file": "mercury.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3099979.465529,
+        "period_days": 87.969349505206,
+        "segment_count": 2493
+      },
+      "model_id": 3,
+      "size_bytes": 186676,
+      "storage_kind": 3,
+      "target_id": 1,
+      "time_scale_id": 1
+    },
+    "moon": {
+      "center_id": 399,
+      "coverage": {
+        "jd_end": 2597711.1940055736,
+        "jd_start": 2378459.7333803843
+      },
+      "file": "moon.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3099988.6648125756,
+        "period_days": 27.554538221087,
+        "segment_count": 7957
+      },
+      "model_id": 5,
+      "size_bytes": 1186727,
+      "storage_kind": 4,
+      "target_id": 301,
+      "time_scale_id": 1
+    },
+    "neptune": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2599544.500009553,
+        "jd_start": 2375544.500009553
+      },
+      "file": "neptune.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3100455.499990447,
+        "period_days": 4000.0,
+        "segment_count": 56
+      },
+      "model_id": 2,
+      "size_bytes": 3763,
+      "storage_kind": 2,
+      "target_id": 8,
+      "time_scale_id": 1
+    },
+    "pluto": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2601614.50000933,
+        "jd_start": 2377614.50000933
+      },
+      "file": "pluto.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3098385.49999067,
+        "period_days": 4000.0,
+        "segment_count": 56
+      },
+      "model_id": 2,
+      "size_bytes": 4202,
+      "storage_kind": 2,
+      "target_id": 9,
+      "time_scale_id": 1
+    },
+    "saturn": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2599430.0,
+        "jd_start": 2375430.0
+      },
+      "file": "saturn.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2378930.0,
+        "period_days": 3500.0,
+        "segment_count": 64
+      },
+      "model_id": 2,
+      "size_bytes": 8359,
+      "storage_kind": 2,
+      "target_id": 6,
+      "time_scale_id": 1
+    },
+    "sun": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2597705.0,
+        "jd_start": 2378285.0
+      },
+      "file": "sun.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2378465.0,
+        "period_days": 180.0,
+        "segment_count": 1219
+      },
+      "model_id": 1,
+      "size_bytes": 102119,
+      "storage_kind": 2,
+      "target_id": 10,
+      "time_scale_id": 1
+    },
+    "uranus": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2600074.500009106,
+        "jd_start": 2376074.500009106
+      },
+      "file": "uranus.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3095925.499990894,
+        "period_days": 4000.0,
+        "segment_count": 56
+      },
+      "model_id": 2,
+      "size_bytes": 4864,
+      "storage_kind": 2,
+      "target_id": 7,
+      "time_scale_id": 1
+    },
+    "venus": {
+      "center_id": 10,
+      "coverage": {
+        "jd_end": 2597804.905337893,
+        "jd_start": 2378272.403579731
+      },
+      "file": "venus.opm2",
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": -3099928.6126577263,
+        "period_days": 224.700615924424,
+        "segment_count": 977
+      },
+      "model_id": 3,
+      "size_bytes": 88798,
+      "storage_kind": 3,
+      "target_id": 2,
+      "time_scale_id": 1
+    }
+  },
+  "body_id_policy": "OPM2 EPHE target/center IDs identify the stored vector: SSB=0, Sun=10, Mercury/Venus barycenters=1/2 relative to Sun, Mars..Pluto barycenters=4..9 relative to SSB, Moon=301 relative to Earth=399.",
+  "description": "600-year polished major-body OPM2 data",
+  "product_range": {
+    "calendar": "1800-01-01 .. 2400-01-01",
+    "jd_end": 2597641.5,
+    "jd_start": 2378496.5
+  },
+  "schema_version": 1,
+  "source_policy": "Packaged OPM2 product; build provenance is not a runtime source identity."
+}

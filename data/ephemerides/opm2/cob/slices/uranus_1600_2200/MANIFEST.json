@@ -1,0 +1,34 @@
+{
+  "bodies": {
+    "uranus": {
+      "body": "uranus",
+      "center_id": 7,
+      "degree": 20,
+      "file": "uranus_cob.opm2",
+      "fit_validation_position_km": {
+        "max": 0.45490960023917115,
+        "p50": 0.23714363945435857,
+        "p95": 0.40584784009562574,
+        "p99": 0.4308262372793707
+      },
+      "opm2_coverage": {
+        "jd_end": 2524582.5,
+        "jd_start": 2305447.5
+      },
+      "quant_km": 0.002,
+      "segment_days": 15.0,
+      "segments": 14609,
+      "size_bytes": 1350630,
+      "source_bsp": "nasa-bsp/satellites/ura111xl-799.bsp",
+      "source_coverage": {
+        "jd_end": 7930182.5,
+        "jd_start": -2661850.5
+      },
+      "target_id": 799,
+      "trimmed_tail_days": 11.0
+    }
+  },
+  "description": "COB OPM2 files generated from local NASA satellite BSP coverage.",
+  "generator": "ephemeris-data/tools/generate_cob_opm2.py",
+  "schema_version": 1
+}

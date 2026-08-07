@@ -1,0 +1,115 @@
+{
+  "bodies": {
+    "jupiter": {
+      "body": "jupiter",
+      "center_id": 5,
+      "degree": 18,
+      "file": "jupiter_cob.opm2",
+      "fit_validation_position_km": {
+        "max": 0.1103937508330592,
+        "p50": 0.0401867534631935,
+        "p95": 0.08180190862032967,
+        "p99": 0.09178564869828021
+      },
+      "opm2_coverage": {
+        "jd_end": 2524598.5,
+        "jd_start": 2305456.5
+      },
+      "quant_km": 0.004999999888241291,
+      "segment_days": 7.0,
+      "segments": 31306,
+      "size_bytes": 2646459,
+      "source_bsp": "nasa-bsp/satellites/jup365.bsp",
+      "source_coverage": {
+        "jd_end": 2524602.5,
+        "jd_start": 2305456.5
+      },
+      "target_id": 599,
+      "trimmed_tail_days": 4.0
+    },
+    "neptune": {
+      "body": "neptune",
+      "center_id": 8,
+      "degree": 18,
+      "file": "neptune_cob.opm2",
+      "fit_validation_position_km": {
+        "max": 0.05496039558358277,
+        "p50": 0.007621937548024292,
+        "p95": 0.01800040386593021,
+        "p99": 0.026973670005515413
+      },
+      "opm2_coverage": {
+        "jd_end": 2597636.5,
+        "jd_start": 2305456.5
+      },
+      "quant_km": 0.004999999888241291,
+      "segment_days": 7.0,
+      "segments": 41740,
+      "size_bytes": 2354197,
+      "source_bsp": "nasa-bsp/satellites/nep097.bsp",
+      "source_coverage": {
+        "jd_end": 2597640.5,
+        "jd_start": 2305456.5
+      },
+      "target_id": 899,
+      "trimmed_tail_days": 4.0
+    },
+    "pluto": {
+      "body": "pluto",
+      "center_id": 9,
+      "degree": 18,
+      "file": "pluto_cob.opm2",
+      "fit_validation_position_km": {
+        "max": 0.2447993623979295,
+        "p50": 0.057461341521058557,
+        "p95": 0.1037150904081831,
+        "p99": 0.1258723067067044
+      },
+      "opm2_coverage": {
+        "jd_end": 2524587.5,
+        "jd_start": 2378497.5
+      },
+      "quant_km": 0.05000000074505806,
+      "segment_days": 7.0,
+      "segments": 20870,
+      "size_bytes": 1096772,
+      "source_bsp": "nasa-bsp/satellites/plu060.bsp",
+      "source_coverage": {
+        "jd_end": 2524591.5,
+        "jd_start": 2378497.5
+      },
+      "target_id": 999,
+      "trimmed_tail_days": 4.0
+    },
+    "saturn": {
+      "body": "saturn",
+      "center_id": 6,
+      "degree": 18,
+      "file": "saturn_cob.opm2",
+      "fit_validation_position_km": {
+        "max": 0.06024651533614609,
+        "p50": 0.015589995195564029,
+        "p95": 0.02899602208931709,
+        "p99": 0.03523617833137787
+      },
+      "opm2_coverage": {
+        "jd_end": 2542855.5,
+        "jd_start": 2360232.5
+      },
+      "quant_km": 0.009999999776482582,
+      "segment_days": 7.0,
+      "segments": 26089,
+      "size_bytes": 1289246,
+      "source_bsp": "nasa-bsp/satellites/sat441.bsp",
+      "source_coverage": {
+        "jd_end": 2542860.5,
+        "jd_start": 2360232.5
+      },
+      "target_id": 699,
+      "trimmed_tail_days": 5.0
+    }
+  },
+  "description": "COB OPM2 files generated from local NASA satellite BSP coverage.",
+  "generator": "ephemeris-data/tools/generate_cob_opm2.py",
+  "schema_version": 1
+}

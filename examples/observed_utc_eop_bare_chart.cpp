@@ -1,0 +1,125 @@
+#include "taiyin/angle.h"
+#include "taiyin/body_id.h"
+#include "taiyin/dispatch.h"
+#include "taiyin/runtime/observed_position.h"
+#include "taiyin/runtime/runtime.h"
+#include "taiyin/time.h"
+
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <string>
+
+namespace {
+
+using namespace taiyin;
+using namespace taiyin::runtime;
+
+struct BodySpec {
+    const char* name;
+    int body_id;
+};
+
+const char* data_root_from_args(int argc, char** argv) {
+    if (argc > 1 && argv[1] && argv[1][0] != '\0') {
+        return argv[1];
+    }
+    const char* env = std::getenv("TAIYIN_DATA_ROOT");
+    return env && env[0] != '\0' ? env : "data";
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    const char* data_root = data_root_from_args(argc, argv);
+
+    EphemerisRuntimeConfig config;
+    config.segment_cache_max_entries = 4096;
+    config.data_root = data_root;
+    config.load_packaged_data = true;
+    config.load_builtin_eop = true;
+    if (!initialize_global_ephemeris_runtime(config)) {
+        std::cerr << "failed to initialize runtime from data root: " << data_root << "\n";
+        return 1;
+    }
+
+    NativeCalcContext context;
+    const NativeObserverLocation beijing = native_observer_location_degrees(116.4074, 39.9042, 43.5);
+    if (native_context_set_observer_location(&context, beijing) != TAIYIN_STATUS_OK
+        || native_context_set_atmosphere_pressure_temperature(&context, 1010.0, 10.0) != TAIYIN_STATUS_OK
+        || native_context_set_refraction_model(&context, dispatch::REFRACTION_BENNETT) != TAIYIN_STATUS_OK) {
+        std::cerr << "failed to configure native calculation context\n";
+        return 1;
+    }
+
+    const BodySpec bodies[] = {
+        { "Sun", TAIYIN_BODY_SUN },
+        { "Moon", TAIYIN_BODY_MOON },
+        { "Mercury", TAIYIN_BODY_MERCURY_BARYCENTER },
+        { "Venus", TAIYIN_BODY_VENUS_BARYCENTER },
+        { "Mars", TAIYIN_BODY_MARS_BARYCENTER },
+        { "Jupiter", TAIYIN_BODY_JUPITER_BARYCENTER },
+        { "Saturn", TAIYIN_BODY_SATURN_BARYCENTER },
+        { "Uranus", TAIYIN_BODY_URANUS_BARYCENTER },
+        { "Neptune", TAIYIN_BODY_NEPTUNE_BARYCENTER },
+        { "Pluto", TAIYIN_BODY_PLUTO_BARYCENTER },
+    };
+    const size_t body_count = sizeof(bodies) / sizeof(bodies[0]);
+    int body_ids[sizeof(bodies) / sizeof(bodies[0])];
+    for (size_t i = 0; i < body_count; ++i) {
+        body_ids[i] = bodies[i].body_id;
+    }
+
+    const CalendarDateTime datetime_utc = { 2024, 1, 1, 12, 0, 0.0 };
+    const uint32_t flags =
+        TAIYIN_OBSERVED_SPEED
+        | TAIYIN_OBSERVED_TOPOCENTRIC
+        | TAIYIN_OBSERVED_HORIZONTAL
+        | TAIYIN_OBSERVED_REFRACTION;
+
+    ObservedPosition observed[sizeof(bodies) / sizeof(bodies[0])];
+    EphemerisEvalDiagnostic diagnostics[sizeof(bodies) / sizeof(bodies[0])];
+    const Status status = calc_observed_utc(
+        &context,
+        datetime_utc,
+        body_ids,
+        body_count,
+        flags,
+        observed,
+        diagnostics);
+    if (status != TAIYIN_STATUS_OK) {
+        std::cerr << "calc_observed_utc failed: " << status_name(status) << "\n";
+        return 1;
+    }
+
+    std::cout << std::fixed;
+    std::cout << "Taiyin observed UTC/EOP bare chart\n";
+    std::cout << "data_root: " << data_root << "\n";
+    std::cout << "utc: 2024-01-01T12:00:00Z\n";
+    std::cout << "observer: Beijing lon=116.4074 lat=39.9042 height=43.5m\n";
+    std::cout << "time: built-in leap seconds + built-in finals2000A EOP\n";
+    std::cout << "atmosphere: Bennett pressure=1010mbar temperature=10C\n\n";
+
+    std::cout << std::left << std::setw(10) << "Body"
+              << std::right << std::setw(12) << "RA(deg)"
+              << std::setw(12) << "Dec(deg)"
+              << std::setw(12) << "Az(deg)"
+              << std::setw(12) << "Alt(deg)"
+              << std::setw(15) << "RefrAlt(deg)"
+              << std::setw(12) << "Dist(AU)"
+              << "\n";
+    std::cout << std::string(85, '-') << "\n";
+
+    for (size_t i = 0; i < body_count; ++i) {
+        std::cout << std::left << std::setw(10) << bodies[i].name << std::right;
+        std::cout << std::setw(12) << std::setprecision(5) << normalize_degrees(rad_to_deg(observed[i].apparent.longitude_rad))
+                  << std::setw(12) << std::setprecision(5) << rad_to_deg(observed[i].apparent.latitude_rad)
+                  << std::setw(12) << std::setprecision(5) << rad_to_deg(observed[i].horizontal.azimuth_rad)
+                  << std::setw(12) << std::setprecision(5) << rad_to_deg(observed[i].horizontal.altitude_rad)
+                  << std::setw(15) << std::setprecision(5) << rad_to_deg(observed[i].refracted_horizontal.altitude_rad)
+                  << std::setw(12) << std::setprecision(6) << observed[i].apparent.distance_au
+                  << "\n";
+    }
+
+    return 0;
+}

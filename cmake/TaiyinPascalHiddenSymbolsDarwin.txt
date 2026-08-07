@@ -1,0 +1,8 @@
+_taiyin_ganzhi_rules_*
+_taiyin_bazi_rules_*
+_taiyin_dynamic_bitset_*
+_TAIYIN_GANZHI_RULES_*
+_TAIYIN_BAZI_RULES_*
+_TAIYIN_DYNAMIC_BITSET_*
+_$TAIYIN_BAZI_RULES$_*
+_$TAIYIN_DYNAMIC_BITSET$_*
