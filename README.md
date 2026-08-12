@@ -1,6 +1,6 @@
-# Taiyin Ephemeris
+# Taiyin Ephemeris（太阴星历）
 
-[中文](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
+[中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
 > **Pre-release notice:** The current `1.0.0` version label identifies an
 > in-development pre-release, not a final production release. Public APIs,

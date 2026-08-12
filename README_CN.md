@@ -1,6 +1,6 @@
-# Taiyin Ephemeris
+# Taiyin Ephemeris（太阴星历）
 
-[English](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
+[English README](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
 > **预发布说明：** 当前的 `1.0.0` 版本号表示开发中的预发布版本，并非最终稳定发布。
 > 公开 API、随包数据边界、文档和计划中的语言绑定在首个稳定版发布前仍可能调整。
