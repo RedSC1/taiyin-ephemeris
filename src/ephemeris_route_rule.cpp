@@ -36,7 +36,8 @@ bool ephemeris_route_source_usage_is_anchored(
     bool used_exact_source,
     bool used_auxiliary_source
 ) noexcept {
-    return !rule.allow_non_de_spk_auxiliary
+    return (!rule.allow_non_de_spk_auxiliary
+            && !rule.allow_builtin_semi_analytic_auxiliary)
         || !used_auxiliary_source
         || used_exact_source;
 }
@@ -55,7 +56,8 @@ bool EphemerisRouteRuleTable::upsert_source_method(
     int method_id,
     int priority,
     const char* description,
-    bool allow_non_de_spk_auxiliary
+    bool allow_non_de_spk_auxiliary,
+    bool allow_builtin_semi_analytic_auxiliary
 ) noexcept {
     if (method_id == 0) {
         return false;
@@ -69,6 +71,7 @@ bool EphemerisRouteRuleTable::upsert_source_method(
             rule.priority = priority;
             rule.order = next_order_++;
             rule.allow_non_de_spk_auxiliary = allow_non_de_spk_auxiliary;
+            rule.allow_builtin_semi_analytic_auxiliary = allow_builtin_semi_analytic_auxiliary;
             if (description) {
                 rule.description = description;
             }
@@ -76,6 +79,7 @@ bool EphemerisRouteRuleTable::upsert_source_method(
         } else {
             it->priority = priority;
             it->allow_non_de_spk_auxiliary = allow_non_de_spk_auxiliary;
+            it->allow_builtin_semi_analytic_auxiliary = allow_builtin_semi_analytic_auxiliary;
             if (description) {
                 it->description = description;
             }

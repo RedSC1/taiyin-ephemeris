@@ -15,6 +15,7 @@ struct EphemerisRouteRule {
     int priority;
     uint64_t order;
     bool allow_non_de_spk_auxiliary;
+    bool allow_builtin_semi_analytic_auxiliary;
     std::string description;
 
     EphemerisRouteRule() noexcept
@@ -23,10 +24,12 @@ struct EphemerisRouteRule {
           priority(0),
           order(0),
           allow_non_de_spk_auxiliary(false),
+          allow_builtin_semi_analytic_auxiliary(false),
           description() {}
 };
 
-// A named-DE rule may use non-DE satellite descriptors only as auxiliaries.
+// A named-DE rule may use explicitly permitted satellite descriptors only as
+// auxiliaries.
 // Such a composite is valid only when at least one successfully used
 // descriptor came from the named DE source itself.
 bool ephemeris_route_source_usage_is_anchored(
@@ -45,7 +48,8 @@ public:
         int method_id,
         int priority,
         const char* description,
-        bool allow_non_de_spk_auxiliary = false
+        bool allow_non_de_spk_auxiliary = false,
+        bool allow_builtin_semi_analytic_auxiliary = false
     ) noexcept;
     const std::vector<EphemerisRouteRule>& rules() const noexcept;
     size_t method_count() const noexcept;

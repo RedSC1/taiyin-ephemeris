@@ -84,5 +84,21 @@ int main() {
     }
     expect_true(found_auxiliary_rule, "auxiliary-SPK flag is retained by route rule");
 
+    expect_true(
+        table.upsert_source_method(
+            88, 701, 50, "named OPM2 primary with built-in correction", false, true),
+        "insert named source with built-in semi-analytic auxiliary");
+    rules = &table.rules();
+    bool found_semi_analytic_auxiliary_rule = false;
+    for (size_t i = 0; i < rules->size(); ++i) {
+        if ((*rules)[i].source_id == 88 && (*rules)[i].method_id == 701) {
+            found_semi_analytic_auxiliary_rule =
+                (*rules)[i].allow_builtin_semi_analytic_auxiliary;
+        }
+    }
+    expect_true(
+        found_semi_analytic_auxiliary_rule,
+        "built-in semi-analytic auxiliary flag is retained by route rule");
+
     return 0;
 }

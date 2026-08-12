@@ -5,6 +5,7 @@
 #include "taiyin/internal/ephemeris_discovery.h"
 #include "taiyin/internal/ephemeris_source_identity.h"
 #include "taiyin/internal/opm2.h"
+#include "taiyin/internal/semi_analytic.h"
 #include "taiyin/internal/spk_catalog_discovery.h"
 #include "taiyin/physical_constants.h"
 #include <algorithm>
@@ -1039,6 +1040,42 @@ Status EphemerisEngine::eval_direct_body_state_for_rule(
     return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
 }
 
+Status EphemerisEngine::eval_builtin_semi_analytic_auxiliary(
+    const EphemerisRequest& request,
+    const internal::EphemerisRouteRule& primary_rule,
+    EphemerisResult* out,
+    RuleSourceUsage* usage,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (out) {
+        *out = EphemerisResult();
+    }
+    if (usage) {
+        *usage = RuleSourceUsage();
+    }
+    if (!out || !usage || !primary_rule.allow_builtin_semi_analytic_auxiliary) {
+        return set_diagnostic_status(diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
+    }
+
+    // The main named product remains the anchor. This restricted path is only
+    // for an explicitly opted-in built-in relative-body correction (currently
+    // Mars versus its barycenter), never for a standalone fallback route.
+    internal::EphemerisRouteRule auxiliary_rule;
+    auxiliary_rule.source_id = internal::SEMI_ANALYTIC_SOURCE_ID;
+    auxiliary_rule.method_id = internal::SEMI_ANALYTIC_METHOD_ID;
+    EphemerisResult auxiliary;
+    RuleSourceUsage ignored_usage;
+    const Status status = eval_direct_body_state_for_rule(
+        request, auxiliary_rule, &auxiliary, &ignored_usage, diagnostic);
+    if (status != TAIYIN_STATUS_OK) {
+        return status;
+    }
+
+    *out = auxiliary;
+    usage->used_auxiliary_source = true;
+    return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
+}
+
 Status EphemerisEngine::eval_body_wrt_sun_for_rule(
     int body_id,
     internal::EphemerisFrame frame,
@@ -1330,6 +1367,10 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             Status offset_status =
                 eval_direct_body_state_for_rule(
                     offset_request, rule, &offset, &offset_usage, diagnostic);
+            if (offset_status != TAIYIN_STATUS_OK) {
+                offset_status = eval_builtin_semi_analytic_auxiliary(
+                    offset_request, rule, &offset, &offset_usage, diagnostic);
+            }
             if (offset_status == TAIYIN_STATUS_OK) {
                 out->state = cartesian_state_add(barycenter_sun.state, offset.state);
                 if (include_descriptor) {

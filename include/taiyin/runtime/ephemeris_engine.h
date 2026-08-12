@@ -176,6 +176,13 @@ private:
         RuleSourceUsage* usage,
         EphemerisEvalDiagnostic* diagnostic
     ) noexcept;
+    Status eval_builtin_semi_analytic_auxiliary(
+        const EphemerisRequest& request,
+        const internal::EphemerisRouteRule& primary_rule,
+        EphemerisResult* out,
+        RuleSourceUsage* usage,
+        EphemerisEvalDiagnostic* diagnostic
+    ) noexcept;
     Status eval_state_for_rule(
         const EphemerisRequest& request,
         const internal::EphemerisRouteRule& rule,

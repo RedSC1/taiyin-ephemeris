@@ -1797,7 +1797,9 @@ bool Runtime::reset_default_route_rules() noexcept {
                 internal::OPM2_SOURCE_TAIYIN_DE442_REBUILT,
                 static_cast<int>(internal::OPM2_METHOD_ID),
                 435,
-                "Taiyin DE442 rebuilt OPM2");
+                "Taiyin DE442 rebuilt OPM2 with built-in relative-body auxiliaries",
+                false,
+                true);
         for (size_t i = 0;
              rules_ok && i < sizeof(named_de_rules) / sizeof(named_de_rules[0]);
              ++i) {

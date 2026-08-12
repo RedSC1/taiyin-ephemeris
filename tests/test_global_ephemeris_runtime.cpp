@@ -599,8 +599,26 @@ void test_auto_route_prefers_high_priority_composite_over_low_priority_direct() 
         "auto Mars/Sun prefers OPM2 composite over semi-analytical direct");
     expect_int(
         static_cast<int>(mars_sun_result.descriptor.source_key.source_id),
-        static_cast<int>(taiyin::internal::OPM2_SOURCE_ID),
-        "auto Mars/Sun source is OPM2");
+        static_cast<int>(taiyin::internal::OPM2_SOURCE_TAIYIN_DE442_REBUILT),
+        "auto Mars/Sun source is DE442 OPM2");
+
+    EphemerisRequest physical_mars_sun = mars_sun;
+    physical_mars_sun.target_id = taiyin::TAIYIN_BODY_MARS;
+    EphemerisResult physical_mars_sun_result;
+    expect_true(
+        taiyin::status_ok(taiyin::runtime::eval_global_ephemeris_state(
+            physical_mars_sun,
+            &physical_mars_sun_result,
+            &diagnostic)),
+        "auto route evaluates physical Mars/Sun composite with DE442 anchor");
+    expect_int(
+        physical_mars_sun_result.descriptor.method_id,
+        static_cast<int>(taiyin::internal::OPM2_METHOD_ID),
+        "physical Mars retains the OPM2 primary route instead of falling back entirely");
+    expect_int(
+        static_cast<int>(physical_mars_sun_result.descriptor.source_key.source_id),
+        static_cast<int>(taiyin::internal::OPM2_SOURCE_TAIYIN_DE442_REBUILT),
+        "physical Mars uses the DE442 OPM2 anchor with its allowed relative-body correction");
 
     EphemerisRequest earth_ssb;
     earth_ssb.target_id = taiyin::TAIYIN_BODY_EARTH;
@@ -621,8 +639,8 @@ void test_auto_route_prefers_high_priority_composite_over_low_priority_direct() 
         "auto Earth/SSB prefers OPM2 EMB/Moon composite over semi-analytical direct");
     expect_int(
         static_cast<int>(earth_ssb_result.descriptor.source_key.source_id),
-        static_cast<int>(taiyin::internal::OPM2_SOURCE_ID),
-        "auto Earth/SSB source is OPM2");
+        static_cast<int>(taiyin::internal::OPM2_SOURCE_TAIYIN_DE442_REBUILT),
+        "auto Earth/SSB source is DE442 OPM2");
 }
 
 void test_global_auxiliary_data_ownership() {

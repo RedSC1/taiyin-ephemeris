@@ -19,6 +19,7 @@ from compile_star_catalog import (  # noqa: E402
     HEADER_STRUCT,
     STAR_RECORD_STRUCT,
     StringTableReader,
+    fnv1a_64,
     inspect_tsc1,
 )
 
@@ -73,12 +74,21 @@ def main() -> None:
         fail(f"lite catalog is missing required entries: {', '.join(missing)}")
 
     aliases: dict[str, int] = {}
+    previous_alias_key: tuple[int, bytes] | None = None
     for index in range(alias_count):
-        offset, star_index, _hash = ALIAS_ENTRY_STRUCT.unpack_from(
+        offset, star_index, alias_hash = ALIAS_ENTRY_STRUCT.unpack_from(
             data, aliases_offset + index * ALIAS_ENTRY_STRUCT.size)
         if star_index >= star_count:
             fail(f"alias {index} points outside the lite star table")
-        aliases[strings.get(offset)] = star_index
+        alias = strings.get(offset)
+        encoded = alias.encode("utf-8")
+        if alias_hash != fnv1a_64(alias):
+            fail(f"alias {index} has an inconsistent FNV-1a hash")
+        alias_key = (alias_hash, encoded)
+        if previous_alias_key is not None and alias_key < previous_alias_key:
+            fail(f"alias {index} is not sorted by unsigned hash and UTF-8 bytes")
+        previous_alias_key = alias_key
+        aliases[alias] = star_index
 
     required_stars = requirements["required_stars"]
     if len({record["id"] for record in required_stars if record["coverage"] == "twenty_eight_mansions"}) != 28:
