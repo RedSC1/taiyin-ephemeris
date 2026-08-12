@@ -1,10 +1,15 @@
 # 600-year major-body OPM2 files
 
-This directory stages the current polished 600-year major-body OPM2 candidate files for taiyin runtime/catalog wiring.
+This directory contains the packaged DE441-derived 600-year major-body OPM2
+product used for reproducibility and as a fallback outside the DE442 package's
+coverage.
 
 ## Product identity
 
-These files are packaged OPM2 ephemeris data. Build provenance is not a runtime source identity; runtime routing should choose these as packaged defaults only after catalog/runtime wiring is enabled and tested.
+These files carry OPM2 source id `1` (`OPM2_SOURCE_TAIYIN_PRERELEASE`). The
+runtime therefore selects the DE442-derived source id `2` where both products
+cover a request, while retaining this product as a compatible lower-priority
+route.
 
 ## Range
 
@@ -36,4 +41,5 @@ MANIFEST.json
 
 ## Notes
 
-This directory contains staged data only. Discovery/load coverage is tested by `test_opm2_staged_data`; default runtime route wiring should be done separately with route-priority tests.
+The data are derived from JPL DE441. Discovery/load coverage and the DE442
+AUTO preference are exercised by `test_opm2_staged_data`.

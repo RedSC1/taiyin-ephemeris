@@ -21,16 +21,17 @@ is on the order of **0.001 arcsec**. This describes the OPM2 state-compression
 error, not the final apparent or topocentric result, which also depends on time
 scales, observer geometry, and the selected correction models.
 
-The current packaged OPM2 major-body product covers **1800-01-01 through
-2400-01-01** for the Sun, Moon, Mercury, Venus, EMB, Mars, Jupiter, Saturn,
-Uranus, Neptune, and Pluto. The next data-package milestone is
-provenance-labelled full DE441 and DE442 major-body OPM2 products. The intended
-default precise-data package is a full DE442-derived OPM2 compression covering
-the DE442 interval (1550-2650); DE441 will remain available as a separately
-selectable reproducibility and comparison product. The generator, product
-provenance, and detailed accuracy and speed benchmarks for those full-range
-packages will be published with the data release. This is a data-package
-roadmap, not a claim about the current bundled 600-year files.
+The repository packages two major-body OPM2 products for the Sun, Moon,
+Mercury, Venus, EMB, Mars, Jupiter, Saturn, Uranus, Neptune, and Pluto:
+
+- a DE441-derived 600-year product for **1800-01-01 through 2400-01-01**;
+- a DE442-derived full-coverage product over DE442's common source interval,
+  approximately **1550 through 2650**.
+
+The runtime recognizes their product identities and, where coverage overlaps,
+AUTO selects the DE442-derived OPM2 product by default. Applications can still
+select a specific source or change its provider-local priority when
+reproducibility requires the older DE441 product.
 
 Taiyin can also read current NASA/JPL SPK files, including DE441 and SPK files
 for asteroids and other targets. Here, “current” refers to using the current
@@ -97,12 +98,11 @@ kernels and fixed-star catalogs. The runtime can select an available source for
 a target and time range while keeping the source data outside your application
 binary.
 
-The repository includes the current 600-year major-body OPM2 product and
-selected asteroid OPM2 data. It is a transitional package: the planned default
-precise-data product is the full DE442-derived OPM2 package described above.
-Large DE441 packages and other external datasets are distributed separately;
-see [`docs/current_limitations.md`](docs/current_limitations.md) for coverage
-and data-package boundaries.
+The repository includes the DE441 600-year and full DE442 major-body OPM2
+products, selected asteroid OPM2 data, and compact center-of-body corrections.
+Other external datasets remain separately selectable; see
+[`docs/current_limitations.md`](docs/current_limitations.md) for coverage and
+data-package boundaries.
 
 ## Quick Start
 

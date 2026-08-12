@@ -1,6 +1,7 @@
 #include "taiyin/body_id.h"
 #include "taiyin/internal/descriptor_loader.h"
 #include "taiyin/internal/ephemeris_catalog.h"
+#include "taiyin/internal/ephemeris_source_identity.h"
 #include "taiyin/internal/opm2.h"
 #include "taiyin/internal/opm2_catalog_discovery.h"
 #include "taiyin/runtime/ephemeris_engine.h"
@@ -699,6 +700,38 @@ void test_opm2_header_source_identity(int* failures) {
     }
 }
 
+void test_de442_package_auto_route_preference(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::internal;
+    using namespace taiyin::runtime;
+
+    const std::string prerelease_root = repo_data_path("major-bodies/600y");
+    const std::string de442_root = repo_data_path("major-bodies/de442-full");
+    const char* source_paths[] = {prerelease_root.c_str(), de442_root.c_str()};
+    EphemerisRuntimeConfig config;
+    config.source_paths = source_paths;
+    config.source_path_count = 2;
+    config.load_packaged_data = false;
+    config.segment_cache_max_entries = 32;
+
+    Runtime runtime;
+    expect_true(runtime.initialize_ephemeris(config), "initialize combined prerelease + DE442 OPM2 runtime", failures);
+
+    EphemerisRequest request;
+    request.target_id = TAIYIN_BODY_JUPITER_BARYCENTER;
+    request.center_id = TAIYIN_BODY_SSB;
+    request.frame = EphemerisFrame::IcrfJ2000Equatorial;
+    request.jd_tdb = split_jd(2460310.5);
+    EphemerisBlockDescriptor selected;
+    expect_true(
+        runtime.ephemeris_engine().find_descriptor(request, &selected),
+        "AUTO finds a combined-package Jupiter route", failures);
+    expect_equal_int(
+        static_cast<int>(selected.source_key.source_id),
+        static_cast<int>(OPM2_SOURCE_TAIYIN_DE442_REBUILT),
+        "AUTO prefers the DE442 OPM2 source over prerelease OPM2", failures);
+}
+
 }  // namespace
 
 int main() {
@@ -710,6 +743,7 @@ int main() {
     test_inner_planet_body_aliases(&failures);
     test_opm2_range_slice_matches_full_frame(&failures);
     test_opm2_header_source_identity(&failures);
+    test_de442_package_auto_route_preference(&failures);
 
     if (failures == 0) {
         std::cout << "test_opm2_staged_data: ALL TESTS PASSED\n";

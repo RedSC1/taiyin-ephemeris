@@ -211,12 +211,12 @@
     }
   },
   "body_id_policy": "OPM2 EPHE target/center IDs identify the stored vector: SSB=0, Sun=10, Mercury/Venus barycenters=1/2 relative to Sun, Mars..Pluto barycenters=4..9 relative to SSB, Moon=301 relative to Earth=399.",
-  "description": "600-year polished major-body OPM2 data",
+  "description": "DE441-derived 600-year polished major-body OPM2 data",
   "product_range": {
     "calendar": "1800-01-01 .. 2400-01-01",
     "jd_end": 2597641.5,
     "jd_start": 2378496.5
   },
   "schema_version": 1,
-  "source_policy": "Packaged OPM2 product; build provenance is not a runtime source identity."
+  "source_policy": "JPL DE441-derived packaged OPM2 product, retained as source id 1 below the DE442-derived source id 2."
 }

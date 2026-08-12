@@ -1,0 +1,290 @@
+{
+  "bodies": {
+    "emb": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688650.5201401953,
+        "jd_start": 2287230.157457084
+      },
+      "file": "emb.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0007608173946507269,
+        "p50": 9.166821105548074e-05,
+        "p95": 0.00031495467234304625,
+        "p99": 0.000487652767489639
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287230.157457084,
+        "period_days": 365.259656672531,
+        "segment_count": 1099
+      },
+      "model_id": 2,
+      "size_bytes": 143203,
+      "storage_kind": 2,
+      "target_id": 3,
+      "time_scale_id": 1
+    },
+    "jupiter": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688434.5,
+        "jd_start": 2289434.5
+      },
+      "file": "jupiter.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0007149507420605122,
+        "p50": 0.00021338491123649455,
+        "p95": 0.0004060522770491649,
+        "p99": 0.000492805894200142
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2289434.5,
+        "period_days": 3000.0,
+        "segment_count": 133
+      },
+      "model_id": 2,
+      "size_bytes": 16968,
+      "storage_kind": 2,
+      "target_id": 5,
+      "time_scale_id": 1
+    },
+    "mars": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688561.9282260216,
+        "jd_start": 2287356.2490065154
+      },
+      "file": "mars.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0008885982784215851,
+        "p50": 0.00016275673290646735,
+        "p95": 0.0004131606407313024,
+        "p99": 0.0005558730382388404
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287356.2490065154,
+        "period_days": 686.996026060798,
+        "segment_count": 584
+      },
+      "model_id": 2,
+      "size_bytes": 75876,
+      "storage_kind": 2,
+      "target_id": 4,
+      "time_scale_id": 1
+    },
+    "mercury": {
+      "center_id": 10,
+      "coverage": {
+        "jd_end": 2688841.5536720823,
+        "jd_start": 2287349.4425303224
+      },
+      "file": "mercury.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0008957874730219654,
+        "p50": 0.00021878420078305582,
+        "p95": 0.0004250989830064335,
+        "p99": 0.0005261141387095505
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287261.473180817,
+        "period_days": 87.969349505206,
+        "segment_count": 4564
+      },
+      "model_id": 3,
+      "size_bytes": 365837,
+      "storage_kind": 3,
+      "target_id": 1,
+      "time_scale_id": 1
+    },
+    "moon": {
+      "center_id": 399,
+      "coverage": {
+        "jd_end": 2688974.443388058,
+        "jd_start": 2287201.721586388
+      },
+      "file": "moon.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.00039811846632745195,
+        "p50": 0.00010690240436194424,
+        "p95": 0.00019469838467166235,
+        "p99": 0.00023438555675901453
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287201.721586388,
+        "period_days": 27.554538221087,
+        "segment_count": 14581
+      },
+      "model_id": 5,
+      "size_bytes": 2289498,
+      "storage_kind": 4,
+      "target_id": 301,
+      "time_scale_id": 1
+    },
+    "neptune": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2687684.5,
+        "jd_start": 2287684.5
+      },
+      "file": "neptune.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.00047091534058604854,
+        "p50": 0.00017257779200243267,
+        "p95": 0.00030396004816276055,
+        "p99": 0.0003609757518434811
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287684.5,
+        "period_days": 4000.0,
+        "segment_count": 100
+      },
+      "model_id": 2,
+      "size_bytes": 5538,
+      "storage_kind": 2,
+      "target_id": 8,
+      "time_scale_id": 1
+    },
+    "pluto": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688684.5,
+        "jd_start": 2288684.5
+      },
+      "file": "pluto.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0004833314831001422,
+        "p50": 0.00012975256458924478,
+        "p95": 0.0002530922937203391,
+        "p99": 0.000314426484809481
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2288684.5,
+        "period_days": 4000.0,
+        "segment_count": 100
+      },
+      "model_id": 2,
+      "size_bytes": 6400,
+      "storage_kind": 2,
+      "target_id": 9,
+      "time_scale_id": 1
+    },
+    "saturn": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688372.0,
+        "jd_start": 2289372.0
+      },
+      "file": "saturn.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0007778331781825795,
+        "p50": 0.00021286643887896808,
+        "p95": 0.00041339187557942747,
+        "p99": 0.0005223866851689802
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2289372.0,
+        "period_days": 3500.0,
+        "segment_count": 114
+      },
+      "model_id": 2,
+      "size_bytes": 13599,
+      "storage_kind": 2,
+      "target_id": 6,
+      "time_scale_id": 1
+    },
+    "sun": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688967.0,
+        "jd_start": 2287207.0
+      },
+      "file": "sun.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.6466253183408951,
+        "p50": 0.004543020275989825,
+        "p95": 0.014419538846756726,
+        "p99": 0.03326534520416057
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287207.0,
+        "period_days": 180.0,
+        "segment_count": 2232
+      },
+      "model_id": 1,
+      "size_bytes": 186200,
+      "storage_kind": 2,
+      "target_id": 10,
+      "time_scale_id": 1
+    },
+    "uranus": {
+      "center_id": 0,
+      "coverage": {
+        "jd_end": 2688184.5,
+        "jd_start": 2288184.5
+      },
+      "file": "uranus.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.0005237723055145682,
+        "p50": 0.0001616885432974872,
+        "p95": 0.0003071145373262102,
+        "p99": 0.0003771473817838741
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2288184.5,
+        "period_days": 4000.0,
+        "segment_count": 100
+      },
+      "model_id": 2,
+      "size_bytes": 7512,
+      "storage_kind": 2,
+      "target_id": 7,
+      "time_scale_id": 1
+    },
+    "venus": {
+      "center_id": 10,
+      "coverage": {
+        "jd_end": 2688640.237925974,
+        "jd_start": 2287549.638500877
+      },
+      "file": "venus.opm2",
+      "fit_validation_arcsec": {
+        "max": 0.000651880679552733,
+        "p50": 0.00018844201206435313,
+        "p95": 0.00034615761063141987,
+        "p99": 0.00041967509052154794
+      },
+      "frame_id": 1,
+      "grid": {
+        "origin_jd": 2287324.937884953,
+        "period_days": 224.700615924424,
+        "segment_count": 1785
+      },
+      "model_id": 3,
+      "size_bytes": 166369,
+      "storage_kind": 3,
+      "target_id": 2,
+      "time_scale_id": 1
+    }
+  },
+  "description": "DE442 full-coverage major-body OPM2 package",
+  "node_oversample": 3,
+  "opm2_source_id": 2,
+  "phase_sweep": "DE442 affine-grid phase sweep (8 candidates per body), followed by native-vector 512-node Chebyshev polishing with a shifted guard grid",
+  "product": "DE442",
+  "schema_version": 1,
+  "source_common_coverage_jd": [
+    2287184.5,
+    2688976.5
+  ],
+  "source_spk": "JPL DE442 BSP"
+}
