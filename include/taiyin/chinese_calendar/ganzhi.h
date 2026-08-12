@@ -7,6 +7,22 @@
 
 #include <cstdint>
 
+#if defined(_WIN32)
+#if defined(TAIYIN_GANZHI_SHARED_BUILD)
+#define TAIYIN_GANZHI_SHARED_API __declspec(dllexport)
+#elif defined(TAIYIN_GANZHI_SHARED_IMPORT)
+#define TAIYIN_GANZHI_SHARED_API __declspec(dllimport)
+#else
+#define TAIYIN_GANZHI_SHARED_API
+#endif
+#elif (defined(__GNUC__) || defined(__clang__)) \
+    && (defined(TAIYIN_GANZHI_SHARED_BUILD) \
+        || defined(TAIYIN_GANZHI_SHARED_IMPORT))
+#define TAIYIN_GANZHI_SHARED_API __attribute__((visibility("default")))
+#else
+#define TAIYIN_GANZHI_SHARED_API
+#endif
+
 namespace taiyin {
 namespace chinese_calendar {
 
@@ -27,7 +43,7 @@ enum GanzhiRatHourMode {
     TAIYIN_GANZHI_RAT_HOUR_TOMORROW_GAN = 2,
 };
 
-struct GanzhiFourPillars {
+struct TAIYIN_GANZHI_SHARED_API GanzhiFourPillars {
     uint8_t year;
     uint8_t month;
     uint8_t day;
@@ -36,27 +52,28 @@ struct GanzhiFourPillars {
     GanzhiFourPillars() noexcept;
 };
 
-Status make_ganzhi(
+// These are deliberately exported for the native BaZi extension to consume.
+TAIYIN_GANZHI_SHARED_API Status make_ganzhi(
     uint8_t stem_id,
     uint8_t branch_id,
     uint8_t* out
 ) noexcept;
 
-Status advance_ganzhi(
+TAIYIN_GANZHI_SHARED_API Status advance_ganzhi(
     uint8_t value,
     int32_t delta,
     uint8_t* out
 ) noexcept;
 
 // month_index follows the traditional sequence: 0=Yin, ..., 10=Zi, 11=Chou.
-Status get_month_ganzhi(
+TAIYIN_GANZHI_SHARED_API Status get_month_ganzhi(
     uint8_t year_stem_id,
     uint8_t month_index,
     uint8_t* out
 ) noexcept;
 
 // hour_index follows the branch sequence: 0=Zi, ..., 11=Hai.
-Status get_hour_ganzhi(
+TAIYIN_GANZHI_SHARED_API Status get_hour_ganzhi(
     uint8_t day_stem_id,
     uint8_t hour_index,
     uint8_t* out
@@ -64,24 +81,24 @@ Status get_hour_ganzhi(
 
 // Calculates the civil-date day pillar using the same noon/J2000 convention
 // as calculate_four_pillars. The time-of-day fields are ignored.
-Status calculate_day_pillar(
+TAIYIN_GANZHI_SHARED_API Status calculate_day_pillar(
     const CalendarDateTime& civil_date,
     uint8_t* out
 ) noexcept;
 
-Status get_nayin_element(
+TAIYIN_GANZHI_SHARED_API Status get_nayin_element(
     uint8_t ganzhi,
     uint8_t* out_element_id
 ) noexcept;
 
-Status get_nayin_id(
+TAIYIN_GANZHI_SHARED_API Status get_nayin_id(
     uint8_t ganzhi,
     uint8_t* out_nayin_id
 ) noexcept;
 
 // virtual_time is the resolved civil clock used for day/hour boundaries. It
 // may be the wall clock, mean solar time, or another caller-selected clock.
-Status calculate_four_pillars(
+TAIYIN_GANZHI_SHARED_API Status calculate_four_pillars(
     const ChineseCalendarContext* context,
     const SplitJulianDate& instant_utc,
     const CalendarDateTime& virtual_time,
@@ -92,5 +109,7 @@ Status calculate_four_pillars(
 
 }  // namespace chinese_calendar
 }  // namespace taiyin
+
+#undef TAIYIN_GANZHI_SHARED_API
 
 #endif

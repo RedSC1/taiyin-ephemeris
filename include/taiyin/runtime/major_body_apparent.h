@@ -90,6 +90,10 @@ struct MajorBodyApparentBatchRequest {
     int center_id;
     const int* body_ids;
     size_t body_count;
+    // Native-position flags forwarded by higher-level uint64 flag APIs. The
+    // apparent evaluator consumes calculation flags and route policies while
+    // preserving the caller's requested physical target in diagnostics.
+    uint32_t position_flags;
     const ApparentOptions* options;
 
     MajorBodyApparentBatchRequest() noexcept;

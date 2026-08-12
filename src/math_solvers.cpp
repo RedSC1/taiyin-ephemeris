@@ -45,6 +45,126 @@ double clamp_step(double step, double limit) noexcept {
     return step;
 }
 
+double ellipse_circle_residual(
+    double angle,
+    double ellipse_major_axis,
+    double ellipse_minor_axis,
+    double circle_radius,
+    double circle_x,
+    double circle_y
+) noexcept {
+    const double x = ellipse_major_axis * std::cos(angle);
+    const double y = ellipse_minor_axis * std::sin(angle);
+    const double dx = x - circle_x;
+    const double dy = y - circle_y;
+    return dx * dx + dy * dy - circle_radius * circle_radius;
+}
+
+double ellipse_circle_derivative(
+    double angle,
+    double ellipse_major_axis,
+    double ellipse_minor_axis,
+    double circle_x,
+    double circle_y
+) noexcept {
+    const double cosine = std::cos(angle);
+    const double sine = std::sin(angle);
+    const double x = ellipse_major_axis * cosine;
+    const double y = ellipse_minor_axis * sine;
+    return 2.0 * (
+        (x - circle_x) * (-ellipse_major_axis * sine)
+        + (y - circle_y) * (ellipse_minor_axis * cosine));
+}
+
+double normalize_angle_positive(double angle) noexcept {
+    angle = std::fmod(angle, TAIYIN_TWO_PI);
+    return angle < 0.0 ? angle + TAIYIN_TWO_PI : angle;
+}
+
+double signed_angle_from_reference(double angle, double reference) noexcept {
+    const double delta = angle - reference;
+    return std::atan2(std::sin(delta), std::cos(delta));
+}
+
+bool add_distinct_angle(double angle, double roots[4], int* count) noexcept {
+    angle = normalize_angle_positive(angle);
+    for (int index = 0; index < *count; ++index) {
+        double delta = std::fabs(angle - roots[index]);
+        delta = std::min(delta, TAIYIN_TWO_PI - delta);
+        if (delta < 1.0e-8) return false;
+    }
+    if (*count >= 4) return false;
+    roots[(*count)++] = angle;
+    return true;
+}
+
+void add_bracketed_ellipse_circle_root(
+    double lower,
+    double lower_value,
+    double upper,
+    double upper_value,
+    double ellipse_major_axis,
+    double ellipse_minor_axis,
+    double circle_radius,
+    double circle_x,
+    double circle_y,
+    double scale2,
+    double roots[4],
+    int* root_count
+) noexcept {
+    if (!(lower < upper) || !std::isfinite(lower_value)
+        || !std::isfinite(upper_value) || lower_value * upper_value > 0.0) {
+        return;
+    }
+    if (lower_value == 0.0) {
+        add_distinct_angle(lower, roots, root_count);
+        return;
+    }
+    if (upper_value == 0.0) {
+        add_distinct_angle(upper, roots, root_count);
+        return;
+    }
+
+    for (int iteration = 0; iteration < 60; ++iteration) {
+        const double middle = 0.5 * (lower + upper);
+        const double middle_value = ellipse_circle_residual(
+            middle,
+            ellipse_major_axis,
+            ellipse_minor_axis,
+            circle_radius,
+            circle_x,
+            circle_y);
+        if (lower_value * middle_value <= 0.0) {
+            upper = middle;
+        } else {
+            lower = middle;
+            lower_value = middle_value;
+        }
+    }
+
+    double root = 0.5 * (lower + upper);
+    for (int iteration = 0; iteration < 4; ++iteration) {
+        const double residual = ellipse_circle_residual(
+            root,
+            ellipse_major_axis,
+            ellipse_minor_axis,
+            circle_radius,
+            circle_x,
+            circle_y);
+        const double derivative = ellipse_circle_derivative(
+            root,
+            ellipse_major_axis,
+            ellipse_minor_axis,
+            circle_x,
+            circle_y);
+        if (std::fabs(derivative) < 1.0e-15 * scale2) break;
+        const double refined = root - residual / derivative;
+        if (!(refined > lower && refined < upper) || !std::isfinite(refined)) break;
+        root = refined;
+    }
+    add_distinct_angle(root, roots, root_count);
+}
+
 }  // namespace
 
 bool solve_bracketed_newton_bisection(
@@ -275,53 +395,177 @@ int intersect_ellipse_circle(
     if (!out_x1 || !out_y1 || !out_x2 || !out_y2) {
         return 0;
     }
-
-    double d = std::sqrt(circle_x * circle_x + circle_y * circle_y);
-    if (d < 1e-15) {
-        return 0; // 避免除以零
-    }
-    double sinB = circle_y / d;
-    double cosB = circle_x / d;
-    
-    // 粗估相交角 A
-    double cosA = (ellipse_major_axis * ellipse_major_axis + d * d - circle_radius * circle_radius) / (2.0 * d * ellipse_major_axis);
-    if (std::abs(cosA) > 1.0) {
-        return 0; // 无交点
-    }
-    double sinA = std::sqrt(1.0 - cosA * cosA);
-    
-    double ba2 = axis_ratio * axis_ratio;
-    if (ba2 < 1e-15) {
+    *out_x1 = *out_y1 = *out_x2 = *out_y2 = 0.0;
+    if (!(ellipse_major_axis > 0.0) || !(axis_ratio > 0.0)
+        || !(circle_radius >= 0.0) || !std::isfinite(circle_x)
+        || !std::isfinite(circle_y)) {
         return 0;
     }
-    double x_out[2] = {0.0, 0.0};
-    double y_out[2] = {0.0, 0.0};
-    int count = 0;
-    
-    // 精密微小偏心率修正
-    for (int k = -1; k < 2; k += 2) {
-        double S = cosA * sinB + sinA * cosB * k;
-        double g = ellipse_major_axis - S * S * (1.0 / ba2 - 1.0) / 2.0;
-        
-        double cosA_g = (g * g + d * d - circle_radius * circle_radius) / (2.0 * d * g);
-        if (std::abs(cosA_g) > 1.0) {
-            return 0; // 无交点
+
+    const double ellipse_minor_axis = ellipse_major_axis * axis_ratio;
+    const double scale2 = std::max({
+        1.0,
+        ellipse_major_axis * ellipse_major_axis,
+        ellipse_minor_axis * ellipse_minor_axis,
+        circle_radius * circle_radius,
+        circle_x * circle_x + circle_y * circle_y});
+    const double residual_tolerance = 1.0e-12 * scale2;
+    constexpr int sample_count = 720;
+    double roots[4] = {};
+    int root_count = 0;
+
+    // Parameterize the ellipse as (a cos(theta), b sin(theta)). Sign-changing
+    // intervals are solved by bisection. Newton seeds additionally recover a
+    // tangency, where the residual touches zero without changing sign.
+    double previous_angle = 0.0;
+    double previous_value = ellipse_circle_residual(
+        previous_angle, ellipse_major_axis, ellipse_minor_axis,
+        circle_radius, circle_x, circle_y);
+    for (int sample = 1; sample <= sample_count; ++sample) {
+        const double angle = TAIYIN_TWO_PI * static_cast<double>(sample)
+            / static_cast<double>(sample_count);
+        const double value = ellipse_circle_residual(
+            angle, ellipse_major_axis, ellipse_minor_axis,
+            circle_radius, circle_x, circle_y);
+        if (previous_value == 0.0 || value == 0.0
+            || previous_value * value < 0.0) {
+            add_bracketed_ellipse_circle_root(
+                previous_angle,
+                previous_value,
+                angle,
+                value,
+                ellipse_major_axis,
+                ellipse_minor_axis,
+                circle_radius,
+                circle_x,
+                circle_y,
+                scale2,
+                roots,
+                &root_count);
         }
-        double sinA_g = std::sqrt(1.0 - cosA_g * cosA_g);
-        
-        double C = cosA_g * cosB - sinA_g * sinB * k;
-        double S_g = cosA_g * sinB + sinA_g * cosB * k;
-        
-        x_out[count] = g * C;
-        y_out[count] = g * S_g;
-        count++;
+
+        previous_angle = angle;
+        previous_value = value;
     }
-    
-    *out_x1 = x_out[0];
-    *out_y1 = y_out[0];
-    *out_x2 = x_out[1];
-    *out_y2 = y_out[1];
-    return count;
+
+    // A tangent intersection does not change the residual's sign. A shallow
+    // overlap can also put two roots inside one angular sample cell, with the
+    // residual having the same sign at both endpoints. Locate stationary
+    // points and split such cells at the extremum before root bracketing.
+    previous_angle = 0.0;
+    double previous_derivative = ellipse_circle_derivative(
+        previous_angle, ellipse_major_axis, ellipse_minor_axis,
+        circle_x, circle_y);
+    for (int sample = 1; sample <= sample_count; ++sample) {
+        const double angle = TAIYIN_TWO_PI * static_cast<double>(sample)
+            / static_cast<double>(sample_count);
+        const double derivative = ellipse_circle_derivative(
+            angle, ellipse_major_axis, ellipse_minor_axis,
+            circle_x, circle_y);
+        if (previous_derivative == 0.0
+            || derivative == 0.0
+            || previous_derivative * derivative < 0.0) {
+            double lower = previous_angle;
+            double upper = angle;
+            double lower_value = previous_derivative;
+            for (int iteration = 0; iteration < 60; ++iteration) {
+                const double middle = 0.5 * (lower + upper);
+                const double middle_value = ellipse_circle_derivative(
+                    middle, ellipse_major_axis, ellipse_minor_axis,
+                    circle_x, circle_y);
+                if (lower_value == 0.0 || lower_value * middle_value <= 0.0) {
+                    upper = middle;
+                } else {
+                    lower = middle;
+                    lower_value = middle_value;
+                }
+            }
+            const double stationary = 0.5 * (lower + upper);
+            const double stationary_value = ellipse_circle_residual(
+                stationary,
+                ellipse_major_axis,
+                ellipse_minor_axis,
+                circle_radius,
+                circle_x,
+                circle_y);
+            if (std::fabs(stationary_value) <= residual_tolerance) {
+                add_distinct_angle(stationary, roots, &root_count);
+            } else {
+                const double left_value = ellipse_circle_residual(
+                    previous_angle,
+                    ellipse_major_axis,
+                    ellipse_minor_axis,
+                    circle_radius,
+                    circle_x,
+                    circle_y);
+                const double right_value = ellipse_circle_residual(
+                    angle,
+                    ellipse_major_axis,
+                    ellipse_minor_axis,
+                    circle_radius,
+                    circle_x,
+                    circle_y);
+                if (left_value * stationary_value < 0.0) {
+                    add_bracketed_ellipse_circle_root(
+                        previous_angle,
+                        left_value,
+                        stationary,
+                        stationary_value,
+                        ellipse_major_axis,
+                        ellipse_minor_axis,
+                        circle_radius,
+                        circle_x,
+                        circle_y,
+                        scale2,
+                        roots,
+                        &root_count);
+                }
+                if (stationary_value * right_value < 0.0) {
+                    add_bracketed_ellipse_circle_root(
+                        stationary,
+                        stationary_value,
+                        angle,
+                        right_value,
+                        ellipse_major_axis,
+                        ellipse_minor_axis,
+                        circle_radius,
+                        circle_x,
+                        circle_y,
+                        scale2,
+                        roots,
+                        &root_count);
+                }
+            }
+        }
+        previous_angle = angle;
+        previous_derivative = derivative;
+    }
+
+    // Keep the two geometric branches stable across the 0/2pi parameter
+    // wrap. Sorting normalized absolute angles swaps A/B whenever one root
+    // crosses zero, which tears route curves that store the branches in
+    // separate buckets. The ellipse-parameter direction toward the circle
+    // center is a wrap-stable reference for the ordinary two-root case.
+    const double reference_angle = std::atan2(
+        circle_y / ellipse_minor_axis,
+        circle_x / ellipse_major_axis);
+    std::sort(
+        roots,
+        roots + root_count,
+        [reference_angle](double lhs, double rhs) {
+            return signed_angle_from_reference(lhs, reference_angle)
+                < signed_angle_from_reference(rhs, reference_angle);
+        });
+    const int output_count = std::min(root_count, 2);
+    if (output_count > 0) {
+        *out_x1 = ellipse_major_axis * std::cos(roots[0]);
+        *out_y1 = ellipse_minor_axis * std::sin(roots[0]);
+    }
+    if (output_count > 1) {
+        *out_x2 = ellipse_major_axis * std::cos(roots[1]);
+        *out_y2 = ellipse_minor_axis * std::sin(roots[1]);
+    }
+    return output_count;
 }
 
 bool project_bessel_to_geodetic(
@@ -383,8 +627,6 @@ bool calculate_earth_shadow_radii(
         return false;
     }
 
-    // 寿星万年历 eph.js ysPL.lecXY shadow-radius formulation, with Taiyin
-    // model scales applied to Earth radius, solar radius, and parallax terms.
     // 太阳视半径与太阳视差常数 (在 1 AU 处的角秒值)
     const double sun_radius_1au_arcsec = 959.63;
     const double solar_parallax_1au_arcsec = 8.794;
@@ -415,7 +657,6 @@ bool project_ecliptic_to_fundamental(
         return false;
     }
 
-    // 寿星万年历 eph.js ysPL.lecXY plane projection.
     // 计算月球相对日地反日点 (Anti-sun point) 的黄经差
     double dlon = moon_longitude_rad + TAIYIN_PI - sun_longitude_rad;
     

@@ -14,6 +14,61 @@ The extension has no global calendar singleton. Every operation receives a
 `ChineseCalendarContext`, or the corresponding opaque C
 `taiyin_chinese_calendar_context`.
 
+## Runnable Examples
+
+Two standalone C++ programs cover the calendar layers without enabling BaZi:
+
+- [`examples/chinese_calendar_han.cpp`](../examples/chinese_calendar_han.cpp)
+  converts 104 BCE-01-20 across the modeled Taichu reform in the historical
+  China profile, converts the result back to the same solar date, and queries
+  the adjacent solar terms;
+- [`examples/ganzhi_bce.cpp`](../examples/ganzhi_bce.cpp) calculates the four
+  Ganzhi pillars and NaYin for 1046 BCE-01-20 06:30 at UTC+08. It produces
+  `Jia-Wu / Ding-Chou / Jia-Zi / Ding-Mao` (甲午、丁丑、甲子、丁卯).
+
+Build and run them from the repository root:
+
+```sh
+cmake -S . -B build
+cmake --build build --target example_chinese_calendar_han example_ganzhi_bce
+./build/example_chinese_calendar_han /path/to/taiyin/data
+./build/example_ganzhi_bce /path/to/taiyin/data
+```
+
+The argument is optional; both programs fall back to `TAIYIN_DATA_ROOT` and
+then `./data`. Taiyin uses astronomical year numbering in API structures, so
+1046 BCE is year `-1045` and 104 BCE is year `-103`.
+
+These examples deliberately use different epochs. The Ganzhi result at the
+late-Shang date is a solar-term and sexagenary-cycle calculation. The
+lunisolar conversion example stays inside the historical calendar profile's
+Han-era coverage instead of presenting a proleptic lunar month as a recorded
+late-Shang calendar date.
+
+[`examples/muye_jupiter.cpp`](../examples/muye_jupiter.cpp) reuses the
+1046 BCE date for a neutral observed-sky demonstration at a Muye candidate
+site (`35.50 N, 114.10 E`). With the built-in semi-analytic route it reports
+Jupiter at about `78.19 deg` altitude at midnight, culminating at about
+`00:13:44 UTC+08` and `78.57 deg`, and below the horizon at the calculated
+`07:41:36 UTC+08` sunrise. The example requests physical Jupiter and explicitly
+allows the Jupiter-system barycenter when the historical semi-analytic route
+does not provide a separate body-center state. It does not attach a historical
+interpretation to the computed positions.
+
+[`examples/tang_833_antares.cpp`](../examples/tang_833_antares.cpp) combines
+the historical calendar, Ganzhi, named-star catalog, body-star minimum-
+separation search, and longitude-station search. It resolves the New Book of
+Tang record “Taihe 7, fifth month, Jia-Chen: Mars guarded Xin's central star”
+to `833-06-09` in the modeled Julian/UTC+08 civil-day convention. The built-in
+semi-analytic route places the surrounding Mars-Antares minimum at about
+`0.8694 deg` on `833-06-30`, with a Mars longitude station about six days
+earlier. Build and run it with:
+
+```sh
+cmake --build build --target example_tang_833_antares
+./build/example_tang_833_antares /path/to/taiyin/data
+```
+
 ## Time And Civil-Day Semantics
 
 `SolarTermEvent::jd_ut` and `NewMoonEvent::jd_ut` are astronomical UT
@@ -58,6 +113,13 @@ after it ends, event instants and civil-day assignment use Taiyin's
 astronomical event results. The precise event instant remains available through
 the event API's `jd_ut` field even when the historical profile supplies its
 `civil_day_number`.
+
+Within the early historical profile, `LunarDate::year` follows the profile's
+calendar-year starts. In the Zhuanxu/Qin-Han winter-year branch, the year label
+is anchored to the civil year in which that winter year starts. It is not
+derived from the midpoint of whichever winter-solstice window happened to be
+used by `calcY()`. This keeps `fromSolar()` and `fromLunar()` bijective across
+the modeled Taichu reform, where the old and new year-start conventions meet.
 
 The C ABI exposes the same distinction through
 `taiyin_chinese_calendar_config_init()`,
@@ -193,8 +255,8 @@ only months beginning before the second winter solstice.
 ## Single Solar-Term Queries
 
 `getSpecificJieQi(context, civil_year, term_index_from_vernal_equinox, ...)`
-calculates one term directly. Its index follows the established sxwnl
-spring-based cycle: `0` is the spring equinox and `18` is the winter solstice
+calculates one term directly. Its index follows a spring-based seasonal cycle:
+`0` is the spring equinox and `18` is the winter solstice
 in `civil_year`; `19` through `23` are Xiaohan through Jingzhe earlier in the
 same Gregorian year. The C ABI name is
 `taiyin_chinese_calendar_get_specific_jie_qi_ut`.
@@ -233,6 +295,34 @@ fromLunar(context, lunar, solar, diagnostic);
 getLunarMonthNum(context, year, month, is_leap, days, diagnostic);
 ```
 
+`LunarDate` is deliberately structured: `year`, numeric `month`, `day`,
+`is_leap`, and the exceptional `month_name` ID. A normal `month_name` lets the
+calendar profile resolve the ordinary name; `thirteen`, `later nine`,
+`alternate twelve`, and `alternate one` can select the historical names
+explicitly. `fromLunar()` validates that the selected month exists in that
+lunar year and that the requested day fits its actual 29/30-day length.
+
+`getLunarMonthNum()` has no `month_name` parameter. It prefers the ordinary
+month when a historical reform creates the same numeric identity more than
+once; if no ordinary month exists, it accepts the exceptional historical name.
+This keeps exceptional-only months such as a leap thirteenth month queryable
+without weakening the exact structured identity used by `fromLunar()`.
+
+`later same name` distinguishes the later occurrence when a restoration
+boundary creates two months with the same written numeric name in one lunar
+year. This occurs for the second 十二月 of lunar year 700 and the second 五月
+of lunar year 762. The marker does not change localized display and does not
+set `is_leap`; render the ordinary name from the numeric `month` field. Keeping
+the `month_name` returned by `fromSolar()` makes these dates invertible through
+`fromLunar()`.
+
+The C++ and C APIs do not parse localized UTF-8 strings such as `"九月"`,
+`"闰五月"`, or `"后九月"`. That user-input normalization belongs in a binding
+or application layer, which should map the text to the structured fields above
+and then call `fromLunar()`. Keeping localized aliases outside the numerical
+runtime avoids making language, typography, and whitespace policy part of the
+stable C ABI.
+
 All public values are fixed-width PODs. The native C++ structs and the C ABI
 structs are deliberately separate representations. The C ABI uses
 initialized, size-versioned structs suitable for Dart, Python, and JavaScript
@@ -240,7 +330,7 @@ FFI. Do not copy or reinterpret-cast between the C++ and C layouts; use the C
 ABI entry points and their field-wise conversion layer.
 
 Regression tests cover the 2033 leap-eleven-month case, historical BCE year
-numbering, Xin/Jingchu/Wu-Zetian reform windows, modern bidirectional
+numbering, the Taichu/Xin/Jingchu/Wu-Zetian reform windows, modern bidirectional
 conversion, and a real UTC+8/UTC+7 civil-day boundary case. The latter is also
 checked against the mathematically equivalent 105-degree mean-solar boundary.
 The Purple Mountain Observatory 2026 calendar is an independent minute-level
@@ -248,24 +338,31 @@ oracle for all 24 solar terms, all 50 principal lunar phases, lunar-month sizes,
 and printed lunar-month boundaries. Folk-calendar derivatives such as meiyu,
 dog days, and nine-nine winter counting are intentionally outside this module.
 
-## Optional Ganzhi Calendar
+## Ganzhi Calendar
 
-`TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION=ON` adds the calendrical Ganzhi layer.
-It belongs to Chinese Calendar because four-pillar year/month/day/hour labels
-are reused by BaZi, Qimen, Liuren, and ordinary sexagenary-date applications.
-It does not create another context: `calculate_four_pillars()` consumes the
-existing `ChineseCalendarContext`, an absolute split-JD UTC instant, the
-caller-resolved civil/solar `virtual_time`, and an explicit Rat-hour rule.
+The calendrical Ganzhi layer is part of Chinese Calendar. Its four-pillar
+year/month/day/hour labels are reused by BaZi, Qimen, Liuren, and ordinary
+sexagenary-date applications. It does not create another context:
+`calculate_four_pillars()` consumes the existing `ChineseCalendarContext`, an
+absolute split-JD UTC instant, the caller-resolved civil/solar `virtual_time`,
+and an explicit Rat-hour rule.
 
 The five-tiger month rule, five-rat hour rule, sexagenary construction,
-cycle advancement, and NaYin ID/five-element lookup remain in the Free Pascal
-rule unit. NaYin is calendrical data attached to a sexagenary value, so it is
-available through `taiyin_ganzhi_*` even when BaZi is not built. C++ only
-supplies split-JD solar-term boundaries and calendar orchestration. The C ABI
-exposes the same split as `taiyin_ganzhi_*` and
+cycle advancement, and NaYin ID/five-element lookup are implemented in the
+native C++ rule unit. NaYin is calendrical data attached to a sexagenary value,
+so it is available through `taiyin_ganzhi_*` even when BaZi is not built. The
+C++ calendar layer also supplies split-JD solar-term boundaries and calendar
+orchestration. The C ABI exposes the same split as `taiyin_ganzhi_*` and
 `taiyin_chinese_calendar_calc_four_pillars_ut()`.
 
-BaZi is a separate optional interpretation layer. It accepts a completed
+BaZi is a separate optional Chinese-metaphysics interpretation layer. Building it
+requires both `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` and
+`TAIYIN_BUILD_BAZI_EXTENSION=ON`; the policy gate never enables BaZi or any
+future metaphysics module by itself. The Ganzhi calendar layer is always built
+into Chinese Calendar and is available to ordinary sexagenary-date applications
+that do not use a metaphysics interpretation module.
+
+BaZi accepts a completed
 `taiyin_ganzhi_four_pillars` value and attaches the calendrical NaYin IDs,
 then adds hidden stems, ten gods, life stages, Ming Gong, Shen Gong, Tai Yuan,
 and Tai Xi. `taiyin_bazi_collect_chart_relations()` returns the merged
@@ -276,10 +373,6 @@ the four primary pillars; callers opt into Ming Gong, Shen Gong, Tai Yuan, and
 Tai Xi with the pillar mask. It no longer owns an astronomy or Chinese-calendar
 context.
 
-Free Pascal targets are inferred from the CMake toolchain. Cross builds may
-override `TAIYIN_FPC_EXECUTABLE`, `TAIYIN_FPC_TARGET_OS`,
-`TAIYIN_FPC_TARGET_CPU`, and `TAIYIN_FPC_EXTRA_FLAGS`. Apple universal builds
-must compile each architecture separately and combine the results; one FPC
-invocation does not emit a multi-architecture object. In particular, enabling
-this extension with multiple `CMAKE_OSX_ARCHITECTURES` is rejected at configure
-time; configure one architecture per build, then create the XCFramework.
+Ganzhi and BaZi use the project C++ toolchain, including ordinary CMake
+cross-compilation and Apple universal builds; no language-specific target
+overrides or post-build archive merge are required.

@@ -90,6 +90,14 @@ bool convert_planet_flags(uint64_t flags, uint64_t* out) noexcept {
     return true;
 }
 
+bool convert_planet_transit_flags(uint64_t flags, uint64_t* out) noexcept {
+    if (!out || (flags & UINT64_C(0xffffffff00000000)) != 0u) {
+        return false;
+    }
+    *out = flags;
+    return true;
+}
+
 bool convert_star_flags(uint64_t flags, uint64_t* out) noexcept {
     uint64_t planet_flags = 0u;
     if (!convert_planet_flags(flags, &planet_flags)) return false;
@@ -251,16 +259,21 @@ taiyin_status TAIYIN_C_CALL taiyin_search_planet_transit_ut(
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
     int32_t event_kind,
+    uint64_t flags,
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
+    uint64_t cpp_flags = 0u;
+    if (!convert_planet_transit_flags(flags, &cpp_flags)) {
+        return taiyin_c_internal::invalid_argument();
+    }
     return search_visibility<taiyin::runtime::PlanetVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
         [&](taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_planet_transit_ut(
                 &context->value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
-                cpp_out, cpp_diagnostic);
+                cpp_flags, cpp_out, cpp_diagnostic);
         });
 }
 

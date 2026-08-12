@@ -269,7 +269,7 @@ void clear_c_ayanamsha_models_locked() noexcept {
     }
 }
 
-void clear_c_house_system_models_locked() noexcept {
+bool clear_c_house_system_models_locked() noexcept {
     try {
         std::lock_guard<std::mutex> lock(g_c_house_system_model_mutex);
         // Remove dependents before their fallback targets. A direct C++ model
@@ -294,9 +294,10 @@ void clear_c_house_system_models_locked() noexcept {
                 }
             }
         }
+        return g_c_house_system_models.empty();
     } catch (...) {
-        // This is a best-effort setup-time cleanup API with no failure channel.
-        // Any entry not erased remains registered and retains its callback.
+        // An entry that cannot be inspected might retain its callback.
+        return false;
     }
 }
 
@@ -748,6 +749,10 @@ taiyin_bool TAIYIN_C_CALL taiyin_has_house_system_model(int32_t model_id) {
 
 taiyin_bool TAIYIN_C_CALL taiyin_has_ayanamsha_model(int32_t model_id) {
     return taiyin::astrology::has_ayanamsha_model(model_id) ? 1u : 0u;
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_astrology_module_shutdown(void) {
+    return TAIYIN_ERROR_UNSUPPORTED;
 }
 
 taiyin_status TAIYIN_C_CALL taiyin_register_ayanamsha_model(

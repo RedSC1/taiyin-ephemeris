@@ -2,6 +2,7 @@
 #define TAIYIN_INTERNAL_OPM2_H
 
 #include "ephemeris_block.h"
+#include "ephemeris_source_identity.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,7 +13,8 @@ namespace taiyin {
 namespace internal {
 
 const uint32_t OPM2_METHOD_ID = 1;
-const uint64_t OPM2_SOURCE_ID = 1;
+// Kept as a compatibility name for pre-provenance / unclassified OPM2 files.
+const uint64_t OPM2_SOURCE_ID = OPM2_SOURCE_LEGACY;
 
 const uint32_t OPM2_CONTAINER_VERSION = 1;
 const uint32_t OPM2_HEADER_LEN = 28;
@@ -138,7 +140,8 @@ bool parse_opm2_summary(
     const void* bytes,
     size_t byte_count,
     Opm2EpheSection* ephe,
-    Opm2GridSection* grid
+    Opm2GridSection* grid,
+    uint32_t* source_id = 0
 ) noexcept;
 
 bool compile_opm2_ephemeris_data(

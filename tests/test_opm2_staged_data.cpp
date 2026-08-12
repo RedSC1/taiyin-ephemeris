@@ -659,6 +659,46 @@ void test_opm2_range_slice_matches_full_frame(int* failures) {
     }
 }
 
+void test_opm2_header_source_identity(int* failures) {
+    const std::string path = repo_data_path("major-bodies/600y/emb.opm2");
+    std::vector<unsigned char> bytes;
+    if (!read_file_bytes(path, &bytes)) {
+        std::cerr << "FAIL: read OPM2 source-id fixture: " << path << "\n";
+        ++(*failures);
+        return;
+    }
+
+    taiyin::internal::Opm2EpheSection ephe;
+    taiyin::internal::Opm2GridSection grid;
+    uint32_t source_id = taiyin::internal::OPM2_SOURCE_UNDEFINED;
+    expect_true(
+        taiyin::internal::parse_opm2_summary(
+            bytes.data(), bytes.size(), &ephe, &grid, &source_id),
+        "parse packaged OPM2 source id",
+        failures);
+    expect_equal_int(
+        static_cast<int>(source_id),
+        static_cast<int>(taiyin::internal::OPM2_SOURCE_TAIYIN_PRERELEASE),
+        "packaged OPM2 header source id",
+        failures);
+
+    std::vector<taiyin::internal::EphemerisBlockDescriptor> descriptors;
+    expect_equal_int(
+        static_cast<int>(taiyin::internal::discover_opm2_file(
+            path, taiyin::internal::EphemerisDiscoveryOptions(), &descriptors)),
+        static_cast<int>(taiyin::internal::DiscoveryOk),
+        "discover packaged OPM2 source-id fixture",
+        failures);
+    expect_equal_size(descriptors.size(), 1, "one packaged OPM2 descriptor", failures);
+    if (descriptors.size() == 1) {
+        expect_equal_int(
+            static_cast<int>(descriptors[0].source_key.source_id),
+            static_cast<int>(taiyin::internal::OPM2_SOURCE_TAIYIN_PRERELEASE),
+            "descriptor uses OPM2 header source id",
+            failures);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -669,6 +709,7 @@ int main() {
     test_cob_runtime_body_composite(&failures);
     test_inner_planet_body_aliases(&failures);
     test_opm2_range_slice_matches_full_frame(&failures);
+    test_opm2_header_source_identity(&failures);
 
     if (failures == 0) {
         std::cout << "test_opm2_staged_data: ALL TESTS PASSED\n";

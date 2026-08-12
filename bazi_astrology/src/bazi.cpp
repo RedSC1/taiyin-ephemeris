@@ -1,6 +1,6 @@
 #include "taiyin/bazi/bazi.h"
 
-#include "bazi_rules_ffi.h"
+#include "bazi_rules_internal.h"
 #include "chinese_calendar/solar_term_internal.h"
 
 #include <algorithm>
@@ -11,13 +11,6 @@
 namespace taiyin {
 namespace bazi {
 namespace {
-
-static_assert(sizeof(BaziRelation) == 12u,
-    "Pascal relation ABI requires a 12-byte BaziRelation");
-static_assert(offsetof(BaziRelation, pillar_mask) == 4u,
-    "Pascal relation ABI requires pillar_mask at offset 4");
-static_assert(offsetof(BaziRelation, combined_element_id) == 8u,
-    "Pascal relation ABI requires combined_element_id at offset 8");
 
 bool valid_earth_palace_mode(int32_t mode) noexcept {
     return mode >= BaziEarthPalaceFireEarth && mode <= BaziEarthPalaceWaterEarth;
@@ -172,18 +165,18 @@ Status fill_chart_rule_data(BaziChart* out, int32_t earth_palace_mode) noexcept 
     };
     const uint8_t day_stem = static_cast<uint8_t>(out->pillars.day >> 4);
     for (size_t i = 0; i < 4; ++i) {
-        Status status = status_from_rule_result(taiyin_bazi_rules_ten_god(
+        Status status = status_from_rule_result(rules::ten_god(
             day_stem,
             static_cast<uint8_t>(pillars[i] >> 4),
             &out->visible_ten_gods[i]));
         if (status != TAIYIN_STATUS_OK) return status;
-        status = status_from_rule_result(taiyin_bazi_rules_hidden_stems(
+        status = status_from_rule_result(rules::hidden_stems(
             static_cast<uint8_t>(pillars[i] & 0x0fu),
             out->hidden_stems[i],
             &out->hidden_stem_count[i]));
         if (status != TAIYIN_STATUS_OK) return status;
         for (size_t j = 0; j < out->hidden_stem_count[i]; ++j) {
-            status = status_from_rule_result(taiyin_bazi_rules_ten_god(
+            status = status_from_rule_result(rules::ten_god(
                 day_stem, out->hidden_stems[i][j], &out->hidden_ten_gods[i][j]));
             if (status != TAIYIN_STATUS_OK) return status;
         }
@@ -196,7 +189,7 @@ Status fill_chart_rule_data(BaziChart* out, int32_t earth_palace_mode) noexcept 
         status = chinese_calendar::get_nayin_id(pillars[i], &out->nayin_ids[i]);
         if (status != TAIYIN_STATUS_OK) return status;
     }
-    return status_from_rule_result(taiyin_bazi_rules_extra_pillars(
+    return status_from_rule_result(rules::extra_pillars(
         out->pillars.year,
         out->pillars.month,
         out->pillars.day,
@@ -313,7 +306,7 @@ Status initialize_context(
 
 Status get_kong_wang(uint8_t ganzhi, uint8_t out_branches[2]) noexcept {
     return status_from_rule_result(
-        taiyin_bazi_rules_kong_wang(ganzhi, out_branches));
+        rules::kong_wang(ganzhi, out_branches));
 }
 
 Status get_ten_god(
@@ -321,7 +314,7 @@ Status get_ten_god(
     uint8_t target_stem_id,
     uint8_t* out_ten_god_id
 ) noexcept {
-    return status_from_rule_result(taiyin_bazi_rules_ten_god(
+    return status_from_rule_result(rules::ten_god(
         day_stem_id, target_stem_id, out_ten_god_id));
 }
 
@@ -330,7 +323,7 @@ Status get_hidden_stems(
     uint8_t out_stems[kHiddenStemCapacity],
     uint8_t* out_count
 ) noexcept {
-    return status_from_rule_result(taiyin_bazi_rules_hidden_stems(
+    return status_from_rule_result(rules::hidden_stems(
         branch_id, out_stems, out_count));
 }
 
@@ -340,7 +333,7 @@ Status calculate_stem_relation(
     uint32_t* out_flags,
     uint8_t* out_combined_element_id
 ) noexcept {
-    return status_from_rule_result(taiyin_bazi_rules_stem_relation(
+    return status_from_rule_result(rules::stem_relation(
         stem_a, stem_b, out_flags, out_combined_element_id));
 }
 
@@ -350,7 +343,7 @@ Status calculate_branch_relation(
     uint32_t* out_flags,
     uint8_t* out_combined_element_id
 ) noexcept {
-    return status_from_rule_result(taiyin_bazi_rules_branch_relation(
+    return status_from_rule_result(rules::branch_relation(
         branch_a, branch_b, out_flags, out_combined_element_id));
 }
 
@@ -361,7 +354,7 @@ Status calculate_branch_triple_relation(
     uint32_t* out_flags,
     uint8_t* out_combined_element_id
 ) noexcept {
-    return status_from_rule_result(taiyin_bazi_rules_branch_triple_relation(
+    return status_from_rule_result(rules::branch_triple_relation(
         branch_a, branch_b, branch_c, out_flags, out_combined_element_id));
 }
 
@@ -371,7 +364,7 @@ Status get_life_stage(
     int32_t earth_palace_mode,
     uint8_t* out_life_stage_id
 ) noexcept {
-    return status_from_rule_result(taiyin_bazi_rules_life_stage(
+    return status_from_rule_result(rules::life_stage(
         stem_id, branch_id, earth_palace_mode, out_life_stage_id));
 }
 
@@ -520,7 +513,7 @@ Status collect_chart_relations(
         chart->extra.tai_yuan,
         chart->extra.tai_xi,
     };
-    return status_from_collection_result(taiyin_bazi_rules_collect_relations(
+    return status_from_collection_result(rules::collect_relations(
         pillars, pillar_mask, relation_mask, out, capacity, out_count));
 }
 
@@ -546,7 +539,7 @@ Status collect_target_shen_sha(
         chart->extra.tai_yuan,
         chart->extra.tai_xi,
     };
-    return status_from_collection_result(taiyin_bazi_rules_collect_shen_sha(
+    return status_from_collection_result(rules::collect_shen_sha(
         pillars,
         target_ganzhi,
         target_kind,
@@ -580,7 +573,7 @@ Status collect_target_shen_sha_with_gender(
         chart->extra.tai_xi,
     };
     return status_from_collection_result(
-        taiyin_bazi_rules_collect_shen_sha_with_gender(
+        rules::collect_shen_sha_with_gender(
             pillars,
             target_ganzhi,
             target_kind,
@@ -609,7 +602,7 @@ Status calculate_qiyun(
     }
 
     int32_t direction = 0;
-    Status status = status_from_rule_result(taiyin_bazi_rules_qiyun_direction(
+    Status status = status_from_rule_result(rules::qiyun_direction(
         chart->pillars.year,
         gender,
         context->config.qiyun_direction_mode,
@@ -728,7 +721,7 @@ Status fill_dayun(
     for (size_t i = 0; i < requested_count; ++i) {
         BaziDaYun item;
         item.index = static_cast<uint32_t>(i + 1u);
-        Status status = status_from_rule_result(taiyin_bazi_rules_dayun_ganzhi(
+        Status status = status_from_rule_result(rules::dayun_ganzhi(
             chart->pillars.month,
             qiyun->direction,
             item.index,
@@ -781,7 +774,7 @@ Status get_renyuan_siling_segments(
     uint8_t stem_id = kInvalidGanzhi;
     uint8_t origin_kind = BaziRenyuanSilingOriginStem;
     double duration_days = 0.0;
-    Status status = status_from_rule_result(taiyin_bazi_rules_siling_segment(
+    Status status = status_from_rule_result(rules::siling_segment(
         table_model, month_branch_id, 0u, &segment_count, &stem_id,
         &origin_kind, &duration_days));
     if (status != TAIYIN_STATUS_OK) return status;
@@ -793,7 +786,7 @@ Status get_renyuan_siling_segments(
     double start_day = 0.0;
     for (uint8_t i = 0u; i < segment_count; ++i) {
         if (i != 0u) {
-            status = status_from_rule_result(taiyin_bazi_rules_siling_segment(
+            status = status_from_rule_result(rules::siling_segment(
                 table_model, month_branch_id, i, &segment_count, &stem_id,
                 &origin_kind, &duration_days));
             if (status != TAIYIN_STATUS_OK) return status;
@@ -856,7 +849,7 @@ Status calculate_renyuan_siling(
     uint8_t origin_kind = BaziRenyuanSilingOriginStem;
     double segment_start_day = std::numeric_limits<double>::quiet_NaN();
     double segment_end_day = std::numeric_limits<double>::quiet_NaN();
-    status = status_from_rule_result(taiyin_bazi_rules_select_siling(
+    status = status_from_rule_result(rules::select_siling(
         table_model, month_branch_id, day_coordinate, &segment_index,
         &stem_id, &origin_kind, &segment_start_day, &segment_end_day));
     if (status != TAIYIN_STATUS_OK) return status;

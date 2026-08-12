@@ -1,177 +1,122 @@
-# taiyin-ephemeris
+# Taiyin Ephemeris
 
-[English](README.md) · [Roadmap](ROADMAP.md)
+[English](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
-`taiyin-ephemeris` 是一个星历运行时库。它负责加载星历数据、选择运行时路线、
-管理数据源 segment cache，并通过 C++ 与带版本号的 C99 ABI 提供位置、可见性、
-天象、日月食、掩星、晨昏初见和占星扩展计算。
+> **预发布说明：** 当前的 `1.0.0` 版本号表示开发中的预发布版本，并非最终稳定发布。
+> 公开 API、随包数据边界、文档和计划中的语言绑定在首个稳定版发布前仍可能调整。
 
-库版本 `1.0.0` 是首个私有 core baseline。C ABI version 5 是 FFI 和应用程序的
-兼容边界；C++ API 仍属于实现层接口，不承诺稳定二进制 ABI。
+Taiyin Ephemeris 是一个可嵌入的天文库，用于计算太阳系天体位置、观测坐标、
+可见性、天文事件、日月食、掩星、固定星、历法和真太阳时。它使用 C++ 编写，
+并为应用程序和 FFI 绑定提供带版本号的 C99 ABI。
+Python、Dart 与 JavaScript wrapper 正在积极开发中，公开 API 和分发包尚未发布。
 
-## 当前状态
+该库使用 OPM2 星历格式，以及内置的半解析星历。典型主星 OPM2
+产品相对其源 DE441 或 DE442 星历的压缩/还原差异约为 **0.001 角秒**。这描述的是
+OPM2 状态压缩误差，而不是最终 apparent 或站心结果；后者还取决于时间尺度、观测者
+几何和所选改正模型。
 
-当前 baseline：
+当前随仓库提供的主星 OPM2 产品覆盖 **1800-01-01 至 2400-01-01**，包含太阳、月球、
+水星、金星、EMB、火星、木星、土星、天王星、海王星和冥王星。下一步数据包工作是
+产出带明确来源标记的全量 DE441 和 DE442 主星 OPM2 产品。未来默认的精确数据包将是
+覆盖 DE442 区间（1550--2650）的全量 DE442 来源 OPM2 压缩；DE441 则保留为可显式选择、
+用于结果复现和对比的数据产品。全量数据包的生成器、来源记录、详细精度和速度基准
+会随数据发布一并公开。这是数据包路线图，并非对当前 600 年随包文件的描述。
 
-- runtime、catalog、route、数据源 segment cache 和 body evaluator 架构已经启用。
-- Native/C API 已覆盖位置、状态、观测坐标、固定星、可见性、天体现象、事件搜索、
-  日月食、掩星、晨昏初见、轨道事件和真太阳时。
-- 占星扩展已覆盖恒星黄道、Ayanamsha、宫位、月球交点/拱点、拟合远地点和
-  自定义模型注册。
-- OPM2/OPC、SPK、内置半解析模型、TKC1/Kepler、TSC1/TSF1 和自定义星体路线已经启用。
-- 旧 pipeline 和旧 TSCA 内置固定星路线已移出 active build，归档在 `plans/legacy/`。
-- 默认测试不依赖私有 oracle 数据。
-- C ABI v5 已按 [`doc_cn/c_api.md`](doc_cn/c_api.md) 的契约冻结。
+Taiyin 还可以读取当前 NASA/JPL SPK 文件，包括 DE441 以及小行星和其他目标的
+SPK 数据。这里的“当前”是指采用与 DE441 时代数据相配套的 Delta T 和时间尺度
+处理路线。Taiyin 没有实现 DE431 年代历史星历表所用的潮汐加速度补偿参数，因此
+不应将它宣传为复现 DE431 历史星历的实现。
 
-## 已完成能力
+在没有更高优先级 SPK 或 OPM2 数据时，内置半解析 fallback 可覆盖约公历
+**-3000 至 +3000**。其模型和验证细节见
+[`doc_cn/semi_analytic_ephemeris.md`](doc_cn/semi_analytic_ephemeris.md)。
 
-### Runtime 和数据加载
+### 内置卫星 fallback 的范围
 
-- 显式源注册与 packaged data root 加载。
-- 以 source descriptor 作为事实来源。
-- segment cache，支持按条目数驱逐和重新加载。
-- singleflight route loading，避免并发 cache miss 重复加载。
-- route-rule 选择，支持内置或用户注册的 route-rule table。
-- Earth/Moon 等组合或内置天体的 runtime body evaluator。
-- OPM2 读取与 OPC 持久目录/索引。
-- SPK、Kepler/TKC1、内置半解析模型、TSC1/TSF1 和自定义源接入。
+无数据文件路线还在各自声明的验证区间内提供 Phobos、Deimos、木星四大卫星、
+冥王星系统和 Triton。这些都是紧凑的 fallback 模型，**不是高精度卫星星历**：
+相对位置误差从部分残差表的几十公里，到紧凑 Galilean 模型的数百公里不等；按质量
+加权后的行星中心修正通常小得多。需要精确卫星测量或卫星现象时，应使用对应的 SPK
+或 OPM2 数据包。
 
-### C ABI 与 FFI
+1.0 没有注册土星或天王星的无数据文件卫星路线。这两个主卫星系统需要专门验证的
+理论或外部卫星数据包；除非调用者显式开启对应 fallback，Taiyin 不会把请求的物理
+行星静默替换为其系统质心。
 
-- `include/taiyin/c/` 下提供带版本号的 C99 统一 API。
-- 动态库 target 为 `taiyin_c`，源码树静态 target 为 `taiyin_c_static`。
-- 提供 opaque context、明确所有权、`struct_size` 扩展机制、diagnostic、
-  capability 查询和 callback 注册。
-- 自定义星体、Ayanamsha 和宫制不需要把 C++ 类型暴露给 FFI。
-- 详见 [`doc_cn/c_api.md`](doc_cn/c_api.md)。
+## 可以做什么
 
-### 主星位置
+- **天体位置：** apparent、astrometric、topocentric、赤道/黄道、球坐标、
+  笛卡尔和速度输出。
+- **观测计算：** UTC/UT 路线、地平坐标、大气和折射、leap second、EOP、
+  polar motion 和 celestial pole offset。
+- **事件与可见性：** 日出日落、晨昏蒙影、过中天、月相、角距事件、行星留点、
+  偕日可见性和轨道事件。
+- **日月食与掩星：** 全球和地方日食、月食、月掩、接触时刻、circumstances
+  和可见性摘要。
+- **固定星：** TSC1/TSF1 星表、alias、astrometry、自行、视差、观测位置和
+  地平坐标。
+- **历法和占星扩展：** 中国历法 primitive、恒星黄道、ayanamsha、宫位、
+  月球交点/远地点，以及可选的 BaZi/Ganzhi 支持。
+- **应用集成：** 带 opaque context、diagnostic、capability 查询和 FFI 友好
+  ownership 规则的版本化 C99 API。C ABI version 7 是应用和绑定的兼容边界；
+  C++ API 不承诺稳定二进制 ABI。
 
-- `calc_position_tdb`、`calc_position_ut` 和 batch 变体。
-- `NativeCalcContext` 存用户上下文，例如 observer、atmosphere、模型、deflectors 和时间策略。
-- flags 控制球坐标/XYZ、赤道/黄道、弧度、速度、truepos、astrometric、光行差、引力偏折和 topocentric 输出。
-- apparent 计算支持光行时、Shapiro delay、年光行差、太阳/多体引力偏折、岁差、章动、黄赤交角和可选输出坐标系。
+### 1.0 观测者范围
 
-### 观测位置
+1.0 只支持地球表面的站心坐标、地平坐标和大气折射。非地球 `observer_id`
+请求 topocentric 计算时会返回 `TAIYIN_ERROR_UNSUPPORTED`。固定星位置、固定星
+观测和 body-star 搜索同样要求 observer 为地球。不请求站心坐标的太阳系天体
+相对位置计算不受此限制，只要所选星历 route 能提供需要的状态即可。
 
-- 主星 `calc_observed_ut`。
-- 如果 `NativeCalcContext` 挂了 leap-second table 和 EOP table，主星
-  `calc_observed_utc` 也可用。
-- observer location 存在 `NativeCalcContext` 中。
-- topocentric observer offset 作为单次调用 scratch 计算。
-- precise UTC/EOP 路径覆盖 leap seconds、DUT1、polar motion 和 CPO。
-- 地平坐标 azimuth/altitude 输出。
-- 可选大气折射。
-- 折射字段按模型校验：Bennett 类模型需要 pressure 和 temperature；SOFA 还需要 humidity 和 wavelength。
+## 数据来源
 
-### 固定星
+Taiyin 将 runtime 与大型星历文件分离。你可以使用打包数据、显式注册 data root，
+或添加 SPK kernel、固定星 catalog 等外部数据源。runtime 会根据目标和时间范围
+选择可用数据源，而不要求把源数据嵌入应用程序二进制文件。
 
-- 全局 TSC1/TSF1 星表注册。
-- `calc_star_position_*` 和 `calc_star_positions_*` 支持 catalog astrometry、自行、径向速度/视差、frame routing、球坐标/XYZ 输出和可选速度。
-- `calc_observed_star_ut` 和 `calc_observed_stars_ut` 使用与主星相同的 `TAIYIN_OBSERVED_*` flags。
-- 固定星 observed 支持地心/站心视差、太阳引力偏折、年光行差、地平坐标和大气折射。
-- 固定星查询以字符串为入口：用户 key 和 alias 解析到星表行。HIP、HR、HD、Gaia DR3 是该行 metadata，不是 runtime body id。
-- provider 分配的 `runtime_id` 只是私有 cache/diagnostic key，不是可移植固定星编号。
-
-### 事件搜索
-
-- 低层黄经、相对黄经、月相、精确相位和 station 搜索位于
-  `include/taiyin/runtime/event_search.h`。
-- event-search 的 `uint64_t flags` 低 32 位保留给 native position flags，高
-  32 位用于 event-search 选项。
-- core runtime 返回原始数值事件：JD、黄经和目标角等。节气、星座 ingress、回归、相位名称、顺逆标签等领域封装留给下游模块。
-- 详见 [`docs/event_search.md`](docs/event_search.md)。
-
-### 日月食搜索
-
-- 月食 solve/search、全球日食 solve/search、地方日食 circumstances 和日食路径辅助函数位于 `include/taiyin/runtime/eclipse_search.h`。
-- 日月食搜索使用 Meeus 第 52 章作为朔望月预筛，然后用当前 runtime 星历细化最终几何。
-- 月食地影模型和月球半径模型通过 `NativeCalcContext` 选择；算法来源、模型口径、验证边界和 API 示例见 [`docs/eclipse_search.md`](docs/eclipse_search.md)。
-
-### 掩星搜索
-
-- 第一版月掩恒星和月掩太阳系天体 next-search API 位于
-  `include/taiyin/runtime/occultation_search.h`。
-- 支持指定固定星或太阳系 body target 的地心搜索和地方/topocentric 搜索。
-- 返回最大掩/最近角距时刻和接触时刻：恒星点目标返回 C1/C4，body 目标在存在内接触时返回 C1-C4。
-- 本地可见性摘要 helper 可以在接触时刻和最大掩时刻采样 Moon、target、Sun 的高度/方位，并可选择使用折射高度。
-- API 形状、当前 seed/refine 行为和限制见 [`docs/occultation_search.md`](docs/occultation_search.md)。
-
-## 后续工作
-
-1.0 baseline 已可使用，后续主要是：
-
-- 更广的 observed oracle sweep，特别是 precise EOP/CPO、CIRS/equinox route、
-  horizontal azimuth convention 和 refraction convention。
-- 固定星对独立 catalog/runtime 输出的外部 oracle sweep。
-- 更完整的目标盘面 metadata、不规则月缘/地形，以及更高保真光度和天空亮度模型。
-- 完整星盘对象与流派解释层。
-- 基于稳定 C ABI 的 Dart、Python、JavaScript bindings。
-- 跨平台预编译动态库、签名和公开数据包。
-- 第三方兼容 API/ABI 层。如果需要，应该单独放到 compatibility 项目里，避免许可证/语义兼容问题混入 core runtime。
-- 在源码仓库内捆绑大型星历数据。
-
-## 非目标
-
-核心 runtime 不提供：
-
-- 大范围系统目录或 home 目录扫描；
-- 固定 chart/application struct；
-- 低层 workflow/pipeline engine；
-- 大型 SPK/OPM/oracle 数据集的完整分发。
-
-流派解释、阿拉伯点、完整星盘组装和应用展示应放在下游应用中；占星计算
-primitive 集中在 `taiyin_astrology_extension`，不混入 core astronomy runtime。
-
-## 架构
-
-应用层代码应优先从 native API 进入：
-
-```text
-NativeCalcContext + typed calculation functions
-        |
-        v
-major-body / fixed-star apparent and observed helpers
-        |
-        v
-EphemerisEngine
-        |
-        +--> EphemerisBlockCatalog
-        +--> EphemerisSegmentCache
-        +--> EphemerisRouteRule tables
-        +--> EphemerisBodyRegistry
-        |
-        v
-source files and descriptors
-```
-
-只有在做 raw state evaluation、route-selection 测试、cache 测试、provider 测试或内部工具时，才应该直接使用 `EphemerisEngine`。
-
-关键规则：
-
-```text
-source descriptors 是事实来源；
-compiled-block cache entries 是可重新加载的派生状态。
-```
-
-缓存驱逐不能导致 source-backed block 失去重新加载能力。
-
-## 数据模型
-
-当前支持的数据族包括：
-
-- OPM2 packaged numerical ephemeris segments。
-- OPC catalogs，用于 packaged-data 持久发现。
-- SPK files，用于外部 kernel-backed route。
-- TKC1/Kepler-style catalog data。
-- 内置冻结半解析 fallback，覆盖公元前 3000 年至公元 3000 年的水星到冥王星、
-  EMB、地球和月球。
-- TSC1 precision fixed-star catalogs。
-- TSF1 user fixed-star files，通过 TSC1 provider 路径转换和计算。
-
-大型 raw datasets 不进入源码仓库。请使用显式 data root 或外部数据包。
+仓库包含当前 600 年主星 OPM2 产品和部分小行星 OPM2 数据；这是过渡性数据包，
+未来默认精确数据产品将替换为上文所述的全量 DE442 来源 OPM2。大型 DE441 数据包
+和其他外部数据集单独分发；覆盖范围、数据包边界和已知限制见
+[`doc_cn/current_limitations.md`](doc_cn/current_limitations.md)。
 
 ## 快速开始
+
+构建库并运行测试：
+
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+### CMake presets
+
+`CMakePresets.json` 让本地与 CI 使用同一套工具链选择。它要求 CMake 3.21 或更高
+版本；直接使用普通命令行配置时，项目本身仍支持声明的 CMake 3.16 最低版本。
+源码基线为 C++11（C API 为 C99）；编译器由 preset、命令行或 toolchain file 在
+执行 `CMakeLists.txt` 前选定。
+
+`modular-bazi` 是常用的原生验证构建：
+
+```sh
+cmake --preset modular-bazi
+cmake --build --preset modular-bazi
+ctest --preset modular-bazi
+```
+
+`linux-gcc`、`linux-clang`、`macos-appleclang` 与 `windows-msvc` 分别选择相应
+主机编译器。Windows preset 使用 Visual Studio 2022 和 x64。`android-arm64`
+使用 NDK toolchain，因此需要设置 `ANDROID_NDK`：
+
+```sh
+cmake --preset android-arm64
+cmake --build --preset android-arm64
+```
+
+维护者专用的生成器、基准和实验工具默认不参与构建；私有开发树需要它们时显式加上
+`-DTAIYIN_BUILD_MAINTAINER_TOOLS=ON`。公开源码快照不包含这些工具。
+
+最小 C++ 调用示例：
 
 ```cpp
 #include "taiyin/body_id.h"
@@ -184,9 +129,10 @@ using namespace taiyin;
 using namespace taiyin::runtime;
 
 EphemerisRuntimeConfig config;
-config.segment_cache_max_entries = 512;
 config.data_root = "/path/to/taiyin/data";
-initialize_global_ephemeris_runtime(config);
+if (!initialize_global_ephemeris_runtime(config)) {
+    return 1;
+}
 
 NativeCalcContext context;
 const int bodies[] = {
@@ -194,7 +140,6 @@ const int bodies[] = {
     TAIYIN_BODY_MOON,
     TAIYIN_BODY_MERCURY_BARYCENTER,
 };
-
 const double jd_ut = julian_day({2024, 1, 1, 12, 0, 0.0});
 double positions[3][6];
 EphemerisEvalDiagnostic diagnostics[3];
@@ -209,142 +154,57 @@ const Status status = calc_positions_ut(
     diagnostics);
 ```
 
-球坐标输出时，`positions[i][0..2]` 是经度、纬度和距离。加上 `TAIYIN_NATIVE_POSITION_SPEED` 后，`positions[i][3..5]` 输出对应速度。
+球坐标输出时，`positions[i][0..2]` 是经度、纬度和距离。加入
+`TAIYIN_NATIVE_POSITION_SPEED` 后，`positions[i][3..5]` 输出对应速度。
+稳定 C 接口见 [`doc_cn/c_api.md`](doc_cn/c_api.md)；C++ 的 typed API 见相应头文件。
 
-## 固定星快速开始
+## 可选扩展
 
-```cpp
-#include "taiyin/runtime/star_position.h"
+天文、占星、历法和中国术数模块位于同一源码树，是因为上层模块直接复用并高度依赖
+相同的时间、位置和事件 primitive。它们仍是彼此独立的构建目标，只需要核心天文能力
+的使用者无需链接扩展：
 
-add_global_tsc1_star_catalog("/path/to/catalog.tsc1");
+- 链接 `taiyin_ephemeris` 可使用核心天文 runtime。
+- 使用恒星黄道、宫位或月球点时，再链接 `taiyin_astrology_extension`。
+- 中国术数扩展默认关闭。未设置
+  `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 时，CMake 不会构建 BaZi
+  代码、target、测试、C ABI symbol 或头文件。
+- 构建 BaZi 时，必须显式同时设置
+  `-DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 和
+  `-DTAIYIN_BUILD_BAZI_EXTENSION=ON`，不需要额外编译器工具链。
 
-const char* stars[] = {"spica", "HIP 65474"};
-double star_positions[2][6];
+Ganzhi 属于中国历法的年、月、日、时纪法，固定包含在 Chinese Calendar 实现中，
+不属于中国术数解释模块。未来的奇门、六壬等扩展会在同一术数门下使用各自独立的
+opt-in 选项。
 
-calc_star_positions_ut(
-    &context,
-    stars,
-    2,
-    jd_ut,
-    TAIYIN_NATIVE_POSITION_RADIANS,
-    &star_positions[0][0],
-    nullptr);
-```
-
-如果需要 topocentric、horizontal 或 refraction 输出，使用 observed star API：
-
-```cpp
-ObservedPosition observed[2];
-
-calc_observed_stars_ut(
-    &context,
-    stars,
-    2,
-    jd_ut,
-    TAIYIN_OBSERVED_TOPOCENTRIC
-        | TAIYIN_OBSERVED_HORIZONTAL
-        | TAIYIN_OBSERVED_REFRACTION,
-    observed,
-    nullptr);
-```
-
-## 示例
-
-```sh
-cmake --build build --target example_apparent_ut_chart_table
-./build/example_apparent_ut_chart_table data
-```
-
-输出地心 apparent ecliptic 裸星盘表格。
-
-```sh
-cmake --build build --target example_observed_ut_bare_chart
-./build/example_observed_ut_bare_chart data
-```
-
-运行带 observer context 的 observed UT 路径，并输出地平坐标。
-
-```sh
-cmake --build build --target example_observed_utc_eop_bare_chart
-./build/example_observed_utc_eop_bare_chart data
-```
-
-运行 precise observed UTC 路径，使用内置 leap seconds、内置 finals2000A
-EOP、北京 observer context、地平坐标和大气折射。
-
-## 构建和测试
-
-```sh
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-八字是由 Pascal 规则核支持的可选扩展。启用它会同时启用干支历扩展，并要求
-系统具有兼容的 Free Pascal 编译器：
-
-```sh
-cmake -S . -B build-bazi \
-  -DTAIYIN_BUILD_BAZI_EXTENSION=ON
-cmake --build build-bazi
-ctest --test-dir build-bazi --output-on-failure
-```
-
-只有启用该扩展的构建才安装 `taiyin/c/bazi.h` 并导出 `taiyin_bazi_*`。
-调用方必须显式包含该头，不能依赖 `taiyin/c/taiyin.h` 间接引入八字接口。
-
-重要本地测试包括：
-
-- `test_ephemeris_catalog`
-- `test_ephemeris_segment_cache`
-- `test_ephemeris_route_rule`
-- `test_custom_ephemeris_method`
-- `test_event_search`
-- `test_occultation_search`
-- `test_body_registry`
-- `test_apparent_position`
-- `test_apparent_position_oracles`
-- 私有兼容性 / oracle sweep 放在 `private/` 下，不进入默认公开构建。
-- `test_star_file`
-- `test_tsc1_catalog_discovery`
-- `test_opc_catalog_persistent`
-
-可选 oracle 和外部数据测试会在缺少相关环境变量时自动 skip：
-
-```text
-TAIYIN_DE441_PATH
-TAIYIN_OPM2_DATA_DIR
-TAIYIN_MER404_TS_PATH
-TAIYIN_MAIN_BELT_ASTEROIDS_SPK_PATH
-TAIYIN_NEAR_EARTH_ASTEROIDS_SPK_PATH
-TAIYIN_JUPITER_SATELLITES_SPK_PATH
-TAIYIN_SATURN_SATELLITES_SPK_PATH
-```
+扩展相关文档见 [`doc_cn/index.md`](doc_cn/index.md)，包括
+[恒星黄道](doc_cn/astrology_sidereal.md)、[宫位](doc_cn/astrology_houses.md)、
+[月球点](doc_cn/astrology_lunar_points.md) 和
+[中国历法](doc_cn/chinese_calendar.md)。
+可选术数层另见[八字扩展](doc_cn/bazi.md)。
 
 ## 文档
 
-- [`ROADMAP.md`](ROADMAP.md) — 方向和优先级。
-- [`docs/current_limitations.md`](docs/current_limitations.md) — 当前缺口和已知限制。
-- [`docs/event_search.md`](docs/event_search.md) — 低层事件搜索 API 和扩展边界。
-- [`docs/eclipse_search.md`](docs/eclipse_search.md) — 日月食算法、模型口径和 API 示例。
-- [`docs/occultation_search.md`](docs/occultation_search.md) — 月掩搜索和本地可见性摘要 API。
-- [`docs/catalog_cache_model.md`](docs/catalog_cache_model.md) — descriptor catalog 与 compiled block cache。
-- [`docs/opc_catalog_format.md`](docs/opc_catalog_format.md) — OPC 持久目录格式。
-- [`docs/ephemeris_runtime_architecture.md`](docs/ephemeris_runtime_architecture.md) — 较底层 runtime/cache 架构。
-- [`docs/tsc1_v1_known_limitations.md`](docs/tsc1_v1_known_limitations.md) — 固定星目录限制。
-
-## Legacy
-
-归档实现位于 `plans/legacy/`：
-
-- `plans/legacy/pipeline_runner/` — 已否定的低层 workflow pipeline。
-- `plans/legacy/star_tsca/` — 旧 TSCA 内置固定星原型。
-
-这些内容仅保留历史，不应重新进入 active build。
+- [`doc_cn/index.md`](doc_cn/index.md) — 文档总览和 API 地图。
+- [`doc_cn/c_api.md`](doc_cn/c_api.md) — 版本化 C99 ABI 和 FFI 契约。
+- [`doc_cn/current_limitations.md`](doc_cn/current_limitations.md) — 覆盖范围、
+  数据包和已知行为边界。
+- [`doc_cn/bazi.md`](doc_cn/bazi.md) — 可选八字构建、所有权、计算与验证契约。
+- [`doc_cn/event_search.md`](doc_cn/event_search.md) — event-search primitive。
+- [`doc_cn/solar_visibility.md`](doc_cn/solar_visibility.md) — 太阳升落、twilight、
+  transit、快速路线和折射约定。
+- [`doc_cn/eclipse_search.md`](doc_cn/eclipse_search.md) — 日月食算法和 API 示例。
+- [`doc_cn/occultation_search.md`](doc_cn/occultation_search.md) — 月掩搜索和地方
+  可见性摘要。
+- [`doc_cn/semi_analytic_ephemeris.md`](doc_cn/semi_analytic_ephemeris.md) — 内置
+  fallback 模型和验证。
+- [`doc_cn/ephemeris_runtime_architecture.md`](doc_cn/ephemeris_runtime_architecture.md)
+  — 更底层的 runtime 设计。
 
 ## 许可证
 
 Copyright 2026 RedSC1.
 
 Taiyin 原创代码和文档使用 [Mozilla Public License 2.0](LICENSE) 许可证。
-第三方代码和随仓库分发的数据继续遵守 [`NOTICE`](NOTICE) 及相邻数据来源文件中的许可证和条款。
+第三方代码和随仓库分发的数据继续遵守 [`NOTICE`](NOTICE) 及相邻 provenance 文件中
+记录的许可证和条款。

@@ -39,6 +39,7 @@ Status planet_visibility_search_transit_ut(
     const SplitJulianDate& start_jd_ut,
     const SplitJulianDate& end_jd_ut,
     int event_kind,
+    uint64_t flags,
     VisibilityAltitudeSearchResult* out,
     EphemerisEvalDiagnostic* diagnostic = 0
 ) noexcept;

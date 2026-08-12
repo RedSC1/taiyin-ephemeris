@@ -2,13 +2,16 @@
 #include "taiyin/internal/descriptor_loader.h"
 #include "taiyin/internal/ephemeris_catalog.h"
 #include "taiyin/internal/ephemeris_discovery.h"
+#include "taiyin/internal/ephemeris_source_identity.h"
 #include "taiyin/internal/opm2_catalog_discovery.h"
 #include "taiyin/internal/opc_catalog_persistent.h"
 #include "taiyin/internal/path_utils.h"
+#include "taiyin/internal/spk_catalog_discovery.h"
 #include "taiyin/state.h"
 #include "taiyin/time.h"
 
 #include <cassert>
+#include <cstddef>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -46,6 +49,14 @@ void expect_equal_int(int actual, int expected, const char* label, int* failures
 void expect_equal_size(size_t actual, size_t expected, const char* label, int* failures) {
     if (actual != expected) {
         std::cerr << "FAIL: " << label << ": actual=" << actual << " expected=" << expected << "\n";
+        ++(*failures);
+    }
+}
+
+void expect_equal_u64(uint64_t actual, uint64_t expected, const char* label, int* failures) {
+    if (actual != expected) {
+        std::cerr << "FAIL: " << label << ": actual=" << actual
+                  << " expected=" << expected << "\n";
         ++(*failures);
     }
 }
@@ -339,6 +350,77 @@ void test_fallback_writes_catalog(int* failures) {
     expect_equal_size(loaded.size(), 9u, "fallback-written catalog count", failures);
 }
 
+void test_cached_spk_source_identity_is_reclassified(int* failures) {
+    using namespace taiyin::internal;
+
+    const std::string root = make_temp_dir();
+    const std::string spk_path = join_path(root, "de442-test.bsp");
+    const std::string catalog_path = join_path(root, "catalog.opc");
+    expect_true(write_file(spk_path, "legacy cached SPK fixture"), "write cached SPK fixture", failures);
+
+    EphemerisBlockDescriptor descriptor;
+    descriptor.route_key = EphemerisRouteKey(5, 0, SPK_METHOD_ID, 0);
+    descriptor.source_key = EphemerisBlockKey(SPK_SOURCE_EXTERNAL, 1, 1, 0);
+    descriptor.target_id = 5;
+    descriptor.center_id = 0;
+    descriptor.method_id = SPK_METHOD_ID;
+    descriptor.frame = EphemerisFrame::IcrfJ2000Equatorial;
+    descriptor.format = EphemerisBlockFormat::Spk;
+    descriptor.jd_tdb_start = 2400000.5;
+    descriptor.jd_tdb_end = 2500000.5;
+    descriptor.path = spk_path;
+    descriptor.cache_policy.kind = CacheFixedSpan;
+    descriptor.cache_policy.span_days = 32.0;
+
+    std::vector<EphemerisBlockDescriptor> legacy_descriptors(1, descriptor);
+    expect_true(
+        write_opc_persistent_catalog(catalog_path, root, legacy_descriptors),
+        "write legacy generic-SPK OPC fixture",
+        failures);
+
+    std::vector<EphemerisBlockDescriptor> loaded;
+    expect_true(
+        load_opc_persistent_catalog(catalog_path, root, &loaded),
+        "load legacy generic-SPK OPC fixture",
+        failures);
+    expect_equal_size(loaded.size(), 1u, "reclassified OPC descriptor count", failures);
+    if (loaded.size() == 1u) {
+        expect_equal_u64(
+            loaded[0].source_key.source_id,
+            SPK_SOURCE_JPL_DE442,
+            "cached SPK source is reclassified from its current path",
+            failures);
+        expect_equal_u64(
+            loaded[0].source_key.block_id,
+            descriptor.source_key.block_id,
+            "cached SPK reclassification preserves block identity",
+            failures);
+    }
+
+    FILE* catalog = std::fopen(catalog_path.c_str(), "r+b");
+    expect_true(catalog != 0, "open OPC to simulate old discovery generation", failures);
+    if (catalog) {
+        const uint32_t old_discovery_version = OPC_DISCOVERY_VERSION - 1;
+        const bool patched =
+            std::fseek(
+                catalog,
+                static_cast<long>(offsetof(OpcHeader, source_version)),
+                SEEK_SET) == 0
+            && std::fwrite(
+                &old_discovery_version,
+                sizeof(old_discovery_version),
+                1,
+                catalog) == 1;
+        expect_true(patched, "patch old OPC discovery generation", failures);
+        std::fclose(catalog);
+    }
+    loaded.clear();
+    expect_false(
+        load_opc_persistent_catalog(catalog_path, root, &loaded),
+        "OPC from old discovery generation is invalidated",
+        failures);
+}
+
 }  // namespace
 
 int main() {
@@ -347,6 +429,7 @@ int main() {
     test_stale_catalog_rejected(&failures);
     test_staged_catalog_roundtrip(&failures);
     test_fallback_writes_catalog(&failures);
+    test_cached_spk_source_identity_is_reclassified(&failures);
 
     if (failures == 0) {
         std::cout << "test_opc_catalog_persistent: ALL TESTS PASSED\n";

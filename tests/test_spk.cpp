@@ -796,6 +796,10 @@ void check_spk_discovery_catalog_routes() {
 
     const double jd_tdb = 2460310.5;
 
+    expect_true(
+        taiyin::internal::spk_physical_primary_for_shared_center(4) == 499,
+        "Mars-system SPK shared center maps to physical Mars");
+
     const std::string jupiter_path =
         external_spk_path(kJupiterSatellitesSpkPath, "satellites/jup365.bsp");
     if (!file_exists_string(jupiter_path)) {
@@ -817,6 +821,24 @@ void check_spk_discovery_catalog_routes() {
 
         expect_spk_catalog_candidate(descriptors, 505, 599, jd_tdb, "catalog finds numeric satellite derived SPK route");
         expect_spk_catalog_candidate(descriptors, 599, 5, jd_tdb, "catalog finds Jupiter COB SPK route");
+    }
+
+    const std::string mars_path =
+        external_spk_path(0, "satellites/mar099.bsp");
+    if (!file_exists_string(mars_path)) {
+        std::printf("skipping SPK discovery/catalog Mars check; local mar099 BSP is absent\n");
+    } else {
+        std::vector<EphemerisBlockDescriptor> descriptors;
+        EphemerisDiscoveryOptions options;
+        expect_true(
+            discover_spk_file(mars_path, options, &descriptors) == DiscoveryOk,
+            "discover Mars satellite SPK descriptors");
+        expect_spk_descriptor_covering(
+            descriptors, mars_path, 401, 499, jd_tdb,
+            "discover Phobos/physical Mars derived route");
+        expect_spk_descriptor_covering(
+            descriptors, mars_path, 402, 499, jd_tdb,
+            "discover Deimos/physical Mars derived route");
     }
 
     const std::string asteroid_path =

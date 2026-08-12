@@ -1,7 +1,7 @@
 # 日月食搜索
 
 文档状态：当前说明
-最后审阅：2026-07-01
+最后审阅：2026-08-11
 主要头文件：`include/taiyin/runtime/eclipse_search.h`
 
 本文描述 Taiyin 的日月食搜索算法、模型约定和公开 C++ API。Eclipse 层是数值 runtime 功能：它返回 Julian dates、分类、食分、几何量、路径和地方情况。历法展示、本地化标签和应用层格式化属于这一层之上。
@@ -33,9 +33,13 @@ Eclipse API 覆盖：
 
 ### 月食
 
-月食 solver 是寿星万年历（`sxwnl`）`eph.js` / `eph0.js` 中月食几何路线的 C++ 移植，底层星历输入接 Taiyin runtime ephemerides。
+月食 runtime 使用三维影轴几何。旧的角坐标实现只作为归档回归
+oracle，不链入生产 runtime。
 
-在候选满月处，它计算 apparent Sun/Moon 的 longitude、latitude、distance 和 speed。Moon center 在角坐标中和地球本影轴比较。Solver 通过在 shadow plane 中线性化局部运动、最小化 Moon center 到 shadow axis 的距离来精修食甚。
+在候选满月处，设 `M` 和 `S` 分别是真黄道日期坐标系中的地月、
+地日 apparent 向量。求反太阳影轴方向 `u=-S/|S|`，再将月球向量分解为
+轴向距离 `s=M·u` 和垂直偏移 `q=M-su`。Solver 以 `q·q` 的最小值定义
+食甚，并用随时间刷新的影锥半径求接触时刻。
 
 分类使用精修后的几何：
 
@@ -204,18 +208,24 @@ Runtime comparison，最后检查于 2026-07-01：
 | Greatest latitude | `25.285000°` | `25.289609°` | `+0.004609°` |
 | Greatest longitude | `-104.143333°` | `-104.147999°` | `-0.004665°` |
 
-因此 global `P1/P4` 只把 Besselian roots 当作 seed，最终在每个候选时刻
-联立最小化 WGS84 椭球面上的方向相关半影余量，再对该最小值求根。用廉价
-Besselian projected-ellipse scalar 或固定的径向投影切点作为最终 `P1/P4`
-模型，都会让 global partial contacts 产生可见的秒级偏移。
+Global `P1/P4` 在食甚两侧直接进行时间包围，不依赖 Besselian roots。圆月
+模型最终对影锥母线与 WGS84 椭球的解析交点取最大归一化判别式；接触前为
+负、相切为零、影锥与地球相交时为正。启用 TLL1 后则联立最小化 WGS84
+椭球面上的方向相关真实月缘半影余量。廉价的 projected-ellipse scalar
+只作为 seed，不再作为最终接触模型。
+
+食甚结果中的 `penumbral_margin_km` 来自同一套最终几何：圆月模型使用
+WGS84 椭球归一化径向度量下的带符号间隙，TLL1 使用真实月缘表面的带符号
+间隙。两种情况下负值都表示半影与地球相交，因此该诊断字段不会再与日食
+类型互相矛盾。
 
 #### 2026-08-12 紫金山天文台全球日食 Oracle
 
 中国科学院紫金山天文台已经发布 `2026年8月12日日全食` 公开资料：
 
 - 页面：`https://pmo.cas.cn/xwdt2019/kpdt2019/202512/t20251231_8093683.html`
-- 概况附件：`https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020251231400816723831.txt`
-- 路线附件：`https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020260624590816163664.txt`
+- 路线附件：`https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020251231400816723831.txt`
+- 概况附件：`https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020260624590816163664.txt`
 
 该事件的全食带从俄罗斯极北部开始，经北冰洋、格陵兰岛、冰岛、大西洋东北部和西班牙，在地中海西部结束；偏食覆盖北美洲北部、北冰洋、大西洋北部、非洲西北部、欧洲大部和亚洲极北部。
 
@@ -259,11 +269,31 @@ Runtime comparison，最后检查于 2026-07-06：
 2024 和 2026 两场共十个 global 时刻，MAE 从 `0.90s` 降到 `0.80s`，
 RMSE 从 `1.07s` 降到 `1.02s`。
 
-这条 fixture 主要覆盖高纬度、北大西洋/欧洲路径和 2024 北美日全食以外的路径几何。PMO 概况表是公开历书资料，contact 时间给到整秒，路径量给到 `0.1` 分/公里量级；因此它适合作为秒级/公里级 sanity oracle，不作为更高精度的内部几何常数来源。`path_width_km` 表示中心线法线方向的局部横向食带宽估计；实现会优先用中心线法线与南北界曲线求交，不把同一时刻北界到南界的地表弧长当作食带宽。
+这条 fixture 主要覆盖高纬度、北大西洋/欧洲路径和 2024 北美日全食以外的路径几何。PMO 概况表是公开历书资料，contact 时间给到整秒，路径量给到 `0.1` 分/公里量级；因此它适合作为秒级/公里级 sanity oracle，不作为更高精度的内部几何常数来源。`path_width_km` 表示中心线法线方向的局部横向食带宽估计。路线表生成会让这条法线与闭合的核心食带多边形求交，并包含日出/日落端的地平封口；这样不会在食带刚出现或即将消失时外推趋于奇异的南北界。它也不是同一时刻北界到南界的地表弧长。
+
+另外用 PMO 每 5 秒一行的 [2026 路线表](https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020251231400816723831.txt) 做全表差分，取 `17:02:05` 至 `18:30:15 UT` 共 1,059 条南北界和中心线均完整的记录。下表的坐标误差是大圆角距离，时长和宽度采用绝对误差。最后检查于 2026-08-11，星历为 OPM2 major-bodies 600y，路线使用光滑圆月缘模型：
+
+| 指标 | 重构前路线 | 当前闭合食带路线 |
+| --- | ---: | ---: |
+| 北界 MAE | `0.03565°` | `0.03565°` |
+| 中心线 MAE | `0.01147°` | `0.01147°` |
+| 南界 MAE | `0.01121°` | `0.01121°` |
+| 中心持续时间 MAE | `1.896s` | `1.896s` |
+| 食带宽度 MAE | `4.00 km` | `2.74 km` |
+| 食带宽度 p95 | `11.55 km` | `5.72 km` |
+| 食带宽度最大误差 | `82.73 km` | `6.33 km` |
+
+因此，这次几何重构没有实质改变路线坐标和持续时间，主要修复的是首尾食带宽度的奇异外推。当前首尾完整行宽度分别为 `282.1 / 306.3 km`，PMO 为 `280.2 / 300.1 km`。宽度定义是中心线法线与闭合核心食带 polygon（包含日出/日落地平封口）的两个交点间距，不是同一时刻南北界之间的地表弧长。
+
+食带尖点附近的界限坐标条件数高得多。第一条北界的角距离误差为 `0.785°`，但全表中心线 MAE 只有 `0.0115°`；北界分支刚从地平封口出现，随后 5 秒内会移动超过 1 度。这个值保留为模型敏感诊断，不使用经验时间偏移或坐标偏置强行贴合。
+
+同一批 1,059 行开启 Kaguya TLL1 后，当前北界/中心线/南界 MAE 分别为 `0.03089° / 0.01147° / 0.07192°`，持续时间 MAE 为 `0.719s`，食带宽度 MAE/p95/最大误差为 `8.23 / 13.85 / 14.56 km`。这个混合结果不能解释为两种物理月缘模型的精度排名：PMO 发布资料没有说明采用 Kaguya 地形月缘，其路线宽度更接近 Taiyin 的光滑历书半径约定。TLL1 是显式的方向相关月面地形模型，不是贴合 oracle 的调参开关。
 
 ### 地方日食
 
-地方日食例程是寿星万年历（`sxwnl`）`eph.js` / `eph0.js` 中 solar-eclipse Besselian/local geometry 的 C++ 移植，底层使用 Taiyin runtime positions。它们计算某地经纬度和高度下的 topocentric Sun/Moon 情况。
+地方日食例程使用 Taiyin 的 Besselian seed、topocentric apparent 日月
+几何和 observer 可见性模型，计算某地经纬度和高度下的见食情况。最终接触
+和食甚精修不调用归档的兼容实现。
 
 地方搜索先扫描全球日食候选，再用本地 probe table 判断该观测者是否可能见食；接触时间先用 Besselian local scalar 取 seed，再用 topocentric apparent geometry 精修。这样可以覆盖最大食在地平线下、但日出或日落时仍可见偏食的情况。
 
@@ -279,6 +309,18 @@ RMSE 从 `1.07s` 降到 `1.02s`。
 - 相关时刻的 sunrise/sunset magnitudes。
 
 除非观测者经历全食或环食，否则 `C2` 和 `C3` 是 `NaN`。
+
+地方日食 API 默认使用几何（不折射）日出/日落可见窗口。设置
+`TAIYIN_ECLIPSE_LOCAL_REFRACTION` 后，才改用 context 的带折射太阳升落窗口。
+该选项只决定日食是否落入观测者可见窗口，以及哪些日出/日落时刻贡献对应食分；
+它不改变食甚时刻、食甚食分、遮蔽率或 topocentric 中心几何。
+
+`TAIYIN_ECLIPSE_LOCAL_STRICT_METEOROLOGY` 只能与
+`TAIYIN_ECLIPSE_LOCAL_REFRACTION` 同时使用。它禁止标准大气回退，因此调用方
+必须提供有效的大气字段。带折射的地方请求若没有大气数据，也必须由 context 显式
+启用 `TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK`，否则返回
+`TAIYIN_ERROR_INVALID_ARGUMENT`。这两个地方可见性选项传给全球日食或月食 API
+会被拒绝，不会静默改变其语义。
 
 ### Solar Route 和 Besselian Helpers
 
@@ -298,7 +340,7 @@ Route API 暴露更底层的路径产品：
 Route curves 和 route products 都来自 Taiyin route rows。它们包含几何上存在的中心线、偏食界限、本影/伪本影核心界限和半食分界限，并通过当前 `NativeCalcContext` 配置的星历运行时采样。Polygon point 会保留 unwrapped longitude 字段，方便跨 180 度经线的路径包络在渲染时不断裂；调用方可以在投影后再把单个点归一化。这些 API 返回的是数值几何产品，不是完整地图图层：地图投影、抽稀、分段、样式和瓦片/视口裁剪仍由下游完成。
 
 默认路线曲线采样密度为 `TAIYIN_SOLAR_ROUTE_DEFAULT_SAMPLE_COUNT`，也就是
-在源路线时间段上采样 400 份，贴近 sxwnl 风格地图流程。
+在源路线时间段上采样 400 份。
 `compute_solar_eclipse_route_curves_*`、`compute_solar_eclipse_route_product_*`
 和 `compute_solar_eclipse_route_map_product_*` 的 `_with_options` 版本可以
 传入显式 `route_sample_count`，范围由
@@ -306,9 +348,9 @@ Route curves 和 route products 都来自 Taiyin route rows。它们包含几何
 `TAIYIN_SOLAR_ROUTE_MAX_SAMPLE_COUNT` 限定。这个参数只控制导出的曲线和
 polygon 点密度，不改变星历、Delta T、半径、影锥或月缘模型。
 
-默认光滑路线使用一次参数化的 `sxwnl::solar::jieX()` 扫描同时生成
-中心线、南北界和晨昏食甚线；`mQie` 有解/无解切换处会在相邻采样间
-二分精修，避免原始一次线性端点估算在高纬地区产生点序回折。
+默认光滑路线对影锥母线与 WGS84 椭球做解析直线—椭球求交，
+同时跟踪中心线、南北界和晨昏食甚线。有解/无解切换处会在相邻采样间
+二分精修，避免一次线性端点估算在高纬地区产生点序回折。
 中心线与核心界的切换区间还会按默认密度下最大 `0.05°` 的球面段长自适应细分，因此最终点数
 可以略多于基础 `route_sample_count`。
 中心食路线还会输出 `core_begin_horizon` 与 `core_end_horizon`：它们是用核心半径
@@ -344,6 +386,12 @@ polygon 为空属于正常结果。
 - `*_tt` 函数接收并返回 TT Julian dates；
 - `*_ut` 函数接收并返回 UT Julian dates，并且在 result struct 有字段时报告 `delta_t_seconds`。
 
+对于区间 route-row API，`step_minutes` 在函数名对应的时间尺度上推进：`_tt`
+生成 TT 网格，`_ut` 生成 UT 网格。起点和终点都包含，精确终点只输出一次；
+当区间长度不是步长的整数倍时，只有最后一段会短于指定步长。UT 网格的每个
+时刻会分别转换成 TT 再计算星历几何，因此区间内 Delta T 的微小变化不会在
+终点附近额外产生一条近乎重复的记录。
+
 内部星历位置通过 context 的 TDB model 从 TT instant 计算。UT 版本通过 context 的 Delta T policy 转换。和 ephemeris-time 表对比时用 TT；面向民用时钟应用时用 UT。
 
 ## Flags
@@ -362,7 +410,11 @@ Eclipse-specific options 在高 32 位：
 - `TAIYIN_ECLIPSE_EXCLUDE_PENUMBRAL`：忽略只发生半影月食的事件；
 - `TAIYIN_ECLIPSE_BACKWARD`：搜索上一次而不是下一次；
 - `TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION`：使用全局 runtime 加载的
-  TLL1 模型精修日月食接触时刻。
+  TLL1 模型精修日月食接触时刻；
+- `TAIYIN_ECLIPSE_LOCAL_REFRACTION`：仅用于地方日食 API，将默认几何
+  日出/日落可见窗口改为带折射窗口；
+- `TAIYIN_ECLIPSE_LOCAL_STRICT_METEOROLOGY`：仅用于带折射的地方日食 API，
+  要求提供大气数据并禁止标准大气回退。
 
 月缘修正必须显式开启，并要求全局 runtime 已加载模型。加载方式、生命周期、覆盖范围与接触语义见
 [`lunar_limb_model.md`](lunar_limb_model.md)。
@@ -435,7 +487,7 @@ compute_local_solar_circumstances_tt(...)
 compute_local_solar_circumstances_ut(...)
 ```
 
-这些入口用于地理观测者。它们从 `NativeCalcContext::observer_location` 读取观测者经纬高；如果 context 没有设置 observer location，会返回 `TAIYIN_ERROR_INVALID_ARGUMENT`。`search_next_local_solar_eclipse_*` 先扫描全球日食候选，再计算地方情况，并把请求的 kind filter 应用于 observer-local result。例如，全球日全食如果在观测者处只是偏食，就不会在 `TAIYIN_ECLIPSE_TOTAL` 地方搜索中返回。
+这些入口用于地理观测者。它们从 `NativeCalcContext::observer_location` 读取观测者经纬高；如果 context 没有设置 observer location，会返回 `TAIYIN_ERROR_INVALID_ARGUMENT`。现有的 `uint64_t flags` 参数可传入前述地方可见性选项。`search_next_local_solar_eclipse_*` 先扫描全球日食候选，再计算地方情况，并把请求的 kind filter 应用于 observer-local result。例如，全球日全食如果在观测者处只是偏食，就不会在 `TAIYIN_ECLIPSE_TOTAL` 地方搜索中返回。
 
 ### Solar Path Products
 
@@ -461,93 +513,132 @@ compute_local_solar_eclipse_boundary_ut(...)
 
 ## 使用示例
 
-### 某日期附近的月食
+### 完整可运行示例
+
+[`examples/eclipse_search.cpp`](../examples/eclipse_search.cpp) 是完整程序，
+不是只能阅读的零散代码片段。它会初始化打包星历数据，搜索月食和日食，
+计算 Dallas 的地方日食情况，并生成 2024-04-08 日食的本影、半影和
+半食分地图多边形。
+
+在仓库根目录构建并运行：
+
+```sh
+cmake -S . -B build
+cmake --build build --target example_eclipse_search
+./build/example_eclipse_search /path/to/taiyin/data
+```
+
+数据根目录参数可以省略。程序会依次尝试命令行参数、`TAIYIN_DATA_ROOT`
+和 `./data`。使用仓库内 600 年数据成功运行时，输出类似：
+
+```text
+Next total lunar eclipse: 2025-03-14 06:58:46.7 UT, umbral magnitude=1.183066
+Next total solar eclipse: 2024-04-08 18:17:20.2 UT at 25.28961, -104.14800
+Dallas local maximum: 2024-04-08 18:42:39.0 UT, magnitude=1.057150, Sun altitude=64.617 deg
+Route map: 627 polygon points; 260 core, 184 penumbral, 183 half-magnitude
+```
+
+精确数值会随所选星历数据和 context 模型变化。
+
+### 选择入口函数
+
+| 需求 | 入口函数 |
+| --- | --- |
+| 计算已知日期附近的朔望月 | `solve_lunar_eclipse_at_ut` / `solve_solar_eclipse_at_ut` |
+| 向前或向后查找下一场符合条件的食 | `search_next_lunar_eclipse_ut` / `search_next_solar_eclipse_ut` |
+| 查找一个区间内的全部食 | `search_lunar_eclipses_ut` / `search_solar_eclipses_ut` |
+| 计算 context 观测者处的地方情况 | `solve_local_solar_eclipse_at_ut` / `search_next_local_lunar_eclipse_ut` |
+| 在显式时间区间内采样路线行 | `compute_solar_eclipse_route_ut` |
+| 分别生成中心线和各边界曲线 | `compute_solar_eclipse_route_curves_ut_with_options` |
+| 生成闭合地图多边形 | `compute_solar_eclipse_route_map_product_ut_with_options` |
+
+`_ut` 函数接收并返回 UT；对应的 `_tt` 函数使用 TT。不要把标量
+`double` 直接传给这两类接口：公开 eclipse API 使用 `SplitJulianDate`，
+避免在整数 Julian day 很大时丢失亚秒精度。可以直接从日历时间构造：
 
 ```cpp
-#include "taiyin/body_id.h"
-#include "taiyin/dispatch.h"
-#include "taiyin/runtime/eclipse_search.h"
-#include "taiyin/runtime/native_context.h"
-#include "taiyin/time.h"
-
-using namespace taiyin;
-using namespace taiyin::runtime;
-
-NativeCalcContext ctx;
-native_context_set_geocentric_observer(&ctx, TAIYIN_BODY_EARTH, TAIYIN_BODY_EARTH);
-native_context_set_eclipse_shadow_model(&ctx, dispatch::ECLIPSE_SHADOW_NASA_DANJON);
-native_context_set_eclipse_moon_radius_model(&ctx, dispatch::ECLIPSE_MOON_ALMANAC);
-
-LunarEclipseResultUt eclipse;
-EphemerisEvalDiagnostic diag = {};
-const double guess_ut = julian_day({2025, 9, 7, 18, 0, 0.0});
-
-Status st = solve_lunar_eclipse_at_ut(
-    &ctx,
-    guess_ut,
-    TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
-    &eclipse,
-    &diag);
-
-if (st == TAIYIN_STATUS_OK && eclipse.kind != TAIYIN_ECLIPSE_NONE) {
-    // eclipse.maximum_jd_ut and eclipse.contact_jd_ut[] are populated.
+SplitJulianDate start_ut;
+if (!julian_day_split({2024, 1, 1, 0, 0, 0.0}, &start_ut)) {
+    // 日历输入不合法。
 }
 ```
 
-### 某观测者处的月食可见性
+向前搜索时可以传一种 kind，也可以按位或多种 kind；传 `0` 表示接受
+全部类型。在 `flags` 中加入 `TAIYIN_ECLIPSE_BACKWARD` 即改为向后搜索：
 
 ```cpp
-LocalLunarEclipseResultUt local;
-EphemerisEvalDiagnostic diag = {};
-native_context_set_observer_location(
-    &ctx,
-    native_observer_location_degrees(116.4074, 39.9042, 43.0));
-
-Status st = search_next_local_lunar_eclipse_ut(
-    &ctx,
-    julian_day({2025, 9, 7, 0, 0, 0.0}),
-    TAIYIN_ECLIPSE_TOTAL,
-    TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
-    &local,
-    &diag);
-
-if (st == TAIYIN_STATUS_OK
-    && (local.visibility_flags & TAIYIN_ECLIPSE_MAXIMUM_VISIBLE) != 0u) {
-    // 食甚时月亮在地平线上方。
-}
-```
-
-### 下一次日全食
-
-```cpp
-SolarEclipseResultUt eclipse;
-EphemerisEvalDiagnostic diag = {};
-
-Status st = search_next_solar_eclipse_ut(
-    &ctx,
-    julian_day({2024, 1, 1, 0, 0, 0.0}),
-    TAIYIN_ECLIPSE_TOTAL,
+SolarEclipseResultUt eclipse = {};
+EphemerisEvalDiagnostic diagnostic = {};
+Status status = search_next_solar_eclipse_ut(
+    &context,
+    start_ut,
+    TAIYIN_ECLIPSE_TOTAL | TAIYIN_ECLIPSE_ANNULAR,
     TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
     &eclipse,
-    &diag);
+    &diagnostic);
 ```
 
-### 某观测者处的地方日食
+`search_*` 返回 `TAIYIN_STATUS_OK` 表示找到了符合条件的结果；对于
+`solve_*`，它只表示计算成功，还要检查 `result.kind`，因为附近的朔望月
+可能得到 `TAIYIN_ECLIPSE_NONE`。失败时应先查看 `status_name(status)` 和
+`EphemerisEvalDiagnostic`。
+
+### 地方情况
+
+地方入口从 `NativeCalcContext` 读取观测者。经度东正、纬度北正，高度
+单位为米：
 
 ```cpp
-LocalSolarEclipseResultUt local;
-EphemerisEvalDiagnostic diag = {};
+NativeCalcContext local_context = context;
 native_context_set_observer_location(
-    &ctx,
+    &local_context,
     native_observer_location_degrees(-96.7970, 32.7767, 131.0));
 
-Status st = solve_local_solar_eclipse_at_ut(
-    &ctx,
-    julian_day({2024, 4, 8, 18, 0, 0.0}),
+LocalSolarEclipseResultUt local = {};
+Status status = solve_local_solar_eclipse_at_ut(
+    &local_context,
+    eclipse.maximum_jd_ut,
     TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
     &local,
-    &diag);
+    &diagnostic);
 ```
+
+没有设置观测者时，地方 API 返回 `TAIYIN_ERROR_INVALID_ARGUMENT`。地方
+月食结果还带有 `visibility_flags`；用 `TAIYIN_ECLIPSE_MAXIMUM_VISIBLE`
+判断食甚时月亮是否位于所选地平线之上。
+
+### 路线地图多边形与缓冲区
+
+长度可变的路线 API 使用两次调用约定。第一次传 `nullptr` 和零容量取得
+所需数量，分配内存后再调用一次：
+
+```cpp
+SolarEclipseRouteProductSummary summary = {};
+size_t point_count = 0;
+Status status = compute_solar_eclipse_route_map_product_ut_with_options(
+    &context, eclipse.maximum_jd_ut, 0, 128,
+    nullptr, 0, &point_count, &summary, &diagnostic);
+
+std::vector<SolarEclipseRouteProductPoint> points(point_count);
+if (status == TAIYIN_STATUS_OK) {
+    status = compute_solar_eclipse_route_map_product_ut_with_options(
+        &context, eclipse.maximum_jd_ut, 0, 128,
+        points.data(), points.size(), &point_count, &summary, &diagnostic);
+    points.resize(point_count);
+}
+```
+
+`route_sample_count` 控制路线采样数，必须位于
+`TAIYIN_SOLAR_ROUTE_MIN_SAMPLE_COUNT` 和
+`TAIYIN_SOLAR_ROUTE_MAX_SAMPLE_COUNT` 之间；不带 options 的重载使用
+`TAIYIN_SOLAR_ROUTE_DEFAULT_SAMPLE_COUNT`。如果非空缓冲区太小，函数返回
+`TAIYIN_ERROR_OUT_OF_MEMORY`，同时仍会给出所需数量和 summary。
+
+map-product 数组依次存放闭合的本影多边形、半影多边形和半食分多边形。
+应使用 `SolarEclipseRouteProductSummary` 中三个
+`*_polygon_point_count` 字段切分数组，不要根据坐标猜边界。
+`longitude_deg` 已归一化，适合普通地图显示；
+`unwrapped_longitude_deg` 在跨越日期变更线时保持连续。
 
 ## 验证说明
 
@@ -556,7 +647,7 @@ Status st = solve_local_solar_eclipse_at_ut(
 - PMO 公开资料：2024 和 2026 全球日食 contact/食甚位置、2025 月全食 contact；
 - NASA eclipse catalogs / decade tables：食甚时间、分类、食分和 duration；
 - NASA city-table values：地方日食分钟级 sanity check；
-- 寿星万年历 `eph.js` / `eph0.js`：移植几何函数的 oracle fixtures；
+- 归档的寿星万年历 fixtures：已替换日月食实现的迁移对照，仅用于测试；
 - OPM2/SPK 数据对照测试：确认星历读取和 route 组合没有偏离。
 
 PMO/NASA 等公开来源优先用作行为基准。旧 TypeScript fixture 主要用于迁移回归和 diagnostic table；除非某行明确绑定到 PMO/NASA 等公开来源，否则不把它当作权威 eclipse oracle。

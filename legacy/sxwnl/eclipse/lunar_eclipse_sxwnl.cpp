@@ -1,4 +1,4 @@
-#include "runtime/eclipse/lunar_eclipse_sxwnl.h"
+#include "lunar_eclipse_sxwnl.h"
 
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"

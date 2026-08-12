@@ -189,7 +189,7 @@ int main() {
     }
 
     // ============================================================================
-    // 测试四：intersect_ellipse_circle (投影椭圆与影锥圆解析求交)
+    // 测试四：intersect_ellipse_circle (投影椭圆与影锥圆求交)
     // ============================================================================
     {
         // 投影椭圆退化为单位圆 (R = 1.0, ba = 1.0) 与圆半径 1.0，圆心在 (1.0, 0.0) 处相交
@@ -209,6 +209,121 @@ int main() {
         expect_near(x2, 0.5, 1e-15, "intersect_ellipse_circle x2", &failures);
         expect_near(std::abs(y1), std::sqrt(0.75), 1e-15, "intersect_ellipse_circle y1", &failures);
         expect_near(std::abs(y2), std::sqrt(0.75), 1e-15, "intersect_ellipse_circle y2", &failures);
+
+        // A grazing overlap can place both roots inside one coarse angular
+        // sample cell.  The solver must split at the residual minimum rather
+        // than relying only on endpoint sign changes.
+        constexpr double shallow_ba = 0.99664719;
+        const double shallow_angle = M_PI / 720.0;
+        const double normal_x_unscaled = std::cos(shallow_angle);
+        const double normal_y_unscaled = std::sin(shallow_angle) / shallow_ba;
+        const double normal_scale = std::sqrt(
+            normal_x_unscaled * normal_x_unscaled
+            + normal_y_unscaled * normal_y_unscaled);
+        constexpr double center_offset = 0.4737231662;
+        constexpr double shallow_radius = center_offset + 1.0e-6;
+        const double shallow_x = std::cos(shallow_angle)
+            + center_offset * normal_x_unscaled / normal_scale;
+        const double shallow_y = shallow_ba * std::sin(shallow_angle)
+            + center_offset * normal_y_unscaled / normal_scale;
+        pts = taiyin::intersect_ellipse_circle(
+            1.0,
+            shallow_ba,
+            shallow_radius,
+            shallow_x,
+            shallow_y,
+            &x1,
+            &y1,
+            &x2,
+            &y2);
+        expect_near(pts, 2.0, 0.0, "intersect_ellipse_circle shallow overlap count", &failures);
+        expect_near(
+            x1 * x1 + y1 * y1 / (shallow_ba * shallow_ba),
+            1.0,
+            2.0e-12,
+            "intersect_ellipse_circle shallow overlap ellipse residual 1",
+            &failures);
+        expect_near(
+            x2 * x2 + y2 * y2 / (shallow_ba * shallow_ba),
+            1.0,
+            2.0e-12,
+            "intersect_ellipse_circle shallow overlap ellipse residual 2",
+            &failures);
+        expect_near(
+            (x1 - shallow_x) * (x1 - shallow_x)
+                + (y1 - shallow_y) * (y1 - shallow_y),
+            shallow_radius * shallow_radius,
+            2.0e-12,
+            "intersect_ellipse_circle shallow overlap circle residual 1",
+            &failures);
+        expect_near(
+            (x2 - shallow_x) * (x2 - shallow_x)
+                + (y2 - shallow_y) * (y2 - shallow_y),
+            shallow_radius * shallow_radius,
+            2.0e-12,
+            "intersect_ellipse_circle shallow overlap circle residual 2",
+            &failures);
+
+        // Root identities must remain stable when one intersection crosses
+        // the zero-angle wrap.  For rotationally symmetric unit circles both
+        // physical branches advance by exactly the center-angle increment.
+        const auto solve_wrapped_roots = [](
+            double center_angle,
+            double* out_angle_a,
+            double* out_angle_b
+        ) {
+            double ax = NAN;
+            double ay = NAN;
+            double bx = NAN;
+            double by = NAN;
+            const int count = taiyin::intersect_ellipse_circle(
+                1.0,
+                1.0,
+                0.5,
+                std::cos(center_angle),
+                std::sin(center_angle),
+                &ax,
+                &ay,
+                &bx,
+                &by);
+            *out_angle_a = std::atan2(ay, ax);
+            *out_angle_b = std::atan2(by, bx);
+            return count;
+        };
+        const auto signed_angle_delta = [](double actual, double expected) {
+            double delta = actual - expected;
+            while (delta > M_PI) delta -= 2.0 * M_PI;
+            while (delta < -M_PI) delta += 2.0 * M_PI;
+            return delta;
+        };
+        double before_a = NAN;
+        double before_b = NAN;
+        double after_a = NAN;
+        double after_b = NAN;
+        expect_near(
+            solve_wrapped_roots(0.504, &before_a, &before_b),
+            2.0,
+            0.0,
+            "intersect_ellipse_circle pre-wrap count",
+            &failures);
+        expect_near(
+            solve_wrapped_roots(0.506, &after_a, &after_b),
+            2.0,
+            0.0,
+            "intersect_ellipse_circle post-wrap count",
+            &failures);
+        expect_near(
+            signed_angle_delta(after_a, before_a),
+            0.002,
+            2.0e-12,
+            "intersect_ellipse_circle branch A wrap continuity",
+            &failures);
+        expect_near(
+            signed_angle_delta(after_b, before_b),
+            0.002,
+            2.0e-12,
+            "intersect_ellipse_circle branch B wrap continuity",
+            &failures);
     }
 
     // ============================================================================

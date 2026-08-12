@@ -17,14 +17,9 @@ namespace runtime {
 namespace {
 
 const uint64_t SUPPORTED_OBSERVED_FLAGS =
-    TAIYIN_OBSERVED_SPEED
-    | TAIYIN_OBSERVED_TOPOCENTRIC
+    TAIYIN_OBSERVED_CALCULATION_FLAGS_MASK
     | TAIYIN_OBSERVED_HORIZONTAL
     | TAIYIN_OBSERVED_REFRACTION
-    | TAIYIN_OBSERVED_TRUEPOS
-    | TAIYIN_OBSERVED_ASTROMETRIC
-    | TAIYIN_OBSERVED_NO_ABERR
-    | TAIYIN_OBSERVED_NO_GDEFL
     | TAIYIN_OBSERVED_STRICT_METEOROLOGY;
 
 void clear_observed(ObservedPosition* out, size_t count) noexcept {
@@ -310,6 +305,16 @@ Status calc_observed_resolved_scales(
     const bool want_topocentric = (flags & TAIYIN_OBSERVED_TOPOCENTRIC) != 0u;
     const bool want_horizontal = (flags & (TAIYIN_OBSERVED_HORIZONTAL | TAIYIN_OBSERVED_REFRACTION)) != 0u;
     const bool want_refraction = (flags & TAIYIN_OBSERVED_REFRACTION) != 0u;
+    if (want_topocentric && context->observer_id != TAIYIN_BODY_EARTH) {
+        set_diagnostics(
+            diagnostics,
+            body_count,
+            body_ids,
+            TAIYIN_ERROR_UNSUPPORTED,
+            context->observer_id,
+            diagnostic_jd);
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
     if (want_horizontal && !want_topocentric) {
         set_diagnostics(diagnostics, body_count, body_ids, TAIYIN_ERROR_INVALID_ARGUMENT, context->observer_id, diagnostic_jd);
         return TAIYIN_ERROR_INVALID_ARGUMENT;
@@ -395,6 +400,8 @@ Status calc_observed_resolved_scales(
     apparent_request.center_id = scratch.center_id;
     apparent_request.body_ids = body_ids;
     apparent_request.body_count = body_count;
+    apparent_request.position_flags = static_cast<uint32_t>(
+        flags & TAIYIN_OBSERVED_CALCULATION_FLAGS_MASK);
     apparent_request.options = &options;
 
     MajorBodyApparentBatchResult apparent_result;

@@ -212,7 +212,7 @@ bool has_required_local_lunar_contacts(const LunarEclipseResultUt& eclipse) noex
 Status sample_contact_visibility(
     const NativeCalcContext* context,
     const LunarEclipseResultUt& eclipse,
-    uint32_t observed_flags,
+    uint64_t observed_flags,
     LocalLunarEclipseResultUt* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -334,7 +334,7 @@ Status compute_local_lunar_eclipse_visibility_ut(
     copy_global_lunar_fields(*eclipse, out);
 
     const bool use_refraction = (flags & TAIYIN_LOCAL_LUNAR_ECLIPSE_REFRACTION) != 0u;
-    const uint32_t observed_flags = use_refraction ? TAIYIN_OBSERVED_REFRACTION : 0u;
+    const uint64_t observed_flags = use_refraction ? TAIYIN_OBSERVED_REFRACTION : 0u;
     const uint32_t moon_visibility_flags = use_refraction
         ? TAIYIN_MOON_VISIBILITY_FLAG_REFRACTION
         : 0u;

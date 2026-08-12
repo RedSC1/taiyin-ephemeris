@@ -1,4 +1,5 @@
 #include "taiyin/c/bazi.h"
+#include "taiyin/c/chinese_calendar.h"
 #include "taiyin/c/position.h"
 #include "taiyin/c/runtime.h"
 #include "taiyin/c/time.h"
@@ -51,9 +52,11 @@ int main(int argc, char** argv) {
         return fail("initialize BaZi C ABI integration context");
     }
 
+#ifndef TAIYIN_TEST_MODULAR_C_API
     if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_BAZI) == 0u) {
         return fail("BaZi capability is not advertised");
     }
+#endif
 
     taiyin_bazi_context_config_init(&config);
     if (config.qiyun_time_model != TAIYIN_BAZI_QIYUN_TRADITIONAL_CALENDAR
@@ -190,7 +193,7 @@ int main(int argc, char** argv) {
             || taiyin_bazi_get_kong_wang(0x00u, branches) != TAIYIN_STATUS_OK
             || branches[0] != 10u || branches[1] != 11u) {
             taiyin_bazi_context_destroy(context);
-            return fail("BaZi Pascal rules");
+            return fail("BaZi rules");
         }
     }
 

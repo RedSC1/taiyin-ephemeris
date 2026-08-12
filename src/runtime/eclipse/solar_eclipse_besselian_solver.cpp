@@ -1,8 +1,10 @@
 #include "runtime/eclipse/solar_eclipse_besselian_solver.h"
+#include "runtime/eclipse/solar_eclipse_direct_solver.h"
 
 #include "runtime/eclipse/eclipse_time.h"
 #include "runtime/apparent/fast_apparent.h"
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
+#include "runtime/eclipse/solar_shadow_geometry.h"
+#include "runtime/eclipse/solar_route_geometry.h"
 
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
@@ -10,6 +12,7 @@
 #include "taiyin/geodetic_constants.h"
 #include "taiyin/observer.h"
 #include "taiyin/runtime/lunar_limb.h"
+#include "taiyin/runtime/runtime.h"
 #include "taiyin/time.h"
 
 #include <algorithm>
@@ -175,18 +178,6 @@ bool plane_basis(const double axis_unit[3], double x_hat[3], double y_hat[3]) no
     return normalize3(y_hat);
 }
 
-double ellipsoid_radius_along_direction_km(const double direction[3]) noexcept {
-    const double n = norm3(direction);
-    if (!(n > 0.0)) return TAIYIN_WGS84_A_KM;
-    const double ux = direction[0] / n;
-    const double uy = direction[1] / n;
-    const double uz = direction[2] / n;
-    const double a2 = TAIYIN_WGS84_A_KM * TAIYIN_WGS84_A_KM;
-    const double b2 = TAIYIN_WGS84_B_KM * TAIYIN_WGS84_B_KM;
-    const double q = (ux * ux + uy * uy) / a2 + (uz * uz) / b2;
-    return q > 0.0 ? 1.0 / std::sqrt(q) : TAIYIN_WGS84_A_KM;
-}
-
 bool context_gast_rad(
     const NativeCalcContext* context,
     SplitJulianDate jd_ut,
@@ -255,13 +246,18 @@ Status eval_solar_equatorial_vectors_km(
     return TAIYIN_STATUS_OK;
 }
 
-Status compute_besselian_elements_tt(
+// Compute the shadow geometry shared by the polynomial fit and exact contact
+// refinement.  This deliberately excludes UT/GAST: penumbral contact against
+// the oblate Earth depends on x/y/zeta, the cone radius, and declination, but
+// not on the Greenwich hour angle stored in mu_deg.
+Status compute_besselian_shadow_geometry_tt(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
     double t_hours,
     uint64_t flags,
     FastApparentCorrectionSeries* corrections,
     SolarBesselianElements* out,
+    double* out_axis_ra_deg,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (!context || !out || !split_julian_date_is_finite(jd_tt) || !std::isfinite(t_hours)) {
@@ -271,7 +267,7 @@ Status compute_besselian_elements_tt(
 
     double moon_km[3] = {};
     double sun_km[3] = {};
-    Status st = eval_solar_equatorial_vectors_km(
+    const Status st = eval_solar_equatorial_vectors_km(
         context, jd_tt, flags, corrections, moon_km, sun_km, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
@@ -299,21 +295,13 @@ Status compute_besselian_elements_tt(
     const double tan_f2 = (kSunRadiusKm - moon_radius) / sun_moon_km;
     const double l1 = (moon_radius + zeta_km * tan_f1) / TAIYIN_WGS84_A_KM;
     const double l2 = (moon_radius - zeta_km * tan_f2) / TAIYIN_WGS84_A_KM;
-    const double ra_deg = normalize_degrees(std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / M_PI);
     const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / M_PI;
-
-    SplitJulianDate jd_ut;
-    st = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
-    double gast_rad = 0.0;
-    if (!context_gast_rad(context, jd_ut, jd_tt, &gast_rad)) return TAIYIN_ERROR_UNSUPPORTED;
 
     out->t_hours = t_hours;
     out->x = x;
     out->y = y;
     out->zeta = zeta_km / TAIYIN_WGS84_A_KM;
     out->d_deg = dec_deg;
-    out->mu_deg = normalize_degrees(gast_rad * 180.0 / M_PI - ra_deg);
     out->l1 = l1;
     out->l2 = l2;
     out->f1_deg = std::atan(tan_f1) * 180.0 / M_PI;
@@ -321,6 +309,43 @@ Status compute_besselian_elements_tt(
     out->tan_f1 = tan_f1;
     out->tan_f2 = tan_f2;
     out->gamma = std::hypot(x, y);
+    if (out_axis_ra_deg) {
+        *out_axis_ra_deg = normalize_degrees(
+            std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / M_PI);
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+Status compute_besselian_elements_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    double t_hours,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    SolarBesselianElements* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    double axis_ra_deg = 0.0;
+    Status st = compute_besselian_shadow_geometry_tt(
+        context,
+        jd_tt,
+        t_hours,
+        flags,
+        corrections,
+        out,
+        &axis_ra_deg,
+        diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    SplitJulianDate jd_ut;
+    st = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+    double gast_rad = 0.0;
+    if (!context_gast_rad(context, jd_ut, jd_tt, &gast_rad)) {
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
+    out->mu_deg = normalize_degrees(
+        gast_rad * 180.0 / M_PI - axis_ra_deg);
     return TAIYIN_STATUS_OK;
 }
 
@@ -626,7 +651,7 @@ Status frame_from_elements(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
     const SolarBesselianElements& e,
-    sxwnl::solar::BesselianFrame* out,
+    solar_route_geometry::Frame* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     SplitJulianDate jd_ut;
@@ -637,11 +662,11 @@ Status frame_from_elements(
     const double mu = e.mu_deg * M_PI / 180.0;
     const double dec = e.d_deg * M_PI / 180.0;
     const double ra = gast - mu;
-    // Taiyin's Besselian axis is moon - sun; the sxwnl frame helpers use the
-    // opposite sun - moon axis.  Convert the frame rather than flipping x/y.
-    out->J_rad = ra - M_PI / 2.0;
-    out->W_rad = M_PI / 2.0 + dec;
-    out->gst_rad = gast;
+    // The polynomial axis is Moon minus Sun, while route geometry follows the
+    // shadow direction from Sun through Moon. Convert the frame explicitly.
+    out->right_ascension_offset_rad = ra - M_PI / 2.0;
+    out->pole_rotation_rad = M_PI / 2.0 + dec;
+    out->gast_rad = gast;
     return TAIYIN_STATUS_OK;
 }
 
@@ -666,7 +691,7 @@ Status eval_global_geometry(
     std::memset(out, 0, sizeof(*out));
     out->longitude_deg = std::nan("");
     out->latitude_deg = std::nan("");
-    sxwnl::solar::BesselianFrame frame;
+    solar_route_geometry::Frame frame;
     Status st = frame_from_elements(context, jd_tt, e, &frame, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
@@ -675,9 +700,18 @@ Status eval_global_geometry(
     out->penumbral_margin = scaled - (1.0 + e.l1);
     out->core_margin = scaled - (1.0 + std::fabs(e.l2));
 
-    const sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(-e.x, e.y, frame, true);
+    SolarConeEarthPoint center;
+    if (!intersect_solar_shadow_axis_with_oblate_earth(
+            -e.x,
+            e.y,
+            frame.pole_rotation_rad,
+            frame.right_ascension_offset_rad - frame.gast_rad,
+            kEarthAxisRatio,
+            &center)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
     out->central = center.valid;
-    out->central_discriminant = center.discriminant;
+    out->central_discriminant = center.line_discriminant;
     if (center.valid) {
         out->longitude_deg = center.longitude_rad * 180.0 / M_PI;
         out->latitude_deg = center.latitude_rad * 180.0 / M_PI;
@@ -699,6 +733,32 @@ double partial_scalar_poly(const SolarBesselianPolynomial& poly, double t_hours)
     if (evaluate_polynomial(&poly, t_hours, &e) != TAIYIN_STATUS_OK) return std::nan("");
     const double scaled = std::sqrt(e.x * e.x + (e.y / kEarthAxisRatio) * (e.y / kEarthAxisRatio));
     return scaled - (1.0 + e.l1);
+}
+
+double partial_cone_discriminant_poly(
+    const NativeCalcContext* context,
+    const SolarBesselianPolynomial& poly,
+    double t_hours
+) noexcept {
+    SolarBesselianElements e;
+    if (!context || evaluate_polynomial(&poly, t_hours, &e) != TAIYIN_STATUS_OK) {
+        return std::nan("");
+    }
+    SolarConeEarthTangency tangency;
+    if (!maximize_solar_circular_cone_earth_discriminant(
+            -e.x,
+            e.y,
+            e.zeta,
+            moon_radius_km(context->eclipse_moon_radius_model_id)
+                / TAIYIN_WGS84_A_KM,
+            e.l1,
+            M_PI / 2.0 + e.d_deg * M_PI / 180.0,
+            kEarthAxisRatio,
+            &tangency)
+        || !tangency.valid) {
+        return std::nan("");
+    }
+    return tangency.normalized_discriminant;
 }
 
 double central_scalar_poly(
@@ -949,46 +1009,52 @@ double exact_scalar(
 ) noexcept {
     if (central) {
         SolarBesselianElements e;
-        const Status st = compute_besselian_elements_cached_tt(
+        // Whether the shadow axis intersects an axisymmetric oblate Earth is
+        // independent of Greenwich rotation. Avoid the complete Besselian
+        // element path (TT->UT, GAST, and mu) while searching central contacts.
+        const Status st = compute_besselian_shadow_geometry_tt(
             context,
             jd_tt,
             (jd_tt - center_jd_tt) * 24.0,
             flags,
             corrections,
-            scratch,
             &e,
+            nullptr,
             diagnostic);
         if (st != TAIYIN_STATUS_OK) return std::nan("");
-        GlobalGeometry g;
-        if (eval_global_geometry(context, jd_tt, e, &g, diagnostic) != TAIYIN_STATUS_OK) return std::nan("");
-        return g.central_discriminant;
+        (void)scratch;
+        SolarConeEarthPoint center;
+        if (!intersect_solar_shadow_axis_with_oblate_earth(
+                -e.x,
+                e.y,
+                M_PI / 2.0 + e.d_deg * M_PI / 180.0,
+                0.0,
+                kEarthAxisRatio,
+                &center)) {
+            return std::nan("");
+        }
+        return center.line_discriminant;
     }
     if (!central) {
-        double moon_km[3] = {};
-        double sun_km[3] = {};
-        (void)scratch;
-        const Status st = eval_solar_equatorial_vectors_km(
-            context, jd_tt, flags, corrections, moon_km, sun_km, diagnostic);
-        if (st != TAIYIN_STATUS_OK) return std::nan("");
-
-        double axis_unit[3] = {
-            moon_km[0] - sun_km[0],
-            moon_km[1] - sun_km[1],
-            moon_km[2] - sun_km[2]
-        };
-        const double sun_moon_km = norm3(axis_unit);
-        if (!normalize3(axis_unit) || !(sun_moon_km > 0.0)) return std::nan("");
-
-        const double s_km = -dot3(moon_km, axis_unit);
-        const double closest_km[3] = {
-            moon_km[0] + s_km * axis_unit[0],
-            moon_km[1] + s_km * axis_unit[1],
-            moon_km[2] + s_km * axis_unit[2]
-        };
-        const double axis_distance_km = norm3(closest_km);
-        const double earth_radius_km = ellipsoid_radius_along_direction_km(closest_km);
-        const double axis_distance_from_moon_km = std::max(0.0, s_km);
         if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) != 0u) {
+            double moon_km[3] = {};
+            double sun_km[3] = {};
+            const Status st = eval_solar_equatorial_vectors_km(
+                context, jd_tt, flags, corrections, moon_km, sun_km, diagnostic);
+            if (st != TAIYIN_STATUS_OK) return std::nan("");
+            double axis_unit[3] = {
+                moon_km[0] - sun_km[0],
+                moon_km[1] - sun_km[1],
+                moon_km[2] - sun_km[2]
+            };
+            const double sun_moon_km = norm3(axis_unit);
+            if (!normalize3(axis_unit) || !(sun_moon_km > 0.0)) return std::nan("");
+            const double s_km = -dot3(moon_km, axis_unit);
+            const double closest_km[3] = {
+                moon_km[0] + s_km * axis_unit[0],
+                moon_km[1] + s_km * axis_unit[1],
+                moon_km[2] + s_km * axis_unit[2]
+            };
             ProfiledPenumbralSurfaceContext surface_context;
             surface_context.moon_km = Vector3{moon_km[0], moon_km[1], moon_km[2]};
             surface_context.sun_km = Vector3{sun_km[0], sun_km[1], sun_km[2]};
@@ -1009,11 +1075,33 @@ double exact_scalar(
             if (minimize_status != TAIYIN_STATUS_OK) return std::nan("");
             return -profiled_margin_km;
         }
-        const double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
-        const double penumbra_radius_km = moon_radius
-            + axis_distance_from_moon_km * (kSunRadiusKm + moon_radius) / sun_moon_km;
-        const double penumbral_margin_km = axis_distance_km - (earth_radius_km + penumbra_radius_km);
-        return -penumbral_margin_km;
+
+        SolarBesselianElements e;
+        const Status st = compute_besselian_shadow_geometry_tt(
+            context,
+            jd_tt,
+            (jd_tt - center_jd_tt) * 24.0,
+            flags,
+            corrections,
+            &e,
+            nullptr,
+            diagnostic);
+        if (st != TAIYIN_STATUS_OK) return std::nan("");
+        SolarConeEarthTangency tangency;
+        if (!maximize_solar_circular_cone_earth_discriminant(
+                -e.x,
+                e.y,
+                e.zeta,
+                moon_radius_km(context->eclipse_moon_radius_model_id)
+                    / TAIYIN_WGS84_A_KM,
+                e.l1,
+                M_PI / 2.0 + e.d_deg * M_PI / 180.0,
+                kEarthAxisRatio,
+                &tangency)
+            || !tangency.valid) {
+            return std::nan("");
+        }
+        return tangency.normalized_discriminant;
     }
     return std::nan("");
 }
@@ -1036,7 +1124,7 @@ Status refine_exact_root(
     const bool profiled_partial_contact = !central
         && (flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) != 0u;
     if (!central && !profiled_partial_contact) {
-        const double derivative_step_hours = 1.0 / 60.0;
+        const double derivative_step_hours = 1.0 / 3600.0;
         const double max_total_correction = 15.0 / 1440.0;
         SplitJulianDate t = seed_jd_tt;
         for (int iter = 0; iter < 3; ++iter) {
@@ -1045,11 +1133,14 @@ Status refine_exact_root(
             if (!std::isfinite(f0)) break;
 
             const double th = (t - center_jd_tt) * 24.0;
-            const double pm = -partial_scalar_poly(poly, th - derivative_step_hours);
-            const double pp = -partial_scalar_poly(poly, th + derivative_step_hours);
-            if (!std::isfinite(pm) || !std::isfinite(pp)) break;
-            const double slope = (pp - pm) * TAIYIN_WGS84_A_KM / (2.0 * derivative_step_hours / 24.0);
-            if (!std::isfinite(slope) || std::fabs(slope) < 1.0e-9) break;
+            const double fm = partial_cone_discriminant_poly(
+                context, poly, th - derivative_step_hours);
+            const double fp = partial_cone_discriminant_poly(
+                context, poly, th + derivative_step_hours);
+            if (!std::isfinite(fm) || !std::isfinite(fp)) break;
+            const double slope = (fp - fm)
+                / (2.0 * derivative_step_hours / 24.0);
+            if (!std::isfinite(slope) || std::fabs(slope) < 1.0e-14) break;
 
             const double raw_correction = -f0 / slope;
             SplitJulianDate next_t = t + raw_correction;
@@ -1198,14 +1289,39 @@ Status refine_exact_maximum(
     double step = 1.0 / 1440.0;
     for (int i = 0; i < 8; ++i) {
         SolarBesselianElements em, e0, ep;
-        Status st = compute_besselian_elements_cached_tt(
-            context, t - step, (t - step - center_jd_tt) * 24.0, flags, corrections, scratch, &em, diagnostic);
+        // The vertex iteration only minimizes x^2 + y^2.  It has no
+        // Earth-fixed output, so avoid TT->UT/GAST and the Besselian mu angle
+        // at all intermediate sample times.  A complete element set is still
+        // evaluated once after convergence for the public result.
+        Status st = compute_besselian_shadow_geometry_tt(
+            context,
+            t - step,
+            (t - step - center_jd_tt) * 24.0,
+            flags,
+            corrections,
+            &em,
+            nullptr,
+            diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
-        st = compute_besselian_elements_cached_tt(
-            context, t, (t - center_jd_tt) * 24.0, flags, corrections, scratch, &e0, diagnostic);
+        st = compute_besselian_shadow_geometry_tt(
+            context,
+            t,
+            (t - center_jd_tt) * 24.0,
+            flags,
+            corrections,
+            &e0,
+            nullptr,
+            diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
-        st = compute_besselian_elements_cached_tt(
-            context, t + step, (t + step - center_jd_tt) * 24.0, flags, corrections, scratch, &ep, diagnostic);
+        st = compute_besselian_shadow_geometry_tt(
+            context,
+            t + step,
+            (t + step - center_jd_tt) * 24.0,
+            flags,
+            corrections,
+            &ep,
+            nullptr,
+            diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
         const double fm = em.x * em.x + em.y * em.y;
         const double f0 = e0.x * e0.x + e0.y * e0.y;
@@ -1239,6 +1355,194 @@ void init_result(SolarEclipseResult* out) noexcept {
     for (size_t i = 0; i < TAIYIN_SOLAR_ECLIPSE_CONTACT_COUNT; ++i) {
         out->contact_jd_tt[i] = invalid_jd();
     }
+}
+
+struct DirectSolarEvent {
+    SplitJulianDate center_jd_tt;
+    FastApparentCorrectionSeries corrections;
+};
+
+Status direct_axis_distance2_km(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    double* out_distance2_km,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out_distance2_km) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    double moon_km[3] = {};
+    double sun_km[3] = {};
+    const Status st = eval_solar_equatorial_vectors_km(
+        context, jd_tt, flags, corrections, moon_km, sun_km, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    // Shadow line L(s) = Moon + s*u, with u pointing from Sun through Moon.
+    // q is the perpendicular vector from the geocenter to that 3-D line.
+    double u[3] = {
+        moon_km[0] - sun_km[0],
+        moon_km[1] - sun_km[1],
+        moon_km[2] - sun_km[2],
+    };
+    if (!normalize3(u)) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    const double projection = dot3(moon_km, u);
+    const double q[3] = {
+        moon_km[0] - projection * u[0],
+        moon_km[1] - projection * u[1],
+        moon_km[2] - projection * u[2],
+    };
+    *out_distance2_km = dot3(q, q);
+    return std::isfinite(*out_distance2_km)
+        ? TAIYIN_STATUS_OK
+        : TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+}
+
+Status refine_direct_greatest(
+    const NativeCalcContext* context,
+    SplitJulianDate seed_jd_tt,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    SplitJulianDate* out_jd_tt,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !corrections || !out_jd_tt) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    SplitJulianDate t = seed_jd_tt;
+
+    // The first three scales move the Meeus conjunction seed onto the shadow
+    // axis minimum. The following minute-scale samples refine the same 3-D
+    // norm without ever constructing a Besselian polynomial.
+    const double steps_days[] = {
+        0.5,
+        0.125,
+        0.03125,
+        1.0 / 1440.0,
+        0.5 / 1440.0,
+        0.25 / 1440.0,
+        0.125 / 1440.0,
+        0.0625 / 1440.0,
+        0.03125 / 1440.0,
+    };
+    for (double step : steps_days) {
+        double fm = 0.0;
+        double f0 = 0.0;
+        double fp = 0.0;
+        Status st = direct_axis_distance2_km(
+            context, t - step, flags, corrections, &fm, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+        st = direct_axis_distance2_km(
+            context, t, flags, corrections, &f0, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+        st = direct_axis_distance2_km(
+            context, t + step, flags, corrections, &fp, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+
+        const double curvature = fm - 2.0 * f0 + fp;
+        if (std::isfinite(curvature) && std::fabs(curvature) > 1.0e-12) {
+            double offset = 0.5 * (fm - fp) / curvature * step;
+            if (offset > step) offset = step;
+            if (offset < -step) offset = -step;
+            if (std::isfinite(offset)) t += offset;
+        }
+    }
+    *out_jd_tt = t;
+    return TAIYIN_STATUS_OK;
+}
+
+double direct_contact_scalar(
+    const NativeCalcContext* context,
+    DirectSolarEvent* event,
+    SplitJulianDate jd_tt,
+    uint64_t flags,
+    bool central,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!event) return std::nan("");
+    return exact_scalar(
+        context,
+        event->center_jd_tt,
+        jd_tt,
+        flags,
+        &event->corrections,
+        nullptr,
+        central,
+        diagnostic);
+}
+
+Status find_direct_contact(
+    const NativeCalcContext* context,
+    DirectSolarEvent* event,
+    SplitJulianDate greatest_jd_tt,
+    uint64_t flags,
+    bool central,
+    int direction,
+    SplitJulianDate* out_jd_tt,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !event || !out_jd_tt || (direction != -1 && direction != 1)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    *out_jd_tt = invalid_jd();
+    const double at_max = direct_contact_scalar(
+        context, event, greatest_jd_tt, flags, central, diagnostic);
+    if (!std::isfinite(at_max) || at_max < 0.0) return TAIYIN_STATUS_OK;
+
+    SplitJulianDate inner_t = greatest_jd_tt;
+    double inner_f = at_max;
+    SplitJulianDate outer_t = invalid_jd();
+    double outer_f = std::nan("");
+    const double offsets_hours[] = {0.5, 1.0, 2.0, 4.0, 8.0, 12.0};
+    for (double offset_hours : offsets_hours) {
+        const SplitJulianDate candidate = greatest_jd_tt
+            + static_cast<double>(direction) * offset_hours / 24.0;
+        const double value = direct_contact_scalar(
+            context, event, candidate, flags, central, diagnostic);
+        if (!std::isfinite(value)) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        if (value <= 0.0) {
+            outer_t = candidate;
+            outer_f = value;
+            break;
+        }
+        inner_t = candidate;
+        inner_f = value;
+    }
+    if (!split_julian_date_is_finite(outer_t)) return TAIYIN_STATUS_OK;
+
+    SplitJulianDate lo = direction < 0 ? outer_t : inner_t;
+    SplitJulianDate hi = direction < 0 ? inner_t : outer_t;
+    double flo = direction < 0 ? outer_f : inner_f;
+    double fhi = direction < 0 ? inner_f : outer_f;
+    if (!std::isfinite(flo) || !std::isfinite(fhi) || flo * fhi > 0.0) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+
+    int last_replaced = 0;
+    for (int iteration = 0; iteration < 40
+         && (hi - lo) > 0.02 / 86400.0; ++iteration) {
+        const double span = hi - lo;
+        SplitJulianDate candidate = lo + 0.5 * span;
+        if (fhi != flo) {
+            const double fraction = -flo / (fhi - flo);
+            if (std::isfinite(fraction) && fraction > 0.05 && fraction < 0.95) {
+                candidate = lo + fraction * span;
+            }
+        }
+        const double value = direct_contact_scalar(
+            context, event, candidate, flags, central, diagnostic);
+        if (!std::isfinite(value)) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        if (flo * value <= 0.0) {
+            hi = candidate;
+            fhi = value;
+            if (last_replaced == 1) flo *= 0.5;
+            last_replaced = 1;
+        } else {
+            lo = candidate;
+            flo = value;
+            if (last_replaced == -1) fhi *= 0.5;
+            last_replaced = -1;
+        }
+    }
+    *out_jd_tt = lo + 0.5 * (hi - lo);
+    return TAIYIN_STATUS_OK;
 }
 
 double lite_scalar(const SolarBesselianElements& e) noexcept {
@@ -1492,7 +1796,220 @@ Status refine_hybrid_kind(
     return TAIYIN_STATUS_OK;
 }
 
+// The direct solver classifies the inexpensive maximum geometry before it
+// computes locations and contact roots.  Reject filters that cannot possibly
+// match at that point so searches do not complete discarded events.  A
+// central total/annular classification may still become hybrid during the
+// later refinement, so keep any requested central type as a possible match.
+bool direct_kind_may_match_filter(
+    uint32_t kind,
+    uint32_t kind_filter,
+    bool refine_central_kind
+) noexcept {
+    if (kind_filter == 0) return true;
+
+    const uint32_t type_mask = TAIYIN_ECLIPSE_PARTIAL
+                             | TAIYIN_ECLIPSE_TOTAL
+                             | TAIYIN_ECLIPSE_ANNULAR
+                             | TAIYIN_ECLIPSE_HYBRID;
+    const uint32_t centrality_mask = TAIYIN_ECLIPSE_CENTRAL
+                                   | TAIYIN_ECLIPSE_NONCENTRAL;
+    const uint32_t requested_types = kind_filter & type_mask;
+    const uint32_t requested_centrality = kind_filter & centrality_mask;
+    if (requested_centrality != 0 && (kind & requested_centrality) == 0) {
+        return false;
+    }
+    if (requested_types == 0) {
+        return requested_centrality != 0;
+    }
+    const bool may_refine_to_hybrid = refine_central_kind
+        && (kind & TAIYIN_ECLIPSE_CENTRAL) != 0
+        && (kind & (TAIYIN_ECLIPSE_TOTAL | TAIYIN_ECLIPSE_ANNULAR)) != 0;
+    if (may_refine_to_hybrid) {
+        return (requested_types
+                & (TAIYIN_ECLIPSE_TOTAL
+                   | TAIYIN_ECLIPSE_ANNULAR
+                   | TAIYIN_ECLIPSE_HYBRID)) != 0;
+    }
+    return (kind & requested_types) != 0;
+}
+
 }  // namespace
+
+Status solve_solar_eclipse_direct_for_meeus_k(
+    const NativeCalcContext* context,
+    int k,
+    uint64_t flags,
+    uint32_t kind_filter,
+    bool fill_location,
+    bool refine_central_kind,
+    SolarEclipseResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    init_result(out);
+    if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) != 0u
+        && global_lunar_limb_model() == nullptr) {
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
+    if (!solar_meeus_filter_passes(k)) return TAIYIN_STATUS_OK;
+
+    DirectSolarEvent event;
+    event.center_jd_tt = solar_meeus_new_moon_jd(k);
+    FastApparentOptions options;
+    options.frame = FAST_APPARENT_TRUE_EQUATOR_OF_DATE;
+    options.with_velocity = false;
+    options.true_position = (flags & TAIYIN_ECLIPSE_TRUEPOS) != 0;
+    FastApparentCorrectionConfig correction_config;
+    correction_config.initial_half_days = 0.5;
+    correction_config.sample_step_days = 3.0 / 24.0;
+    Status st = init_fast_correction_series(
+        context,
+        TAIYIN_BODY_MOON,
+        TAIYIN_BODY_SUN,
+        options,
+        correction_config,
+        event.center_jd_tt,
+        &event.corrections,
+        diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    SplitJulianDate greatest_jd_tt = invalid_jd();
+    st = refine_direct_greatest(
+        context,
+        event.center_jd_tt,
+        flags,
+        &event.corrections,
+        &greatest_jd_tt,
+        diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    SolarBesselianElements greatest;
+    st = compute_besselian_elements_tt(
+        context,
+        greatest_jd_tt,
+        (greatest_jd_tt - event.center_jd_tt) * 24.0,
+        flags,
+        &event.corrections,
+        &greatest,
+        diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    const double penumbral_discriminant = direct_contact_scalar(
+        context, &event, greatest_jd_tt, flags, false, diagnostic);
+    if (!std::isfinite(penumbral_discriminant)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+    if (penumbral_discriminant < 0.0) return TAIYIN_STATUS_OK;
+
+    const double central_discriminant = direct_contact_scalar(
+        context, &event, greatest_jd_tt, flags, true, diagnostic);
+    if (!std::isfinite(central_discriminant)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+    const bool central = central_discriminant >= 0.0;
+
+    SolarConeEarthTangency core_tangency;
+    if (!maximize_solar_circular_cone_earth_discriminant(
+            -greatest.x,
+            greatest.y,
+            greatest.zeta,
+            moon_radius_km(context->eclipse_moon_radius_model_id)
+                / TAIYIN_WGS84_A_KM,
+            greatest.l2,
+            M_PI / 2.0 + greatest.d_deg * M_PI / 180.0,
+            kEarthAxisRatio,
+            &core_tangency)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+    const bool core_reaches_earth = core_tangency.valid
+        && core_tangency.normalized_discriminant >= 0.0;
+    const uint32_t centrality = central
+        ? TAIYIN_ECLIPSE_CENTRAL
+        : TAIYIN_ECLIPSE_NONCENTRAL;
+    if (core_reaches_earth) {
+        out->kind = centrality
+            | (greatest.l2 >= 0.0 ? TAIYIN_ECLIPSE_TOTAL : TAIYIN_ECLIPSE_ANNULAR);
+    } else {
+        out->kind = centrality | TAIYIN_ECLIPSE_PARTIAL;
+    }
+
+    out->maximum_jd_tt = greatest_jd_tt;
+    out->axis_distance_km = greatest.gamma * TAIYIN_WGS84_A_KM;
+    out->penumbra_radius_km = greatest.l1 * TAIYIN_WGS84_A_KM;
+    out->core_radius_km = greatest.l2 * TAIYIN_WGS84_A_KM;
+    if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) != 0u) {
+        // The profiled contact scalar is the negated physical surface margin.
+        out->penumbral_margin_km = -penumbral_discriminant;
+    } else {
+        // For a generator line, normalized_discriminant = 1 - min(Q), where
+        // Q is the oblate-Earth quadratic form. Convert that same exact
+        // cone/ellipsoid contact scalar to a signed radial clearance so the
+        // public margin cannot contradict the event classification.
+        const double closest_ellipsoid_radius = std::sqrt(
+            std::max(0.0, 1.0 - penumbral_discriminant));
+        out->penumbral_margin_km =
+            (closest_ellipsoid_radius - 1.0) * TAIYIN_WGS84_A_KM;
+    }
+    const double scaled_distance = std::sqrt(
+        greatest.x * greatest.x
+        + (greatest.y / kEarthAxisRatio) * (greatest.y / kEarthAxisRatio));
+    out->central_margin_km =
+        (scaled_distance - 1.0) * TAIYIN_WGS84_A_KM;
+    out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_GREATEST] = greatest_jd_tt;
+
+    if (!direct_kind_may_match_filter(out->kind, kind_filter, refine_central_kind)) {
+        return TAIYIN_STATUS_OK;
+    }
+
+    if (fill_location && central) {
+        GlobalGeometry global;
+        st = eval_global_geometry(
+            context, greatest_jd_tt, greatest, &global, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+        if (global.central) {
+            out->maximum_longitude_deg = global.longitude_deg;
+            out->maximum_latitude_deg = global.latitude_deg;
+        }
+    }
+
+    const bool include_global_contacts =
+        (flags & TAIYIN_ECLIPSE_INCLUDE_CONTACTS) != 0u;
+    if (include_global_contacts) {
+        st = find_direct_contact(
+            context, &event, greatest_jd_tt, flags, false, -1,
+            &out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_P1], diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+        st = find_direct_contact(
+            context, &event, greatest_jd_tt, flags, false, 1,
+            &out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_P4], diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+    }
+
+    if (central && (include_global_contacts || refine_central_kind)) {
+        st = find_direct_contact(
+            context, &event, greatest_jd_tt, flags, true, -1,
+            &out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_C1], diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+        st = find_direct_contact(
+            context, &event, greatest_jd_tt, flags, true, 1,
+            &out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_C4], diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+    }
+
+    if (refine_central_kind && central && core_reaches_earth) {
+        st = refine_hybrid_kind(
+            context, flags, &event.corrections, out, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+    }
+    if (!include_global_contacts) {
+        out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_P1] = invalid_jd();
+        out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_C1] = invalid_jd();
+        out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_C4] = invalid_jd();
+        out->contact_jd_tt[TAIYIN_SOLAR_ECLIPSE_CONTACT_P4] = invalid_jd();
+    }
+    return TAIYIN_STATUS_OK;
+}
 
 Status solve_solar_eclipse_besselian_lite_for_meeus_k(
     const NativeCalcContext* context,

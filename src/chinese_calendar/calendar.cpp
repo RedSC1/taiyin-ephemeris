@@ -1,3 +1,6 @@
+// Historical lunar-conversion note: exceptional-month naming and historical
+// qi-shuo civil-day data reference Shouxing Astronomical Calendar (sxwnl /
+// 寿星天文历). See the repository NOTICE for provenance and terms.
 #include "taiyin/chinese_calendar/calendar.h"
 
 #include "chinese_calendar/historical_calendar_data.h"
@@ -431,9 +434,9 @@ Status get_specific_solar_term(
     }
 
     // Match calcY's anchor chain: first locate the actual preceding winter
-    // solstice, then refine one of its following 15-degree terms. Like
-    // sxwnl's getSpecificJieQi(), indices 19..23 name January-through-March
-    // terms earlier in civil_year, not terms in the following year.
+    // solstice, then refine one of its following 15-degree terms. Indices
+    // 19..23 name January-through-March terms earlier in civil_year, not
+    // terms in the following year.
     const CalendarDateTime anchor = {
         civil_year, 6, 1, 0, 0, 0.0,
     };
@@ -658,34 +661,36 @@ uint8_t month_number_from_sequence(int sequence) noexcept {
 }
 
 void assign_lunar_years(ChineseCalendarYear* out) noexcept {
-    int first_month_index = -1;
+    int year_starts[TAIYIN_CHINESE_CALENDAR_MONTH_COUNT] = {};
+    int year_start_count = 0;
     for (std::size_t i = 0; i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT; ++i) {
-        if (out->months[i].month == 1 && out->months[i].is_leap == 0u) {
-            first_month_index = static_cast<int>(i);
-            break;
+        const ChineseCalendarMonth& month = out->months[i];
+        if (month.month == 1 && month.is_leap == 0u
+            && month.month_name != TAIYIN_CHINESE_MONTH_NAME_ALT_ONE) {
+            year_starts[year_start_count++] = static_cast<int>(i);
         }
     }
-    if (first_month_index >= 0) {
-        int next_month_index = -1;
-        for (std::size_t i = static_cast<std::size_t>(first_month_index + 1);
-             i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT;
-             ++i) {
-            if (out->months[i].month == 1
-                && out->months[i].is_leap == 0u) {
-                next_month_index = static_cast<int>(i);
-                break;
+    if (year_start_count > 0) {
+        int32_t first_year = 0;
+        for (int boundary = 0; boundary < year_start_count; ++boundary) {
+            const int first_month_index = year_starts[boundary];
+            const int next_month_index = boundary + 1 < year_start_count
+                ? year_starts[boundary + 1]
+                : static_cast<int>(TAIYIN_CHINESE_CALENDAR_MONTH_COUNT);
+            const int64_t start =
+                out->months[first_month_index].first_civil_day_number;
+            const int64_t end = boundary + 1 < year_start_count
+                ? out->months[next_month_index].first_civil_day_number
+                : start + 180;
+            const int32_t year =
+                solar_date_from_day_number((start + end) / 2).year;
+            if (boundary == 0) first_year = year;
+            for (int i = first_month_index; i < next_month_index; ++i) {
+                out->months[i].lunar_year = year;
             }
         }
-        const int64_t start =
-            out->months[first_month_index].first_civil_day_number;
-        const int64_t end = next_month_index >= 0
-            ? out->months[next_month_index].first_civil_day_number
-            : start + 180;
-        const int32_t year =
-            solar_date_from_day_number((start + end) / 2).year;
-        for (std::size_t i = 0; i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT; ++i) {
-            out->months[i].lunar_year =
-                static_cast<int>(i) < first_month_index ? year - 1 : year;
+        for (int i = 0; i < year_starts[0]; ++i) {
+            out->months[i].lunar_year = first_year - 1;
         }
         return;
     }
@@ -695,31 +700,6 @@ void assign_lunar_years(ChineseCalendarYear* out) noexcept {
             out->months[i].first_civil_day_number);
         out->months[i].lunar_year =
             out->months[i].month >= 11 ? date.year - 1 : date.year;
-    }
-}
-
-void assign_ancient_lunar_years(ChineseCalendarYear* out) noexcept {
-    std::size_t next_year_start = TAIYIN_CHINESE_CALENDAR_MONTH_COUNT;
-    const ChineseCalendarMonth& first = out->months[0];
-    for (std::size_t i = 1; i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT; ++i) {
-        const ChineseCalendarMonth& candidate = out->months[i];
-        if (candidate.month == first.month
-            && candidate.month_name == first.month_name) {
-            next_year_start = i;
-            break;
-        }
-    }
-
-    const int64_t start = first.first_civil_day_number;
-    const int64_t end = next_year_start < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT
-        ? out->months[next_year_start].first_civil_day_number
-        : out->months[TAIYIN_CHINESE_CALENDAR_MONTH_COUNT - 1]
-            .first_civil_day_number;
-    const int32_t base_year =
-        solar_date_from_day_number((start + end) / 2).year;
-    for (std::size_t i = 0; i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT; ++i) {
-        out->months[i].lunar_year =
-            i < next_year_start ? base_year : base_year + 1;
     }
 }
 
@@ -777,6 +757,18 @@ Status assign_early_historical_months(
             (out->new_moons[i].civil_day_number - year_starts[era_index] + 15.0)
             / kDaysPerSynodicMonth));
         ChineseCalendarMonth& month = out->months[i];
+        // The historical year-start table already identifies the calendar
+        // year containing this month. Deriving the label from the midpoint of
+        // the local winter-solstice window is not stable across adjacent
+        // calcY() calls at a reform boundary: the same Gregorian year can then
+        // receive two distinct months with an identical LunarDate identity.
+        // The Zhuanxu/Qin-Han branch begins its numbered year in the winter
+        // preceding the Gregorian year used by the approximation's epoch
+        // index. Keep that one-year shift explicit instead of letting a
+        // midpoint heuristic change it between adjacent winter-solstice
+        // windows.
+        const int winter_year_shift = base_months[era_index] == 11 ? 1 : 0;
+        month.lunar_year = year_hint + era_index - 1 - winter_year_shift;
         if (month_offset < 12) {
             month.month = month_number_from_sequence(
                 month_offset + base_months[era_index]);
@@ -792,7 +784,6 @@ Status assign_early_historical_months(
     out->leap_month_index = -1;
     out->month_count =
         static_cast<uint8_t>(TAIYIN_CHINESE_CALENDAR_MONTH_COUNT);
-    assign_ancient_lunar_years(out);
     (void) context;
     return TAIYIN_STATUS_OK;
 }
@@ -882,6 +873,14 @@ Status assign_months(
             month.month = 12;
             month.month_name = TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE;
         }
+        // At the Wu-Zetian and 761/762 restoration boundaries, the profile
+        // contains two months in one lunar year with exactly the same written
+        // numeric name. Tag the later occurrence without presenting it as a
+        // leap month or changing its localized display name.
+        if (first_day == 1977112 || first_day == 1999526) {
+            month.month_name =
+                TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME;
+        }
     }
     assign_lunar_years(out);
     out->month_count =
@@ -896,8 +895,7 @@ bool matching_lunar_month(
     return month.lunar_year == lunar.year
         && month.month == lunar.month
         && month.is_leap == lunar.is_leap
-        && (lunar.month_name == TAIYIN_CHINESE_MONTH_NAME_NORMAL
-            || month.month_name == lunar.month_name);
+        && month.month_name == lunar.month_name;
 }
 
 Status calc_year_for_lunar_search(
@@ -1177,7 +1175,8 @@ Status fromLunar(
         || lunar->month < 1 || lunar->month > 13
         || lunar->day < 1 || lunar->day > 30
         || lunar->is_leap > 1
-        || lunar->month_name > TAIYIN_CHINESE_MONTH_NAME_ALT_ONE) {
+        || lunar->month_name
+            > TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
@@ -1216,21 +1215,46 @@ Status getLunarMonthNum(
     if (!context || !out_day_count || month < 1 || month > 13) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    LunarDate lunar;
-    lunar.year = lunar_year;
-    lunar.month = month;
-    lunar.day = 1;
-    lunar.is_leap = is_leap ? 1u : 0u;
-    SolarDate solar;
-    const Status status = fromLunar(
-        context, &lunar, &solar, diagnostic);
-    if (status != TAIYIN_STATUS_OK) return status;
-    LunarDate resolved;
-    const Status roundtrip_status = fromSolar(
-        context, &solar, &resolved, diagnostic);
-    if (roundtrip_status != TAIYIN_STATUS_OK) return roundtrip_status;
-    *out_day_count = resolved.month_days;
-    return TAIYIN_STATUS_OK;
+    const uint8_t leap = is_leap ? 1u : 0u;
+    bool has_exceptional_match = false;
+    uint8_t exceptional_day_count = 0;
+    for (int offset = 0; offset <= 1; ++offset) {
+        ChineseCalendarYear year;
+        const Status status = calc_year_for_lunar_search(
+            context, lunar_year + offset, &year, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+        for (std::size_t i = 0;
+             i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT;
+             ++i) {
+            const ChineseCalendarMonth& candidate = year.months[i];
+            if (candidate.first_civil_day_number
+                >= year.second_winter_solstice_day_number) {
+                break;
+            }
+            if (candidate.lunar_year != lunar_year
+                || candidate.month != month
+                || candidate.is_leap != leap) {
+                continue;
+            }
+            // This API predates the structured historical month-name field.
+            // Preserve its ordinary-month preference, but still let callers
+            // query a month (such as the leap thirteenth month of -456) that
+            // exists only under an exceptional historical name.
+            if (candidate.month_name == TAIYIN_CHINESE_MONTH_NAME_NORMAL) {
+                *out_day_count = candidate.day_count;
+                return TAIYIN_STATUS_OK;
+            }
+            if (!has_exceptional_match) {
+                exceptional_day_count = candidate.day_count;
+                has_exceptional_match = true;
+            }
+        }
+    }
+    if (has_exceptional_match) {
+        *out_day_count = exceptional_day_count;
+        return TAIYIN_STATUS_OK;
+    }
+    return TAIYIN_EVENT_ERROR_NOT_FOUND;
 }
 
 }  // namespace chinese_calendar

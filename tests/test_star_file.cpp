@@ -160,6 +160,7 @@ void test_build_tsc1_bytes_and_provider(int* failures) {
     Tsf1StarEntry entries[2];
     entries[0] = make_entry("cache_star", "Cache Star", 120.0, 10.0);
     entries[0].aliases.push_back("cache-star-alias");
+    entries[0].aliases.push_back(u8"角宿一");
     entries[1] = make_entry("cold_star", "Cold Star", 240.0, -20.0);
     expect_true(save_star_file(path, entries, 2), "save provider TSF1 file", failures);
 
@@ -171,6 +172,7 @@ void test_build_tsc1_bytes_and_provider(int* failures) {
     expect_true(tsc1_catalog_load_from_memory(&catalog, &bytes[0], bytes.size()), "load generated TSC1 bytes", failures);
     expect_true(catalog.header && catalog.header->star_count == 2, "generated TSC1 star count", failures);
     expect_true(tsc1_catalog_find(&catalog, "Cache Star Alias") != 0, "find generated TSC1 alias", failures);
+    expect_true(tsc1_catalog_find(&catalog, u8"角宿一") != 0, "find generated UTF-8 TSC1 alias", failures);
     expect_true(tsc1_catalog_find(&catalog, "cold_star") != 0, "find generated TSC1 canonical", failures);
     tsc1_catalog_destroy(&catalog);
 

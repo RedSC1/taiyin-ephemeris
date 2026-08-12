@@ -1,12 +1,14 @@
 #include "taiyin/c/runtime.h"
 
-#include "astrology_lifecycle_internal.h"
 #include "c_api_internal.h"
 #include "position_lifecycle_internal.h"
+#include "astrology_lifecycle_internal.h"
 #include "taiyin/runtime/runtime.h"
 
 #include <cstring>
 #include <mutex>
+#include <new>
+#include <vector>
 
 namespace {
 
@@ -24,6 +26,14 @@ void TAIYIN_C_CALL taiyin_runtime_config_init(taiyin_runtime_config* config) {
     config->segment_cache_max_entries = 4096;
     config->load_packaged_data = 1u;
     config->load_builtin_eop = 1u;
+}
+
+void TAIYIN_C_CALL taiyin_runtime_registered_data_source_init(
+    taiyin_runtime_registered_data_source* value
+) {
+    if (!value) return;
+    std::memset(value, 0, sizeof(*value));
+    value->struct_size = sizeof(*value);
 }
 
 taiyin_status TAIYIN_C_CALL taiyin_runtime_initialize(
@@ -52,9 +62,9 @@ taiyin_status TAIYIN_C_CALL taiyin_runtime_initialize(
         if (g_c_runtime_initialized) {
             // Clear before the reset can fail. Language runtimes may already
             // have discarded the isolate/group that owned the callbacks.
-            taiyin_c_internal::clear_native_position_evaluators_locked();
             taiyin_c_internal::clear_c_ayanamsha_models_locked();
             taiyin_c_internal::clear_c_house_system_models_locked();
+            taiyin_c_internal::clear_native_position_evaluators_locked();
         }
         if (!taiyin::runtime::initialize_global_ephemeris_runtime(cpp)) {
             return taiyin::TAIYIN_ERROR_INTERNAL;
@@ -71,6 +81,36 @@ taiyin_status TAIYIN_C_CALL taiyin_runtime_add_source_path(const char* path) {
     return taiyin::runtime::add_global_ephemeris_source_path(path)
         ? taiyin::TAIYIN_STATUS_OK
         : taiyin::TAIYIN_FILE_ERROR_DISCOVERY_FAILED;
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_runtime_set_ephemeris_source_priority(
+    const char* path_or_basename,
+    int32_t priority
+) {
+    if (!path_or_basename || path_or_basename[0] == '\0') {
+        return taiyin_c_internal::invalid_argument();
+    }
+    return taiyin::runtime::set_global_ephemeris_source_priority(
+        path_or_basename,
+        static_cast<int>(priority))
+        ? TAIYIN_STATUS_OK
+        : TAIYIN_ERROR_INTERNAL;
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_runtime_clear_ephemeris_source_priority(
+    const char* path_or_basename
+) {
+    if (!path_or_basename || path_or_basename[0] == '\0') {
+        return taiyin_c_internal::invalid_argument();
+    }
+    return taiyin::runtime::clear_global_ephemeris_source_priority(
+        path_or_basename)
+        ? TAIYIN_STATUS_OK
+        : TAIYIN_ERROR_INTERNAL;
+}
+
+void TAIYIN_C_CALL taiyin_runtime_clear_all_ephemeris_source_priorities(void) {
+    taiyin::runtime::clear_all_global_ephemeris_source_priorities();
 }
 
 taiyin_status TAIYIN_C_CALL taiyin_runtime_load_eop_table(const char* path) {
@@ -111,6 +151,60 @@ void TAIYIN_C_CALL taiyin_runtime_clear_ephemeris_cache(void) {
 
 size_t TAIYIN_C_CALL taiyin_runtime_catalog_size(void) {
     return taiyin::runtime::global_ephemeris_catalog_size();
+}
+
+size_t TAIYIN_C_CALL taiyin_runtime_registered_data_source_count(void) {
+    std::vector<taiyin::runtime::RegisteredDataSource> sources;
+    return taiyin::runtime::get_global_registered_data_sources(&sources)
+        ? sources.size()
+        : 0u;
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_runtime_get_registered_data_source(
+    size_t index,
+    taiyin_runtime_registered_data_source* out,
+    char* source,
+    size_t source_capacity,
+    size_t* out_required_source_size
+) {
+    if (!taiyin_c_internal::valid_struct(out)
+        || (!source && source_capacity != 0u)
+        || !out_required_source_size) {
+        return taiyin_c_internal::invalid_argument();
+    }
+    try {
+        std::vector<taiyin::runtime::RegisteredDataSource> sources;
+        if (!taiyin::runtime::get_global_registered_data_sources(&sources)) {
+            return taiyin::TAIYIN_ERROR_INTERNAL;
+        }
+        if (index >= sources.size()) {
+            return taiyin_c_internal::invalid_argument();
+        }
+        const taiyin::runtime::RegisteredDataSource& item = sources[index];
+        taiyin_runtime_registered_data_source_init(out);
+        out->kind = static_cast<uint32_t>(item.kind);
+        out->format = static_cast<uint32_t>(item.format);
+        out->flags = item.flags;
+        out->item_count = static_cast<uint64_t>(item.item_count);
+        out->jd_start = item.jd_start;
+        out->jd_end = item.jd_end;
+
+        *out_required_source_size = item.source.size() + 1u;
+        if (source && source_capacity > 0u) {
+            const size_t copy_size = item.source.size() < source_capacity - 1u
+                ? item.source.size()
+                : source_capacity - 1u;
+            std::memcpy(source, item.source.data(), copy_size);
+            source[copy_size] = '\0';
+        }
+        return !source || source_capacity >= *out_required_source_size
+            ? taiyin::TAIYIN_STATUS_OK
+            : taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+    } catch (const std::bad_alloc&) {
+        return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+    } catch (...) {
+        return taiyin::TAIYIN_ERROR_INTERNAL;
+    }
 }
 
 size_t TAIYIN_C_CALL taiyin_runtime_cache_entry_count(void) {

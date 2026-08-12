@@ -1,10 +1,12 @@
 # OPC1 Catalog Format
 
 Status: Current
-Last reviewed: 2026-07-01
+Last reviewed: 2026-08-07
 Primary header: `include/taiyin/internal/opc_catalog_persistent.h`
 
-`OPC1` is Taiyin's persistent ephemeris-source index format. Its file magic is `OPC1`; the current schema version is `OPC_VERSION = 2`.
+`OPC1` is Taiyin's persistent ephemeris-source index format. Its file magic is
+`OPC1`; the current packed schema version is `OPC_VERSION = 3`, and the current
+descriptor-discovery generation is `OPC_DISCOVERY_VERSION = 4`.
 
 The OPC catalog accelerates discovery when the runtime starts or when a data directory is added. Real ephemeris data still lives in source files such as:
 
@@ -66,13 +68,13 @@ The current writer uses:
 
 ```text
 source_id = 0
-source_version = OPC_VERSION
-generation = OPC_VERSION
+source_version = OPC_DISCOVERY_VERSION
+generation = OPC_DISCOVERY_VERSION
 ```
 
 ## Descriptor Record
 
-`OpcDescriptorRecord` is currently fixed at 128 bytes. Each record corresponds to one runtime ephemeris descriptor. A source file can contribute multiple records; for example, a `TKC1` catalog can generate descriptors for many small bodies, and an SPK kernel can expose multiple target/center routes.
+`OpcDescriptorRecord` is currently fixed at 136 bytes. Each record corresponds to one runtime ephemeris descriptor. A source file can contribute multiple records; for example, a `TKC1` catalog can generate descriptors for many small bodies, and an SPK kernel can expose multiple target/center routes.
 
 Fields:
 
@@ -98,17 +100,25 @@ cache_origin_jd
 cache_span_days
 cache_first_index
 cache_count
+object_index
 ```
 
 `source_id/block_id/generation/purpose` is restored as an `EphemerisBlockKey`, which locates the source-file payload. `target_id/center_id/method_id/bucket_id` is restored as an `EphemerisRouteKey`, which is used for route lookup and segment cache keys.
 
-`cache_policy_*` is the key addition in v2. It describes how a source descriptor is divided into loadable buckets:
+`cache_policy_*` describes how a source descriptor is divided into loadable buckets:
 
 ```text
 CacheWholeEntry      the whole descriptor is one cache entry
 CacheFixedSpan       bucket by fixed time span
 CacheNaturalSegment  bucket by the source format's natural segment
 ```
+
+`object_index` was added in v3. For a multi-object `TKC1` file it records the
+zero-based object position inside that physical file. The runtime may reassign
+`source_key.block_id` while combining roots to prevent two files with the same
+logical source key from colliding; the independent `object_index` keeps the
+loader pointed at the intended `TKC1` object after that rekeying. It is zero and
+unused for formats other than `TKC1`.
 
 OPM2 usually uses the natural Chebyshev segment grid. SPK, TKC1, and custom Kepler files write the appropriate cache policy from their discoverers.
 
@@ -156,6 +166,7 @@ OPC loading succeeds only when:
 
 - magic is `OPC1`;
 - version equals the current `OPC_VERSION`;
+- source version and generation equal the current `OPC_DISCOVERY_VERSION`;
 - header offsets and ranges are valid;
 - descriptor count is nonzero;
 - fingerprint matches indexed source files under the current root;
@@ -195,6 +206,12 @@ Behavior:
 2. If the OPC is missing, stale, or invalid, run directory discovery.
 3. If directory discovery succeeds and `catalog_path` was provided, try to rewrite the OPC.
 
+An OPC restores the logical descriptor keys recorded for one root. When runtime
+initialization later combines that root with descriptors from another root, it
+performs the normal in-memory physical-source identity rekeying before catalog
+insertion. In particular, a `TKC1` record's v3 `object_index`, not a possibly
+reassigned `source_key.block_id`, selects the object inside its source file.
+
 Failure to rewrite the OPC does not change discovery results; it only affects next-start load speed.
 
 ## Packaged OPC Files
@@ -214,23 +231,13 @@ The runtime tries `index.opc` for roots whose final path component is `data`, `o
 
 ## Generator
 
-Generation command:
-
-```text
-generate_ephemeris_catalog <ephemeris-root> [catalog-path]
-```
-
-If `catalog-path` is omitted, the tool writes:
-
-```text
-<ephemeris-root>/index.opc
-```
-
-The tool runs directory discovery, writes the OPC, and reloads it once to verify the descriptor count.
+Taiyin uses a private maintainer generator to create and verify OPC catalogs.
+It is intentionally not included in the public source snapshot. Public runtime
+users may simply omit `index.opc`: discovery falls back to scanning the data
+directory when no valid persistent catalog is present.
 
 ## Related Files
 
 - `include/taiyin/internal/opc_catalog_persistent.h`
 - `src/opc_catalog_persistent.cpp`
 - `tests/test_opc_catalog_persistent.cpp`
-- `tools/generate_ephemeris_catalog.cpp`

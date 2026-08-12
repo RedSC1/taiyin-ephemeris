@@ -212,6 +212,7 @@ NativeCalcContext::NativeCalcContext() noexcept
       ephemeris_family_id(dispatch::EPHEMERIS_FAMILY_UNKNOWN),
       observer_id(TAIYIN_BODY_EARTH),
       center_id(TAIYIN_BODY_SUN),
+      topocentric_observer_model(TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_NONE),
       observer_location(),
       atmosphere(),
       atmosphere_policy_flags(0u),
@@ -609,6 +610,7 @@ Status native_context_set_geocentric_observer(
     context->center_id = center_id;
     context->apparent_options.flags &= ~TAIYIN_APPARENT_TOPOCENTRIC;
     context->apparent_options.observer_offset = CartesianState();
+    context->topocentric_observer_model = TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_NONE;
     context->fields.clear(TAIYIN_NATIVE_FIELD_TOPOCENTRIC_OFFSET);
     context->fields.clear(TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION);
     return TAIYIN_STATUS_OK;
@@ -621,8 +623,12 @@ Status native_context_set_topocentric_observer_offset(
     if (!context) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    if (context->observer_id != TAIYIN_BODY_EARTH) {
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
     context->apparent_options.observer_offset = observer_offset;
     context->apparent_options.flags |= TAIYIN_APPARENT_TOPOCENTRIC;
+    context->topocentric_observer_model = TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_EXPLICIT_OFFSET;
     context->fields.set(TAIYIN_NATIVE_FIELD_TOPOCENTRIC_OFFSET);
     return TAIYIN_STATUS_OK;
 }
@@ -637,6 +643,9 @@ Status native_context_set_simple_topocentric_observer(
         || !split_julian_date_is_finite(jd_tt)
         || !native_observer_location_is_valid_geodetic(location)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    if (context->observer_id != TAIYIN_BODY_EARTH) {
+        return TAIYIN_ERROR_UNSUPPORTED;
     }
     CartesianState offset;
     offset.position_au = observer_geocentric_simple_position_au(
@@ -664,6 +673,7 @@ Status native_context_set_simple_topocentric_observer(
     }
     const Status status = native_context_set_topocentric_observer_offset(context, offset);
     if (status == TAIYIN_STATUS_OK) {
+        context->topocentric_observer_model = TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_SIMPLE;
         context->observer_location = location;
         context->fields.set(TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION);
     }
@@ -680,6 +690,9 @@ Status native_context_set_precise_topocentric_observer(
         || !split_julian_date_is_finite(jd_tt)
         || !native_observer_location_is_valid_geodetic(location)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    if (context->observer_id != TAIYIN_BODY_EARTH) {
+        return TAIYIN_ERROR_UNSUPPORTED;
     }
     const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
     if (!eop_table || eop_table->count == 0) {
@@ -743,10 +756,55 @@ Status native_context_set_precise_topocentric_observer(
 
     const Status status = native_context_set_topocentric_observer_offset(context, offset);
     if (status == TAIYIN_STATUS_OK) {
+        context->topocentric_observer_model = TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_PRECISE;
         context->observer_location = location;
         context->fields.set(TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION);
     }
     return status;
+}
+
+Status native_context_refresh_topocentric_observer(
+    NativeCalcContext* context,
+    const SplitJulianDate& jd_ut1,
+    const SplitJulianDate& jd_tt
+) noexcept {
+    if (!context || !split_julian_date_is_finite(jd_ut1)
+        || !split_julian_date_is_finite(jd_tt)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    switch (context->topocentric_observer_model) {
+    case TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_NONE:
+    case TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_EXPLICIT_OFFSET:
+        return TAIYIN_STATUS_OK;
+    case TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_SIMPLE:
+        return native_context_set_simple_topocentric_observer(
+            context, context->observer_location, jd_ut1, jd_tt);
+    case TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_PRECISE: {
+        const internal::EarthOrientationTable* eop_table =
+            global_earth_orientation_table();
+        if (!eop_table || eop_table->count == 0) {
+            return TAIYIN_ERROR_INVALID_ARGUMENT;
+        }
+        // UT1 = UTC + DUT1. DUT1 itself is tabulated against UTC, so solve
+        // this small implicit conversion before calling the precise setter.
+        SplitJulianDate jd_utc = jd_ut1;
+        for (int iteration = 0; iteration < 3; ++iteration) {
+            internal::EarthOrientationSample eop;
+            SplitJulianDate candidate_ut1;
+            if (!internal::interpolate_earth_orientation(
+                    eop_table, jd_utc, &eop)
+                || !utc_to_ut1_split_jd(
+                    jd_utc, eop.dut1_seconds, &candidate_ut1)) {
+                return TAIYIN_ERROR_UNSUPPORTED;
+            }
+            jd_utc += jd_ut1 - candidate_ut1;
+        }
+        return native_context_set_precise_topocentric_observer(
+            context, context->observer_location, jd_utc, jd_tt);
+    }
+    default:
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
 }
 
 const ApparentDeflector* native_solar_deflector() noexcept {

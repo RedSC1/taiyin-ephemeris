@@ -10,6 +10,7 @@
 #include "taiyin/geometry.h"
 #include "taiyin/math_solvers.h"
 #include "taiyin/runtime/observed_position.h"
+#include "taiyin/runtime/star_position.h"
 #include "taiyin/time.h"
 #include "taiyin/vector3.h"
 
@@ -186,6 +187,7 @@ struct AngularSeparationEvalContext {
     const NativeCalcContext* context;
     int body_a_id;
     int body_b_id;
+    const char* star_key;
     uint32_t flags;
     bool use_ut;
     EphemerisEvalDiagnostic* diagnostic;
@@ -195,6 +197,7 @@ struct AngularSeparationEvalContext {
         : context(0),
           body_a_id(0),
           body_b_id(0),
+          star_key(0),
           flags(0),
           use_ut(true),
           diagnostic(0),
@@ -1172,13 +1175,68 @@ Status eval_angular_separation_sample(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
+    const NativeCalcContext* sample_context = data->context;
+    NativeCalcContext refreshed_topocentric_context;
+    if ((data->flags & TAIYIN_NATIVE_POSITION_TOPOCENTRIC) != 0u
+        && data->context->fields.has(TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION)) {
+        SplitJulianDate jd_ut;
+        SplitJulianDate jd_tt;
+        if (data->use_ut) {
+            jd_ut = jd;
+            const double delta_t = dispatch::eval_delta_t_with_ephemeris_correction(
+                data->context->delta_t_model_id,
+                data->context->ephemeris_family_id,
+                jd_ut,
+                0,
+                0);
+            if (!ut1_to_tt_split_jd(jd_ut, delta_t, &jd_tt)) {
+                return TAIYIN_ERROR_UNSUPPORTED;
+            }
+        } else {
+            jd_tt = jd;
+            double delta_t = dispatch::eval_delta_t_with_ephemeris_correction(
+                data->context->delta_t_model_id,
+                data->context->ephemeris_family_id,
+                jd_tt,
+                0,
+                0);
+            if (!tt_to_ut1_split_jd(jd_tt, delta_t, &jd_ut)) {
+                return TAIYIN_ERROR_UNSUPPORTED;
+            }
+            delta_t = dispatch::eval_delta_t_with_ephemeris_correction(
+                data->context->delta_t_model_id,
+                data->context->ephemeris_family_id,
+                jd_ut,
+                0,
+                0);
+            if (!tt_to_ut1_split_jd(jd_tt, delta_t, &jd_ut)) {
+                return TAIYIN_ERROR_UNSUPPORTED;
+            }
+        }
+        refreshed_topocentric_context = *data->context;
+        const Status topocentric_status =
+            native_context_refresh_topocentric_observer(
+                &refreshed_topocentric_context, jd_ut, jd_tt);
+        if (topocentric_status != TAIYIN_STATUS_OK) {
+            if (data->diagnostic) {
+                set_basic_diagnostic(
+                    data->diagnostic,
+                    topocentric_status,
+                    data->body_a_id,
+                    jd);
+            }
+            return topocentric_status;
+        }
+        sample_context = &refreshed_topocentric_context;
+    }
+
     CartesianState state_a;
     CartesianState state_b;
     EphemerisEvalDiagnostic diagnostic_a;
     EphemerisEvalDiagnostic diagnostic_b;
     Status status = data->use_ut
-        ? calc_state_ut(data->context, data->body_a_id, jd, data->flags, &state_a, &diagnostic_a)
-        : calc_state_tt(data->context, data->body_a_id, jd, data->flags, &state_a, &diagnostic_a);
+        ? calc_state_ut(sample_context, data->body_a_id, jd, data->flags, &state_a, &diagnostic_a)
+        : calc_state_tt(sample_context, data->body_a_id, jd, data->flags, &state_a, &diagnostic_a);
     ++data->evaluation_count;
     if (status != TAIYIN_STATUS_OK) {
         if (data->diagnostic) {
@@ -1186,9 +1244,33 @@ Status eval_angular_separation_sample(
         }
         return status;
     }
-    status = data->use_ut
-        ? calc_state_ut(data->context, data->body_b_id, jd, data->flags, &state_b, &diagnostic_b)
-        : calc_state_tt(data->context, data->body_b_id, jd, data->flags, &state_b, &diagnostic_b);
+    if (data->star_key) {
+        double star_position[6] = {};
+        const uint64_t star_flags = static_cast<uint64_t>(
+            (data->flags & ~TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX)
+            | TAIYIN_NATIVE_POSITION_XYZ
+            | TAIYIN_NATIVE_POSITION_SPEED);
+        status = data->use_ut
+            ? calc_star_position_ut(
+                sample_context, data->star_key, jd, star_flags,
+                star_position, &diagnostic_b)
+            : calc_star_position_tt(
+                sample_context, data->star_key, jd, star_flags,
+                star_position, &diagnostic_b);
+        state_b.position_au = Vector3{
+            star_position[0], star_position[1], star_position[2]};
+        state_b.velocity_au_per_day = Vector3{
+            star_position[3], star_position[4], star_position[5]};
+        // The public star-position API exposes apparent position and velocity.
+        // A zero acceleration is sufficient for the guarded Newton proposal:
+        // the exact first derivative brackets the root, and bisection remains
+        // authoritative if the approximate curvature proposes a bad step.
+        state_b.acceleration_au_per_day2 = Vector3{0.0, 0.0, 0.0};
+    } else {
+        status = data->use_ut
+            ? calc_state_ut(sample_context, data->body_b_id, jd, data->flags, &state_b, &diagnostic_b)
+            : calc_state_tt(sample_context, data->body_b_id, jd, data->flags, &state_b, &diagnostic_b);
+    }
     ++data->evaluation_count;
     if (status != TAIYIN_STATUS_OK) {
         if (data->diagnostic) {
@@ -2214,7 +2296,7 @@ Status local_transit_context_at_ut(
 
 bool resolve_local_event_refraction_flags(
     uint64_t search_flags,
-    uint32_t* out_observed_flags
+    uint64_t* out_observed_flags
 ) noexcept {
     if (!out_observed_flags) return false;
     if ((search_flags & TAIYIN_EVENT_SEARCH_REFRACTION) != 0u
@@ -3359,6 +3441,7 @@ Status search_minimum_angular_separation_impl(
     const NativeCalcContext* context,
     int body_a_id,
     int body_b_id,
+    const char* star_key,
     SplitJulianDate start_jd,
     SplitJulianDate end_jd,
     double max_step_days,
@@ -3373,11 +3456,12 @@ Status search_minimum_angular_separation_impl(
     if (diagnostic) {
         *diagnostic = EphemerisEvalDiagnostic();
     }
+    const bool use_star = star_key && star_key[0] != '\0';
     if (!context
         || !out
         || body_a_id == 0
-        || body_b_id == 0
-        || body_a_id == body_b_id
+        || (use_star ? body_b_id != 0 : body_b_id == 0)
+        || (!use_star && body_a_id == body_b_id)
         || !split_julian_date_is_finite(start_jd)
         || !split_julian_date_is_finite(end_jd)
         || !std::isfinite(max_step_days)
@@ -3408,6 +3492,7 @@ Status search_minimum_angular_separation_impl(
     eval_context.context = context;
     eval_context.body_a_id = body_a_id;
     eval_context.body_b_id = body_b_id;
+    eval_context.star_key = use_star ? star_key : 0;
     eval_context.flags = position_flags;
     eval_context.use_ut = use_ut;
     eval_context.diagnostic = diagnostic;
@@ -4146,7 +4231,7 @@ Status compute_geocentric_solar_transit_candidate(
 Status sample_local_solar_transit_visibility(
     const NativeCalcContext* context,
     const SolarTransitSearchResult& topocentric,
-    uint32_t observed_flags,
+    uint64_t observed_flags,
     LocalSolarTransitSearchResult* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -4257,6 +4342,14 @@ AngularSeparationSearchResult::AngularSeparationSearchResult() noexcept
       separation_rate_rad_per_day(0.0),
       body_a_id(0),
       body_b_id(0),
+      iteration_count(0),
+      evaluation_count(0) {}
+
+BodyStarAngularSeparationSearchResult::BodyStarAngularSeparationSearchResult() noexcept
+    : jd(),
+      separation_rad(0.0),
+      separation_rate_rad_per_day(0.0),
+      body_id(0),
       iteration_count(0),
       evaluation_count(0) {}
 
@@ -4899,6 +4992,7 @@ Status search_minimum_angular_separation_ut(
         context,
         body_a_id,
         body_b_id,
+        0,
         start_jd_ut,
         end_jd_ut,
         max_step_days,
@@ -4923,6 +5017,7 @@ Status search_minimum_angular_separation_tt(
         context,
         body_a_id,
         body_b_id,
+        0,
         start_jd_tt,
         end_jd_tt,
         max_step_days,
@@ -4930,6 +5025,78 @@ Status search_minimum_angular_separation_tt(
         flags,
         out,
         diagnostic);
+}
+
+Status search_minimum_body_star_angular_separation_ut(
+    const NativeCalcContext* context,
+    int body_id,
+    const char* star_key,
+    SplitJulianDate start_jd_ut,
+    SplitJulianDate end_jd_ut,
+    double max_step_days,
+    uint64_t flags,
+    BodyStarAngularSeparationSearchResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (out) {
+        *out = BodyStarAngularSeparationSearchResult();
+    }
+    if (!out || !star_key || star_key[0] == '\0') {
+        if (diagnostic) {
+            *diagnostic = EphemerisEvalDiagnostic();
+            set_basic_diagnostic(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, body_id, start_jd_ut);
+        }
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    AngularSeparationSearchResult result;
+    const Status status = search_minimum_angular_separation_impl(
+        context, body_id, 0, star_key, start_jd_ut, end_jd_ut,
+        max_step_days, true, flags, &result, diagnostic);
+    if (status == TAIYIN_STATUS_OK) {
+        out->jd = result.jd;
+        out->separation_rad = result.separation_rad;
+        out->separation_rate_rad_per_day = result.separation_rate_rad_per_day;
+        out->body_id = body_id;
+        out->iteration_count = result.iteration_count;
+        out->evaluation_count = result.evaluation_count;
+    }
+    return status;
+}
+
+Status search_minimum_body_star_angular_separation_tt(
+    const NativeCalcContext* context,
+    int body_id,
+    const char* star_key,
+    SplitJulianDate start_jd_tt,
+    SplitJulianDate end_jd_tt,
+    double max_step_days,
+    uint64_t flags,
+    BodyStarAngularSeparationSearchResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (out) {
+        *out = BodyStarAngularSeparationSearchResult();
+    }
+    if (!out || !star_key || star_key[0] == '\0') {
+        if (diagnostic) {
+            *diagnostic = EphemerisEvalDiagnostic();
+            set_basic_diagnostic(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, body_id, start_jd_tt);
+        }
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    AngularSeparationSearchResult result;
+    const Status status = search_minimum_angular_separation_impl(
+        context, body_id, 0, star_key, start_jd_tt, end_jd_tt,
+        max_step_days, false, flags, &result, diagnostic);
+    if (status == TAIYIN_STATUS_OK) {
+        out->jd = result.jd;
+        out->separation_rad = result.separation_rad;
+        out->separation_rate_rad_per_day = result.separation_rate_rad_per_day;
+        out->body_id = body_id;
+        out->iteration_count = result.iteration_count;
+        out->evaluation_count = result.evaluation_count;
+    }
+    return status;
 }
 
 Status search_next_solar_transit_ut(
@@ -4984,7 +5151,7 @@ Status compute_local_solar_transit_ut(
     const uint64_t known_search_flags =
         TAIYIN_EVENT_SEARCH_REFRACTION
         | TAIYIN_EVENT_SEARCH_NO_REFRACTION;
-    uint32_t observed_flags = 0u;
+    uint64_t observed_flags = 0u;
     if ((position_flags & (TAIYIN_NATIVE_POSITION_XYZ
                            | TAIYIN_NATIVE_POSITION_EQUATORIAL
                            | TAIYIN_NATIVE_POSITION_TOPOCENTRIC)) != 0u
@@ -5054,7 +5221,7 @@ Status search_local_solar_transit_interval_impl(
     const uint64_t known_search_flags =
         TAIYIN_EVENT_SEARCH_REFRACTION
         | TAIYIN_EVENT_SEARCH_NO_REFRACTION;
-    uint32_t observed_flags = 0u;
+    uint64_t observed_flags = 0u;
     if ((search_flags & ~known_search_flags) != 0u
         || (position_flags & (TAIYIN_NATIVE_POSITION_XYZ
                               | TAIYIN_NATIVE_POSITION_EQUATORIAL
@@ -5211,7 +5378,7 @@ Status search_next_local_solar_transit_ut(
         TAIYIN_EVENT_SEARCH_REVERSE
         | TAIYIN_EVENT_SEARCH_REFRACTION
         | TAIYIN_EVENT_SEARCH_NO_REFRACTION;
-    uint32_t observed_flags = 0u;
+    uint64_t observed_flags = 0u;
     if ((position_flags & (TAIYIN_NATIVE_POSITION_XYZ
                            | TAIYIN_NATIVE_POSITION_EQUATORIAL
                            | TAIYIN_NATIVE_POSITION_TOPOCENTRIC)) != 0u

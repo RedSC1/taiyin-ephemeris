@@ -521,7 +521,7 @@ void test_dayun_cycle() {
                 direction * static_cast<int32_t>(i + 1u),
                 &expected_ganzhi), "advance da-yun oracle Ganzhi");
             expect(entries[i].ganzhi == expected_ganzhi,
-                "Pascal da-yun rule matches the 60-cycle advance oracle");
+                "da-yun rule matches the 60-cycle advance oracle");
         }
     }
 }

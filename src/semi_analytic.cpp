@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <new>
 
 namespace taiyin {
@@ -15,12 +16,36 @@ namespace {
 
 constexpr double kJ2000 = 2451545.0;
 constexpr double kDaysPerJulianCentury = 36525.0;
-constexpr double kArcsecondsPerRadian = 206264.80624709636;
 const double kJ2000ObliquityRad = TAIYIN_J2000_MEAN_OBLIQUITY_RAD;
 constexpr size_t kMaximumPlanetAngles = 9;
 constexpr size_t kMaximumPlanetHarmonics = 20;
 constexpr size_t kMaximumCarrierHarmonics = 7;
-constexpr size_t kMaximumChebyshevDegree = 5;
+// MAR099's compact Phobos residual fit uses degree six. Keep a small fixed
+// bound for stack-only evaluation while allowing the checked-in satellite
+// artifacts to express their documented local secular trend.
+constexpr size_t kMaximumChebyshevDegree = 8;
+
+// DE440 barycenter gravitational parameters, in km^3/s^2. The semi-analytic
+// planet models are heliocentric barycenter states; mass-weighting those
+// states supplies the matching Sun-to-SSB state without mixing origins.
+constexpr double kSunGmKm3PerS2 = 1.3271244004127942e11;
+
+struct PlanetGm {
+    int body_id;
+    double gm_km3_per_s2;
+};
+
+const PlanetGm kPlanetGms[] = {
+    {TAIYIN_BODY_MERCURY_BARYCENTER, 2.2031868551400003e4},
+    {TAIYIN_BODY_VENUS_BARYCENTER, 3.2485859200000000e5},
+    {TAIYIN_BODY_EMB, 4.0350323562548019e5},
+    {TAIYIN_BODY_MARS_BARYCENTER, 4.2828375815756102e4},
+    {TAIYIN_BODY_JUPITER_BARYCENTER, 1.2671276409999998e8},
+    {TAIYIN_BODY_SATURN_BARYCENTER, 3.7940584841799997e7},
+    {TAIYIN_BODY_URANUS_BARYCENTER, 5.7945563999999985e6},
+    {TAIYIN_BODY_NEPTUNE_BARYCENTER, 6.8365271005803989e6},
+    {TAIYIN_BODY_PLUTO_BARYCENTER, 9.7550000000000000e2},
+};
 
 struct PlanetFactor {
     uint16_t angle_index;
@@ -56,7 +81,7 @@ struct PlanetModel {
     uint16_t carrier_max_harmonic;
 };
 
-struct Xl1Term {
+struct LunarSeriesTerm {
     double amplitude;
     double phase[5];
 };
@@ -91,7 +116,78 @@ struct LunarCorrectionModel {
     double radius_scale_km;
 };
 
+struct SatelliteResidualTable {
+    const char* artifact_sha256;
+    double jd_start;
+    double jd_end;
+    double segment_days;
+    double blend_days;
+    size_t segment_count;
+    const double (*plane_ecliptic)[3];
+    const double* carrier_coefficients;
+    size_t carrier_coefficient_count;
+    const double* base_coefficients;
+    size_t base_coefficient_count;
+    size_t base_harmonic_count;
+    size_t base_polynomial_degree;
+    const double* residual_coefficients;
+    size_t residual_coefficient_count;
+    size_t residual_polynomial_degree;
+    size_t residual_harmonic_count;
+    size_t residual_harmonic_amplitude_degree;
+};
+
+struct SatellitePoissonTerm {
+    int16_t carrier_multiplier;
+    int16_t perturber_multiplier;
+};
+
+struct SatellitePoissonTable {
+    const char* artifact_sha256;
+    double jd_start;
+    double jd_end;
+    const double (*plane_ecliptic)[3];
+    const double* carrier_coefficients;
+    size_t carrier_coefficient_count;
+    const double* perturber_carrier_coefficients;
+    size_t perturber_carrier_coefficient_count;
+    const SatellitePoissonTerm* terms;
+    size_t term_count;
+    size_t channel_polynomial_degree;
+    const double* coefficients;
+    size_t coefficient_count;
+};
+
+// Compact orbital-element series retained from Astronomy Engine's MIT-licensed
+// L1.2 Galilean-moon implementation.  The table itself lives in third_party;
+// this file supplies Taiyin's frame conversion and differentiated evaluation.
+struct AstronomyEngineSeriesTerm {
+    double amplitude;
+    double phase;
+    double frequency;
+};
+
+struct AstronomyEngineSeries {
+    size_t term_count;
+    const AstronomyEngineSeriesTerm* terms;
+};
+
+struct AstronomyEngineJupiterMoonModel {
+    double gravitational_parameter_au3_per_day2;
+    double mean_longitude_phase;
+    double mean_longitude_frequency;
+    AstronomyEngineSeries semi_major_axis;
+    AstronomyEngineSeries longitude;
+    AstronomyEngineSeries eccentricity;
+    AstronomyEngineSeries inclination;
+};
+
 #include "internal/semi_analytic_coefficients.inc"
+#include "internal/charon_plu060_coefficients.inc"
+#include "internal/mars_satellite_coefficients.inc"
+#include "internal/triton_nep098_coefficients.inc"
+#include "internal/pluto_small_satellite_coefficients.inc"
+#include "third_party/astronomy_engine/jupiter_moons_l1.inc"
 
 struct Jet2 {
     double value;
@@ -115,6 +211,55 @@ struct JetVector3 {
     Jet2 y;
     Jet2 z;
 };
+
+// PLU060's embedded file summary gives the fitted Pluto-system GMs in
+// km^3/s^2.  Each mass-bearing companion has an independently generated
+// relative-state route, allowing the physical Pluto center to be reconstructed
+// from the same complete-system denominator as the source SPK.
+constexpr double kPlutoSystemGm = 975.4308664317557;
+constexpr double kPlutoCharonMassFraction =
+    106.1011388236118 / kPlutoSystemGm;
+constexpr double kPlutoNixMassFraction =
+    0.001496176095836919 / kPlutoSystemGm;
+constexpr double kPlutoHydraMassFraction =
+    0.002007962473606101 / kPlutoSystemGm;
+constexpr double kPlutoKerberosMassFraction =
+    0.00006038450780269370 / kPlutoSystemGm;
+constexpr double kPlutoStyxMassFraction =
+    0.00004045391585487917 / kPlutoSystemGm;
+
+// MAR099's embedded file summary gives these SATORBINT fitted system GMs in
+// km^3/s^2.  Phobos and Deimos are the only mass-bearing satellite entries in
+// this Mars-system kernel, so their explicit sum reconstructs Mars (499) from
+// Mars barycenter (4) without an approximate-center route.
+constexpr double kMarsSystemGm = 4.282837566226656e4;
+constexpr double kMarsPhobosMassFraction =
+    7.087546066894452e-4 / kMarsSystemGm;
+constexpr double kMarsDeimosMassFraction =
+    9.615569648120313e-5 / kMarsSystemGm;
+
+// NEP098's own file summary gives Triton GM 1428.495462910464 and total
+// Neptunian-system GM 6836531.640925204 km^3/s^2.  The residual table models
+// Triton only.  The denominator is the complete system mass, so this is a
+// deliberately labelled Triton-dominant correction rather than a claim that
+// every mass-bearing satellite has been reconstructed.
+constexpr double kNeptuneTritonMassFraction =
+    1428.495462910464 / 6836531.640925204;
+
+// JUP365 publishes these Galilean and complete-system GMs.  The compact L1.2
+// table has no states for Amalthea, Thebe, Adrastea, or Metis, so this is
+// intentionally a Galilean-dominant Jupiter-center reconstruction.
+constexpr double kJupiterSystemGm = 1.267127618414429e8;
+constexpr double kJupiterIoMassFraction =
+    5959.915466180539 / kJupiterSystemGm;
+constexpr double kJupiterEuropaMassFraction =
+    3202.712099607295 / kJupiterSystemGm;
+constexpr double kJupiterGanymedeMassFraction =
+    9887.832752719638 / kJupiterSystemGm;
+constexpr double kJupiterCallistoMassFraction =
+    7179.283402579837 / kJupiterSystemGm;
+constexpr double kJupiterL1ValidatedStart = 2305456.5;
+constexpr double kJupiterL1ValidatedEnd = 2524602.5;
 
 struct SemiAnalyticEphemerisData {
     int target_id;
@@ -160,6 +305,20 @@ Jet2 operator*(double scale, const Jet2& value) noexcept {
 
 Jet2 operator/(const Jet2& value, double divisor) noexcept {
     return value * (1.0 / divisor);
+}
+
+Jet2 jet_inverse(const Jet2& value) noexcept {
+    const double inverse = 1.0 / value.value;
+    const double inverse_squared = inverse * inverse;
+    return Jet2(
+        inverse,
+        -value.first * inverse_squared,
+        2.0 * value.first * value.first * inverse_squared * inverse
+            - value.second * inverse_squared);
+}
+
+Jet2 jet_divide(const Jet2& numerator, const Jet2& denominator) noexcept {
+    return numerator * jet_inverse(denominator);
 }
 
 Jet2& operator+=(Jet2& left, const Jet2& right) noexcept {
@@ -401,103 +560,106 @@ bool eval_planet_ecliptic(
     return true;
 }
 
-Jet2 p03_angle(const Jet2& t, const double coefficients[6]) noexcept {
-    return eval_polynomial(coefficients, 6, t) / kArcsecondsPerRadian;
+bool eval_sun_ssb_ecliptic(
+    const SplitJulianDate& jd_tdb,
+    JetVector3* out
+) noexcept {
+    if (!out) {
+        return false;
+    }
+    JetVector3 weighted_planets;
+    double total_gm = kSunGmKm3PerS2;
+    for (size_t index = 0;
+         index < sizeof(kPlanetGms) / sizeof(kPlanetGms[0]);
+         ++index) {
+        const PlanetGm& body = kPlanetGms[index];
+        const PlanetModel* model = find_planet_model(body.body_id);
+        JetVector3 heliocentric;
+        if (!model || !eval_planet_ecliptic(*model, jd_tdb, &heliocentric)) {
+            return false;
+        }
+        weighted_planets.x += heliocentric.x * body.gm_km3_per_s2;
+        weighted_planets.y += heliocentric.y * body.gm_km3_per_s2;
+        weighted_planets.z += heliocentric.z * body.gm_km3_per_s2;
+        total_gm += body.gm_km3_per_s2;
+    }
+    const double scale = -1.0 / total_gm;
+    out->x = weighted_planets.x * scale;
+    out->y = weighted_planets.y * scale;
+    out->z = weighted_planets.z * scale;
+    return true;
 }
 
-JetVector3 rotate_x(const JetVector3& vector, const Jet2& angle) noexcept {
-    const Jet2 cosine = jet_cos(angle);
-    const Jet2 sine = jet_sin(angle);
-    JetVector3 result;
-    result.x = vector.x;
-    result.y = cosine * vector.y - sine * vector.z;
-    result.z = sine * vector.y + cosine * vector.z;
-    return result;
-}
-
-JetVector3 rotate_z(const JetVector3& vector, const Jet2& angle) noexcept {
-    const Jet2 cosine = jet_cos(angle);
-    const Jet2 sine = jet_sin(angle);
-    JetVector3 result;
-    result.x = cosine * vector.x - sine * vector.y;
-    result.y = sine * vector.x + cosine * vector.y;
-    result.z = vector.z;
-    return result;
-}
-
-void date_ecliptic_to_j2000(
+void lunar_elp_ecliptic_to_j2000(
     const Jet2& t,
     Jet2* longitude,
     Jet2* latitude
 ) noexcept {
-    static const double phi[6] = {
-        0.0, 5038.481507, -1.0790069, -0.00114045, 0.000132851, -9.51e-8};
-    static const double omega[6] = {
-        84381.406, -0.025754, 0.0512623, -0.00772503, -4.67e-7, 3.337e-7};
-    static const double epsilon[6] = {
-        84381.406, -46.836769, -0.0001831, 0.00200340, -5.76e-7, -4.34e-8};
-    static const double chi[6] = {
-        0.0, 10.556403, -2.3814292, -0.00121197, 0.000170663, -5.60e-8};
-
     const Jet2 cosine_latitude = jet_cos(*latitude);
     JetVector3 vector;
     vector.x = cosine_latitude * jet_cos(*longitude);
     vector.y = cosine_latitude * jet_sin(*longitude);
     vector.z = jet_sin(*latitude);
-    vector = rotate_x(vector, p03_angle(t, epsilon));
-    vector = rotate_z(vector, p03_angle(t, chi));
-    vector = rotate_x(vector, -p03_angle(t, omega));
-    vector = rotate_z(vector, -p03_angle(t, phi));
+    const Jet2 p = eval_polynomial(
+        kLunarPrecessionPCoefficients,
+        sizeof(kLunarPrecessionPCoefficients)
+            / sizeof(kLunarPrecessionPCoefficients[0]),
+        t) * t;
+    const Jet2 q = eval_polynomial(
+        kLunarPrecessionQCoefficients,
+        sizeof(kLunarPrecessionQCoefficients)
+            / sizeof(kLunarPrecessionQCoefficients[0]),
+        t) * t;
+    const Jet2 p2 = p * p;
+    const Jet2 q2 = q * q;
+    const Jet2 ra = jet_sqrt(Jet2(1.0) - p2 - q2) * 2.0;
+    const Jet2 pq2 = p * q * 2.0;
+    const Jet2 pp = Jet2(1.0) - p2 * 2.0;
+    const Jet2 qq = Jet2(1.0) - q2 * 2.0;
+    const Jet2 pra = p * ra;
+    const Jet2 qra = q * ra;
+    const JetVector3 original = vector;
+    vector.x = pp * original.x + pq2 * original.y + pra * original.z;
+    vector.y = pq2 * original.x + qq * original.y - qra * original.z;
+    vector.z = -pra * original.x + qra * original.y
+        + (pp + qq - Jet2(1.0)) * original.z;
     *longitude = jet_atan2(vector.y, vector.x);
     *latitude = jet_atan2(
         vector.z,
         jet_sqrt(vector.x * vector.x + vector.y * vector.y));
 }
 
-Jet2 eval_xl1_coordinate(size_t coordinate, const Jet2& t) noexcept {
+Jet2 eval_lunar_elp_coordinate(size_t coordinate, const Jet2& t) noexcept {
     Jet2 value;
     if (coordinate == 0) {
-        const Jet2 t2 = t * t;
-        const Jet2 t3 = t2 * t;
-        const Jet2 t4 = t3 * t;
-        const Jet2 t5 = t4 * t;
-        value += (Jet2(3.81034409)
-            + t * 8399.684730072
-            - t2 * 3.319e-05
-            + t3 * 3.11e-08
-            - t4 * 2.033e-10) * kArcsecondsPerRadian;
-        value += t * 5028.792262
-            + t2 * 1.1124406
-            + t3 * 0.00007699
-            - t4 * 0.000023479
-            - t5 * 0.0000000178;
-        if (t.value > 10.0) {
-            const Jet2 offset = t - Jet2(10.0);
-            value += Jet2(-0.866) + offset * 1.43 + offset * offset * 0.054;
-        }
+        value = eval_polynomial(
+            kLunarMeanLongitudeCoefficients,
+            sizeof(kLunarMeanLongitudeCoefficients)
+                / sizeof(kLunarMeanLongitudeCoefficients[0]),
+            t);
     }
 
-    const Jet2 phase_t2 = t * t / 1.0e4;
-    const Jet2 phase_t3 = t * t * t / 1.0e8;
-    const Jet2 phase_t4 = t * t * t * t / 1.0e8;
+    const Jet2 phase_t2 = t * t;
+    const Jet2 phase_t3 = phase_t2 * t;
+    const Jet2 phase_t4 = phase_t3 * t;
     Jet2 envelope(1.0);
-    const TableRange coordinate_range = kXl1Coordinates[coordinate];
+    const TableRange coordinate_range = kLunarCoordinates[coordinate];
     for (size_t series_index = 0; series_index < coordinate_range.count; ++series_index) {
-        const TableRange series = kXl1Series[coordinate_range.offset + series_index];
+        const TableRange series = kLunarSeries[coordinate_range.offset + series_index];
         Jet2 subtotal;
         for (size_t term_index = 0; term_index < series.count; ++term_index) {
-            const Xl1Term& term = kXl1Terms[series.offset + term_index];
+            const LunarSeriesTerm& term = kLunarSeriesTerms[series.offset + term_index];
             const Jet2 phase = Jet2(term.phase[0])
                 + t * term.phase[1]
                 + phase_t2 * term.phase[2]
                 + phase_t3 * term.phase[3]
                 + phase_t4 * term.phase[4];
-            subtotal += jet_cos(phase) * term.amplitude;
+            subtotal += jet_sin(phase) * term.amplitude;
         }
         value += envelope * subtotal;
         envelope = envelope * t;
     }
-    return coordinate == 2 ? value : value / kArcsecondsPerRadian;
+    return value;
 }
 
 void make_chebyshev(const Jet2& value, size_t degree, Jet2 out[6]) noexcept {
@@ -509,6 +671,334 @@ void make_chebyshev(const Jet2& value, size_t degree, Jet2 out[6]) noexcept {
     for (size_t index = 2; index <= degree; ++index) {
         out[index] = value * out[index - 1] * 2.0 - out[index - 2];
     }
+}
+
+bool satellite_residual_coverage(
+    const SatelliteResidualTable& model,
+    double* start,
+    double* end
+) noexcept {
+    if (!start || !end) {
+        return false;
+    }
+    *start = model.jd_start;
+    *end = model.jd_end;
+    return true;
+}
+
+Jet2 satellite_residual_carrier(
+    const SatelliteResidualTable& model,
+    const SplitJulianDate& jd_tdb
+) noexcept {
+    const Jet2 t(
+        days_between_split_jd(SPLIT_JD_J2000, jd_tdb)
+            / kDaysPerJulianCentury,
+        1.0 / kDaysPerJulianCentury,
+        0.0);
+    return eval_polynomial(
+        model.carrier_coefficients, model.carrier_coefficient_count, t);
+}
+
+Jet2 eval_satellite_residual_base_channel(
+    const SatelliteResidualTable& model,
+    size_t channel,
+    const Jet2& global_u,
+    const Jet2& carrier
+) noexcept {
+    if (model.base_polynomial_degree > kMaximumChebyshevDegree) {
+        return Jet2(NAN, NAN, NAN);
+    }
+    Jet2 chebyshev[kMaximumChebyshevDegree + 1];
+    make_chebyshev(global_u, model.base_polynomial_degree, chebyshev);
+    const double* coefficients = model.base_coefficients
+        + channel * model.base_coefficient_count;
+    Jet2 value;
+    size_t cursor = 0;
+    for (size_t index = 0; index <= model.base_polynomial_degree; ++index) {
+        value += coefficients[cursor++] * chebyshev[index];
+    }
+    ComplexJet2 harmonic = complex_phase(carrier);
+    const ComplexJet2 fundamental = harmonic;
+    for (size_t index = 0; index < model.base_harmonic_count; ++index) {
+        const double cosine_coefficient = coefficients[cursor++];
+        const double sine_coefficient = coefficients[cursor++];
+        value += cosine_coefficient * harmonic.real
+            + sine_coefficient * harmonic.imaginary;
+        if (index + 1 < model.base_harmonic_count) {
+            harmonic = complex_multiply(harmonic, fundamental);
+        }
+    }
+    return value;
+}
+
+Jet2 satellite_residual_segment_coordinate(
+    const SatelliteResidualTable& model,
+    const SplitJulianDate& jd_tdb,
+    size_t index
+) noexcept {
+    const double segment_start = model.jd_start
+        + static_cast<double>(index) * model.segment_days;
+    const double segment_end = index + 1 < model.segment_count
+        ? segment_start + model.segment_days
+        : model.jd_end;
+    const double half_span = (segment_end - segment_start) / 2.0;
+    const double midpoint = (segment_start + segment_end) / 2.0;
+    return Jet2(
+        (days_between_split_jd(SPLIT_JD_J2000, jd_tdb)
+            - (midpoint - kJ2000)) / half_span,
+        1.0 / half_span,
+        0.0);
+}
+
+Jet2 eval_satellite_residual_segment_channel(
+    const SatelliteResidualTable& model,
+    size_t segment_index,
+    size_t channel,
+    const SplitJulianDate& jd_tdb,
+    const Jet2& carrier
+) noexcept {
+    if (model.residual_polynomial_degree > kMaximumChebyshevDegree
+        || model.residual_harmonic_amplitude_degree > kMaximumChebyshevDegree) {
+        return Jet2(NAN, NAN, NAN);
+    }
+    Jet2 polynomial[kMaximumChebyshevDegree + 1];
+    Jet2 amplitude[kMaximumChebyshevDegree + 1];
+    make_chebyshev(
+        satellite_residual_segment_coordinate(model, jd_tdb, segment_index),
+        model.residual_polynomial_degree, polynomial);
+    make_chebyshev(
+        satellite_residual_segment_coordinate(model, jd_tdb, segment_index),
+        model.residual_harmonic_amplitude_degree, amplitude);
+    const double* coefficients = model.residual_coefficients
+        + (segment_index * 3 + channel) * model.residual_coefficient_count;
+    Jet2 value;
+    size_t cursor = 0;
+    for (size_t index = 0; index <= model.residual_polynomial_degree; ++index) {
+        value += coefficients[cursor++] * polynomial[index];
+    }
+    ComplexJet2 harmonic = complex_phase(carrier);
+    const ComplexJet2 fundamental = harmonic;
+    for (size_t harmonic_index = 0;
+         harmonic_index < model.residual_harmonic_count;
+         ++harmonic_index) {
+        Jet2 cosine_amplitude;
+        Jet2 sine_amplitude;
+        for (size_t index = 0;
+             index <= model.residual_harmonic_amplitude_degree;
+             ++index) {
+            cosine_amplitude += coefficients[cursor++] * amplitude[index];
+        }
+        for (size_t index = 0;
+             index <= model.residual_harmonic_amplitude_degree;
+             ++index) {
+            sine_amplitude += coefficients[cursor++] * amplitude[index];
+        }
+        value += cosine_amplitude * harmonic.real
+            + sine_amplitude * harmonic.imaginary;
+        if (harmonic_index + 1 < model.residual_harmonic_count) {
+            harmonic = complex_multiply(harmonic, fundamental);
+        }
+    }
+    return value;
+}
+
+Jet2 satellite_residual_blend_weight(
+    const SatelliteResidualTable& model,
+    const SplitJulianDate& jd_tdb,
+    double start_jd
+) noexcept {
+    const Jet2 x(
+        days_between_split_jd(SPLIT_JD_J2000, jd_tdb)
+            - (start_jd - kJ2000),
+        1.0,
+        0.0);
+    const Jet2 unit = x / model.blend_days;
+    return unit * unit * (Jet2(3.0) - unit * 2.0);
+}
+
+Jet2 eval_satellite_residual_channel(
+    const SatelliteResidualTable& model,
+    size_t channel,
+    const SplitJulianDate& jd_tdb,
+    const Jet2& carrier
+) noexcept {
+    const double elapsed_days = days_between_split_jd(SPLIT_JD_J2000, jd_tdb)
+        - (model.jd_start - kJ2000);
+    size_t index = static_cast<size_t>(std::floor(
+        elapsed_days / model.segment_days));
+    if (index >= model.segment_count) {
+        index = model.segment_count - 1;
+    }
+    const double segment_start = model.jd_start
+        + static_cast<double>(index) * model.segment_days;
+    const double local_days = elapsed_days
+        - static_cast<double>(index) * model.segment_days;
+    const double half_blend = model.blend_days / 2.0;
+    if (model.blend_days > 0.0 && index > 0 && local_days < half_blend) {
+        const double boundary = segment_start;
+        const Jet2 left = eval_satellite_residual_segment_channel(
+            model, index - 1, channel, jd_tdb, carrier);
+        const Jet2 right = eval_satellite_residual_segment_channel(
+            model, index, channel, jd_tdb, carrier);
+        const Jet2 weight = satellite_residual_blend_weight(
+            model, jd_tdb, boundary - half_blend);
+        return left * (Jet2(1.0) - weight) + right * weight;
+    }
+    if (model.blend_days > 0.0 && index + 1 < model.segment_count
+        && local_days > model.segment_days - half_blend) {
+        const double boundary = segment_start + model.segment_days;
+        const Jet2 left = eval_satellite_residual_segment_channel(
+            model, index, channel, jd_tdb, carrier);
+        const Jet2 right = eval_satellite_residual_segment_channel(
+            model, index + 1, channel, jd_tdb, carrier);
+        const Jet2 weight = satellite_residual_blend_weight(
+            model, jd_tdb, boundary - half_blend);
+        return left * (Jet2(1.0) - weight) + right * weight;
+    }
+    return eval_satellite_residual_segment_channel(
+        model, index, channel, jd_tdb, carrier);
+}
+
+bool eval_satellite_residual_relative_ecliptic(
+    const SatelliteResidualTable& model,
+    const SplitJulianDate& jd_tdb,
+    JetVector3* out
+) noexcept {
+    SplitJulianDate start;
+    SplitJulianDate end;
+    if (!out
+        || !split_julian_date_from_double(model.jd_start, &start)
+        || !split_julian_date_from_double(model.jd_end, &end)
+        || jd_tdb < start || jd_tdb > end) {
+        return false;
+    }
+    const double midpoint = (model.jd_start + model.jd_end) / 2.0;
+    const double half_span = (model.jd_end - model.jd_start) / 2.0;
+    const Jet2 global_u(
+        (days_between_split_jd(SPLIT_JD_J2000, jd_tdb) - (midpoint - kJ2000))
+            / half_span,
+        1.0 / half_span,
+        0.0);
+    const Jet2 carrier = satellite_residual_carrier(model, jd_tdb);
+    const Jet2 radius = eval_satellite_residual_base_channel(
+        model, 0, global_u, carrier)
+        + eval_satellite_residual_channel(model, 0, jd_tdb, carrier);
+    const Jet2 phase = carrier
+        + eval_satellite_residual_base_channel(model, 1, global_u, carrier)
+        + eval_satellite_residual_channel(model, 1, jd_tdb, carrier);
+    const Jet2 height = eval_satellite_residual_base_channel(
+        model, 2, global_u, carrier)
+        + eval_satellite_residual_channel(model, 2, jd_tdb, carrier);
+    const Jet2 x = radius * jet_cos(phase);
+    const Jet2 y = radius * jet_sin(phase);
+    out->x = x * model.plane_ecliptic[0][0]
+        + y * model.plane_ecliptic[1][0]
+        + height * model.plane_ecliptic[2][0];
+    out->y = x * model.plane_ecliptic[0][1]
+        + y * model.plane_ecliptic[1][1]
+        + height * model.plane_ecliptic[2][1];
+    out->z = x * model.plane_ecliptic[0][2]
+        + y * model.plane_ecliptic[1][2]
+        + height * model.plane_ecliptic[2][2];
+    return true;
+}
+
+bool satellite_poisson_coverage(
+    const SatellitePoissonTable& model,
+    double* start,
+    double* end
+) noexcept {
+    if (!start || !end) {
+        return false;
+    }
+    *start = model.jd_start;
+    *end = model.jd_end;
+    return true;
+}
+
+Jet2 eval_satellite_poisson_channel(
+    const SatellitePoissonTable& model,
+    size_t channel,
+    const Jet2& u,
+    const Jet2& carrier,
+    const Jet2& perturber
+) noexcept {
+    if (model.channel_polynomial_degree > kMaximumChebyshevDegree
+        || channel >= 3 || model.coefficient_count
+            != model.channel_polynomial_degree + 1 + 2 * model.term_count) {
+        return Jet2(NAN, NAN, NAN);
+    }
+    Jet2 chebyshev[kMaximumChebyshevDegree + 1];
+    make_chebyshev(u, model.channel_polynomial_degree, chebyshev);
+    const double* coefficients = model.coefficients
+        + channel * model.coefficient_count;
+    Jet2 value;
+    size_t cursor = 0;
+    for (size_t index = 0; index <= model.channel_polynomial_degree; ++index) {
+        value += coefficients[cursor++] * chebyshev[index];
+    }
+    for (size_t index = 0; index < model.term_count; ++index) {
+        const SatellitePoissonTerm& term = model.terms[index];
+        const ComplexJet2 phase = complex_phase(
+            carrier * static_cast<double>(term.carrier_multiplier)
+            + perturber * static_cast<double>(term.perturber_multiplier));
+        const double cosine_coefficient = coefficients[cursor++];
+        const double sine_coefficient = coefficients[cursor++];
+        value += cosine_coefficient * phase.real
+            + sine_coefficient * phase.imaginary;
+    }
+    return value;
+}
+
+bool eval_satellite_poisson_relative_ecliptic(
+    const SatellitePoissonTable& model,
+    const SplitJulianDate& jd_tdb,
+    JetVector3* out
+) noexcept {
+    SplitJulianDate start;
+    SplitJulianDate end;
+    if (!out
+        || !split_julian_date_from_double(model.jd_start, &start)
+        || !split_julian_date_from_double(model.jd_end, &end)
+        || jd_tdb < start || jd_tdb > end
+        || model.carrier_coefficient_count == 0
+        || model.perturber_carrier_coefficient_count == 0) {
+        return false;
+    }
+    const double midpoint = (model.jd_start + model.jd_end) / 2.0;
+    const double half_span = (model.jd_end - model.jd_start) / 2.0;
+    const Jet2 u(
+        (days_between_split_jd(SPLIT_JD_J2000, jd_tdb) - (midpoint - kJ2000))
+            / half_span,
+        1.0 / half_span,
+        0.0);
+    const Jet2 t(
+        days_between_split_jd(SPLIT_JD_J2000, jd_tdb) / kDaysPerJulianCentury,
+        1.0 / kDaysPerJulianCentury,
+        0.0);
+    const Jet2 carrier = eval_polynomial(
+        model.carrier_coefficients, model.carrier_coefficient_count, t);
+    const Jet2 perturber = eval_polynomial(
+        model.perturber_carrier_coefficients,
+        model.perturber_carrier_coefficient_count, t);
+    const Jet2 radius = eval_satellite_poisson_channel(
+        model, 0, u, carrier, perturber);
+    const Jet2 phase = carrier + eval_satellite_poisson_channel(
+        model, 1, u, carrier, perturber);
+    const Jet2 height = eval_satellite_poisson_channel(
+        model, 2, u, carrier, perturber);
+    const Jet2 x = radius * jet_cos(phase);
+    const Jet2 y = radius * jet_sin(phase);
+    out->x = x * model.plane_ecliptic[0][0]
+        + y * model.plane_ecliptic[1][0]
+        + height * model.plane_ecliptic[2][0];
+    out->y = x * model.plane_ecliptic[0][1]
+        + y * model.plane_ecliptic[1][1]
+        + height * model.plane_ecliptic[2][1];
+    out->z = x * model.plane_ecliptic[0][2]
+        + y * model.plane_ecliptic[1][2]
+        + height * model.plane_ecliptic[2][2];
+    return true;
 }
 
 Jet2 correction_dot(uint32_t offset, size_t count, const Jet2 values[6]) noexcept {
@@ -536,9 +1026,9 @@ Jet2 eval_lunar_correction_channel(
     make_chebyshev(u, degree, chebyshev);
     Jet2 value = correction_dot(
         channel.secular_offset, channel.secular_count, chebyshev);
-    const Jet2 phase_t2 = t * t / 1.0e4;
-    const Jet2 phase_t3 = t * t * t / 1.0e8;
-    const Jet2 phase_t4 = t * t * t * t / 1.0e8;
+    const Jet2 phase_t2 = t * t;
+    const Jet2 phase_t3 = phase_t2 * t;
+    const Jet2 phase_t4 = phase_t3 * t;
     for (size_t term_index = 0; term_index < channel.term_count; ++term_index) {
         const LunarCorrectionTerm& term = kLunarCorrectionTerms[
             channel.term_offset + term_index];
@@ -597,11 +1087,11 @@ bool eval_moon_geocentric_ecliptic(const SplitJulianDate& jd_tdb, JetVector3* ou
         1.0 / kLunarCorrectionModel.half_span_days,
         0.0);
     Jet2 channels[3] = {
-        eval_xl1_coordinate(0, t),
-        eval_xl1_coordinate(1, t),
-        eval_xl1_coordinate(2, t),
+        eval_lunar_elp_coordinate(0, t),
+        eval_lunar_elp_coordinate(1, t),
+        eval_lunar_elp_coordinate(2, t),
     };
-    date_ecliptic_to_j2000(t, &channels[0], &channels[1]);
+    lunar_elp_ecliptic_to_j2000(t, &channels[0], &channels[1]);
     channels[2] = Jet2(std::log(
         channels[2].value / kLunarCorrectionModel.radius_scale_km),
         channels[2].first / channels[2].value,
@@ -624,6 +1114,125 @@ bool eval_moon_geocentric_ecliptic(const SplitJulianDate& jd_tdb, JetVector3* ou
     out->x = radius * cosine_latitude * jet_cos(channels[0]);
     out->y = radius * cosine_latitude * jet_sin(channels[0]);
     out->z = radius * jet_sin(channels[1]);
+    return true;
+}
+
+Jet2 eval_astronomy_engine_series(
+    const AstronomyEngineSeries& series,
+    const Jet2& time_days,
+    bool sine
+) noexcept {
+    Jet2 result;
+    for (size_t index = 0; index < series.term_count; ++index) {
+        const AstronomyEngineSeriesTerm& term = series.terms[index];
+        const Jet2 argument = Jet2(term.phase) + time_days * term.frequency;
+        result += (sine ? jet_sin(argument) : jet_cos(argument)) * term.amplitude;
+    }
+    return result;
+}
+
+bool eval_astronomy_engine_jupiter_moon_ecliptic(
+    int target_id,
+    const SplitJulianDate& jd_tdb,
+    JetVector3* out
+) noexcept {
+    if (!out || target_id < TAIYIN_BODY_IO
+        || target_id > TAIYIN_BODY_CALLISTO) {
+        return false;
+    }
+    SplitJulianDate start;
+    SplitJulianDate end;
+    if (!split_julian_date_from_double(kJupiterL1ValidatedStart, &start)
+        || !split_julian_date_from_double(kJupiterL1ValidatedEnd, &end)
+        || jd_tdb < start || jd_tdb > end) {
+        return false;
+    }
+
+    const AstronomyEngineJupiterMoonModel& model =
+        kAstronomyEngineJupiterMoonModels[target_id - TAIYIN_BODY_IO];
+    // L1.2's independent variable is TT days from 1950-01-01.  TDB is the
+    // runtime's state epoch and differs from TT only at the millisecond scale,
+    // far below this deliberately compact model's validated position error.
+    const Jet2 time_days(
+        days_between_split_jd(SPLIT_JD_J2000, jd_tdb) + 18262.5,
+        1.0,
+        0.0);
+    const Jet2 semi_major_axis = eval_astronomy_engine_series(
+        model.semi_major_axis, time_days, false);
+    const Jet2 mean_longitude = Jet2(model.mean_longitude_phase)
+        + time_days * model.mean_longitude_frequency
+        + eval_astronomy_engine_series(model.longitude, time_days, true);
+    const Jet2 eccentricity_k = eval_astronomy_engine_series(
+        model.eccentricity, time_days, false);
+    const Jet2 eccentricity_h = eval_astronomy_engine_series(
+        model.eccentricity, time_days, true);
+    const Jet2 inclination_q = eval_astronomy_engine_series(
+        model.inclination, time_days, false);
+    const Jet2 inclination_p = eval_astronomy_engine_series(
+        model.inclination, time_days, true);
+
+    // The following element-to-state formulation is from the compact L1.2
+    // implementation.  Keeping the Newton iteration in Jet2 form yields a
+    // continuous position, velocity, and acceleration for the block API.
+    Jet2 eccentric_anomaly = mean_longitude
+        + eccentricity_k * jet_sin(mean_longitude)
+        - eccentricity_h * jet_cos(mean_longitude);
+    for (size_t iteration = 0; iteration < 6; ++iteration) {
+        const Jet2 cosine_eccentric_anomaly = jet_cos(eccentric_anomaly);
+        const Jet2 sine_eccentric_anomaly = jet_sin(eccentric_anomaly);
+        const Jet2 delta = jet_divide(
+            mean_longitude - eccentric_anomaly
+                + eccentricity_k * sine_eccentric_anomaly
+                - eccentricity_h * cosine_eccentric_anomaly,
+            Jet2(1.0) - eccentricity_k * cosine_eccentric_anomaly
+                - eccentricity_h * sine_eccentric_anomaly);
+        eccentric_anomaly += delta;
+    }
+    const Jet2 cosine_eccentric_anomaly = jet_cos(eccentric_anomaly);
+    const Jet2 sine_eccentric_anomaly = jet_sin(eccentric_anomaly);
+    const Jet2 dle = eccentricity_h * cosine_eccentric_anomaly
+        - eccentricity_k * sine_eccentric_anomaly;
+    const Jet2 rsam1 = -eccentricity_k * cosine_eccentric_anomaly
+        - eccentricity_h * sine_eccentric_anomaly;
+    const Jet2 phi = jet_sqrt(
+        Jet2(1.0) - eccentricity_k * eccentricity_k
+            - eccentricity_h * eccentricity_h);
+    const Jet2 psi = jet_inverse(Jet2(1.0) + phi);
+    const Jet2 x1 = semi_major_axis * (
+        cosine_eccentric_anomaly - eccentricity_k
+            - psi * eccentricity_h * dle);
+    const Jet2 y1 = semi_major_axis * (
+        sine_eccentric_anomaly - eccentricity_h
+            + psi * eccentricity_k * dle);
+    const Jet2 inclination_factor = Jet2(2.0) * jet_sqrt(
+        Jet2(1.0) - inclination_q * inclination_q
+            - inclination_p * inclination_p);
+    const Jet2 p2 = Jet2(1.0) - inclination_p * inclination_p * 2.0;
+    const Jet2 q2 = Jet2(1.0) - inclination_q * inclination_q * 2.0;
+    const Jet2 pq = inclination_p * inclination_q * 2.0;
+
+    JetVector3 jupiter_equatorial;
+    jupiter_equatorial.x = x1 * p2 + y1 * pq;
+    jupiter_equatorial.y = x1 * pq + y1 * q2;
+    jupiter_equatorial.z = (inclination_q * y1 - x1 * inclination_p)
+        * inclination_factor;
+
+    // Astronomy Engine's fixed JUP-to-EQJ/J2000 rotation, then Taiyin's
+    // internal ecliptic representation used by the semi-analytic backend.
+    JetVector3 icrf;
+    icrf.x = jupiter_equatorial.x * 0.999432765338654
+        + jupiter_equatorial.y * 0.0303959428906285
+        + jupiter_equatorial.z * -0.014499455961337;
+    icrf.y = jupiter_equatorial.x * -0.0336771074697641
+        + jupiter_equatorial.y * 0.902057912352809
+        + jupiter_equatorial.z * -0.430299169401;
+    icrf.z = jupiter_equatorial.y * 0.430543388542295
+        + jupiter_equatorial.z * 0.9025698812754;
+    const double cosine = std::cos(kJ2000ObliquityRad);
+    const double sine = std::sin(kJ2000ObliquityRad);
+    out->x = icrf.x * TAIYIN_AU_KM;
+    out->y = (icrf.y * cosine + icrf.z * sine) * TAIYIN_AU_KM;
+    out->z = (-icrf.y * sine + icrf.z * cosine) * TAIYIN_AU_KM;
     return true;
 }
 
@@ -657,6 +1266,118 @@ bool eval_route_ecliptic(
 ) noexcept {
     if (!out) {
         return false;
+    }
+    if (target_id == TAIYIN_BODY_PHOBOS && center_id == TAIYIN_BODY_MARS) {
+        return eval_satellite_residual_relative_ecliptic(
+            kPhobosMar099Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_DEIMOS && center_id == TAIYIN_BODY_MARS) {
+        return eval_satellite_residual_relative_ecliptic(
+            kDeimosMar099Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_MARS
+        && center_id == TAIYIN_BODY_MARS_BARYCENTER) {
+        JetVector3 phobos;
+        JetVector3 deimos;
+        if (!eval_satellite_residual_relative_ecliptic(
+                kPhobosMar099Table, jd_tdb, &phobos)
+            || !eval_satellite_residual_relative_ecliptic(
+                kDeimosMar099Table, jd_tdb, &deimos)) {
+            return false;
+        }
+        *out = vector_add(JetVector3(), phobos, -kMarsPhobosMassFraction);
+        *out = vector_add(*out, deimos, -kMarsDeimosMassFraction);
+        return true;
+    }
+    if (target_id >= TAIYIN_BODY_IO && target_id <= TAIYIN_BODY_CALLISTO
+        && center_id == TAIYIN_BODY_JUPITER) {
+        return eval_astronomy_engine_jupiter_moon_ecliptic(
+            target_id, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_JUPITER
+        && center_id == TAIYIN_BODY_JUPITER_BARYCENTER) {
+        JetVector3 io;
+        JetVector3 europa;
+        JetVector3 ganymede;
+        JetVector3 callisto;
+        if (!eval_astronomy_engine_jupiter_moon_ecliptic(
+                TAIYIN_BODY_IO, jd_tdb, &io)
+            || !eval_astronomy_engine_jupiter_moon_ecliptic(
+                TAIYIN_BODY_EUROPA, jd_tdb, &europa)
+            || !eval_astronomy_engine_jupiter_moon_ecliptic(
+                TAIYIN_BODY_GANYMEDE, jd_tdb, &ganymede)
+            || !eval_astronomy_engine_jupiter_moon_ecliptic(
+                TAIYIN_BODY_CALLISTO, jd_tdb, &callisto)) {
+            return false;
+        }
+        *out = vector_add(JetVector3(), io, -kJupiterIoMassFraction);
+        *out = vector_add(*out, europa, -kJupiterEuropaMassFraction);
+        *out = vector_add(*out, ganymede, -kJupiterGanymedeMassFraction);
+        *out = vector_add(*out, callisto, -kJupiterCallistoMassFraction);
+        return true;
+    }
+    if (target_id == TAIYIN_BODY_CHARON && center_id == TAIYIN_BODY_PLUTO) {
+        return eval_satellite_residual_relative_ecliptic(
+            kCharonPlu060Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_NIX && center_id == TAIYIN_BODY_PLUTO) {
+        return eval_satellite_poisson_relative_ecliptic(
+            kNixPlu060Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_HYDRA && center_id == TAIYIN_BODY_PLUTO) {
+        return eval_satellite_poisson_relative_ecliptic(
+            kHydraPlu060Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_KERBEROS && center_id == TAIYIN_BODY_PLUTO) {
+        return eval_satellite_poisson_relative_ecliptic(
+            kKerberosPlu060Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_STYX && center_id == TAIYIN_BODY_PLUTO) {
+        return eval_satellite_poisson_relative_ecliptic(
+            kStyxPlu060Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_PLUTO
+        && center_id == TAIYIN_BODY_PLUTO_BARYCENTER) {
+        JetVector3 charon;
+        JetVector3 nix;
+        JetVector3 hydra;
+        JetVector3 kerberos;
+        JetVector3 styx;
+        if (!eval_satellite_residual_relative_ecliptic(
+                kCharonPlu060Table, jd_tdb, &charon)
+            || !eval_satellite_poisson_relative_ecliptic(
+                kNixPlu060Table, jd_tdb, &nix)
+            || !eval_satellite_poisson_relative_ecliptic(
+                kHydraPlu060Table, jd_tdb, &hydra)
+            || !eval_satellite_poisson_relative_ecliptic(
+                kKerberosPlu060Table, jd_tdb, &kerberos)
+            || !eval_satellite_poisson_relative_ecliptic(
+                kStyxPlu060Table, jd_tdb, &styx)) {
+            return false;
+        }
+        *out = vector_add(JetVector3(), charon, -kPlutoCharonMassFraction);
+        *out = vector_add(*out, nix, -kPlutoNixMassFraction);
+        *out = vector_add(*out, hydra, -kPlutoHydraMassFraction);
+        *out = vector_add(*out, kerberos, -kPlutoKerberosMassFraction);
+        *out = vector_add(*out, styx, -kPlutoStyxMassFraction);
+        return true;
+    }
+    if (target_id == TAIYIN_BODY_TRITON && center_id == TAIYIN_BODY_NEPTUNE) {
+        return eval_satellite_residual_relative_ecliptic(
+            kTritonNep098Table, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_NEPTUNE
+        && center_id == TAIYIN_BODY_NEPTUNE_BARYCENTER) {
+        JetVector3 triton;
+        if (!eval_satellite_residual_relative_ecliptic(
+                kTritonNep098Table, jd_tdb, &triton)) {
+            return false;
+        }
+        *out = vector_add(JetVector3(), triton, -kNeptuneTritonMassFraction);
+        return true;
+    }
+    if (target_id == TAIYIN_BODY_SUN && center_id == TAIYIN_BODY_SSB) {
+        return eval_sun_ssb_ecliptic(jd_tdb, out);
     }
     if (center_id == TAIYIN_BODY_SUN) {
         const PlanetModel* model = find_planet_model(target_id);
@@ -791,6 +1512,27 @@ bool get_builtin_semi_analytic_coverage(
     if (!out_jd_tdb_start || !out_jd_tdb_end) {
         return false;
     }
+    if (target_id == TAIYIN_BODY_SUN && center_id == TAIYIN_BODY_SSB) {
+        double start = -INFINITY;
+        double end = INFINITY;
+        for (size_t index = 0;
+             index < sizeof(kPlanetGms) / sizeof(kPlanetGms[0]);
+             ++index) {
+            const PlanetModel* model = find_planet_model(
+                kPlanetGms[index].body_id);
+            if (!model) {
+                return false;
+            }
+            start = std::max(start, model->jd_start);
+            end = std::min(end, model->jd_end);
+        }
+        if (!(end > start)) {
+            return false;
+        }
+        *out_jd_tdb_start = start;
+        *out_jd_tdb_end = end;
+        return true;
+    }
     if (center_id == TAIYIN_BODY_SUN) {
         const PlanetModel* model = find_planet_model(target_id);
         if (model) {
@@ -813,6 +1555,85 @@ bool get_builtin_semi_analytic_coverage(
     if (target_id == TAIYIN_BODY_MOON && center_id == TAIYIN_BODY_EARTH) {
         return lunar_coverage(out_jd_tdb_start, out_jd_tdb_end);
     }
+    if (target_id == TAIYIN_BODY_PHOBOS && center_id == TAIYIN_BODY_MARS) {
+        return satellite_residual_coverage(
+            kPhobosMar099Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_DEIMOS && center_id == TAIYIN_BODY_MARS) {
+        return satellite_residual_coverage(
+            kDeimosMar099Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_MARS
+        && center_id == TAIYIN_BODY_MARS_BARYCENTER) {
+        double phobos_start = 0.0;
+        double phobos_end = 0.0;
+        double deimos_start = 0.0;
+        double deimos_end = 0.0;
+        if (!satellite_residual_coverage(
+                kPhobosMar099Table, &phobos_start, &phobos_end)
+            || !satellite_residual_coverage(
+                kDeimosMar099Table, &deimos_start, &deimos_end)) {
+            return false;
+        }
+        *out_jd_tdb_start = std::max(phobos_start, deimos_start);
+        *out_jd_tdb_end = std::min(phobos_end, deimos_end);
+        return *out_jd_tdb_end >= *out_jd_tdb_start;
+    }
+    if (((target_id >= TAIYIN_BODY_IO
+            && target_id <= TAIYIN_BODY_CALLISTO)
+            && center_id == TAIYIN_BODY_JUPITER)
+        || (target_id == TAIYIN_BODY_JUPITER
+            && center_id == TAIYIN_BODY_JUPITER_BARYCENTER)) {
+        *out_jd_tdb_start = kJupiterL1ValidatedStart;
+        *out_jd_tdb_end = kJupiterL1ValidatedEnd;
+        return true;
+    }
+    if (target_id == TAIYIN_BODY_CHARON && center_id == TAIYIN_BODY_PLUTO) {
+        return satellite_residual_coverage(
+            kCharonPlu060Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_NIX && center_id == TAIYIN_BODY_PLUTO) {
+        return satellite_poisson_coverage(
+            kNixPlu060Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_HYDRA && center_id == TAIYIN_BODY_PLUTO) {
+        return satellite_poisson_coverage(
+            kHydraPlu060Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_KERBEROS && center_id == TAIYIN_BODY_PLUTO) {
+        return satellite_poisson_coverage(
+            kKerberosPlu060Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_STYX && center_id == TAIYIN_BODY_PLUTO) {
+        return satellite_poisson_coverage(
+            kStyxPlu060Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
+    if (target_id == TAIYIN_BODY_PLUTO
+        && center_id == TAIYIN_BODY_PLUTO_BARYCENTER) {
+        const SatellitePoissonTable* tables[] = {
+            &kNixPlu060Table, &kHydraPlu060Table,
+            &kKerberosPlu060Table, &kStyxPlu060Table};
+        if (!satellite_residual_coverage(
+                kCharonPlu060Table, out_jd_tdb_start, out_jd_tdb_end)) {
+            return false;
+        }
+        for (size_t index = 0; index < sizeof(tables) / sizeof(tables[0]); ++index) {
+            double start = 0.0;
+            double end = 0.0;
+            if (!satellite_poisson_coverage(*tables[index], &start, &end)) {
+                return false;
+            }
+            *out_jd_tdb_start = std::max(*out_jd_tdb_start, start);
+            *out_jd_tdb_end = std::min(*out_jd_tdb_end, end);
+        }
+        return *out_jd_tdb_end >= *out_jd_tdb_start;
+    }
+    if ((target_id == TAIYIN_BODY_TRITON && center_id == TAIYIN_BODY_NEPTUNE)
+        || (target_id == TAIYIN_BODY_NEPTUNE
+            && center_id == TAIYIN_BODY_NEPTUNE_BARYCENTER)) {
+        return satellite_residual_coverage(
+            kTritonNep098Table, out_jd_tdb_start, out_jd_tdb_end);
+    }
     return false;
 }
 
@@ -830,9 +1651,12 @@ bool compile_builtin_semi_analytic_ephemeris_block(
     *out = StorageEphemerisBlock();
     double coverage_start = 0.0;
     double coverage_end = 0.0;
+    const double positive_infinity =
+        std::numeric_limits<double>::infinity();
     if (!get_builtin_semi_analytic_coverage(
             target_id, center_id, &coverage_start, &coverage_end)
-        || jd_tdb_start < coverage_start || jd_tdb_end > coverage_end) {
+        || jd_tdb_start < coverage_start
+        || jd_tdb_end > std::nextafter(coverage_end, positive_infinity)) {
         return false;
     }
     SemiAnalyticEphemerisData* data =
@@ -843,7 +1667,7 @@ bool compile_builtin_semi_analytic_ephemeris_block(
     data->target_id = target_id;
     data->center_id = center_id;
     data->jd_tdb_start = jd_tdb_start;
-    data->jd_tdb_end = jd_tdb_end;
+    data->jd_tdb_end = std::min(jd_tdb_end, coverage_end);
     try {
         out->cache_id = 0;
         out->format = EphemerisBlockFormat::SemiAnalytic;

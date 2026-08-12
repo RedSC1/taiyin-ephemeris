@@ -30,6 +30,10 @@ bool valid_transit_event_kind(int event_kind) noexcept {
         || event_kind == TAIYIN_PLANET_VISIBILITY_EVENT_LOWER_TRANSIT;
 }
 
+bool valid_transit_flags(uint64_t flags) noexcept {
+    return (flags & TAIYIN_OBSERVED_OPTION_FLAGS_MASK) == 0u;
+}
+
 bool valid_limb_kind(int limb_kind) noexcept {
     return limb_kind == TAIYIN_PLANET_VISIBILITY_LIMB_UPPER
         || limb_kind == TAIYIN_PLANET_VISIBILITY_LIMB_CENTER
@@ -153,6 +157,7 @@ double transit_base_target_rad(int event_kind) noexcept {
 struct PlanetTransitSampleData {
     const NativeCalcContext* context;
     int body_id;
+    uint64_t flags;
 };
 
 Status sample_planet_hour_angle_ut(
@@ -175,7 +180,7 @@ Status sample_planet_hour_angle_ut(
         data->context,
         data->body_id,
         jd_ut,
-        0u,
+        data->flags & TAIYIN_OBSERVED_POSITION_FLAGS_MASK,
         &altitude,
         &azimuth,
         &hour_angle,
@@ -276,6 +281,7 @@ Status search_planet_transit_ut(
     const SplitJulianDate& start_jd_ut,
     const SplitJulianDate& end_jd_ut,
     int event_kind,
+    uint64_t flags,
     PlanetVisibilityEventResult* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -288,6 +294,7 @@ Status search_planet_transit_ut(
         start_jd_ut,
         end_jd_ut,
         event_kind,
+        flags,
         &internal_result,
         diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
@@ -377,6 +384,7 @@ Status planet_visibility_search_transit_ut(
     const SplitJulianDate& start_jd_ut,
     const SplitJulianDate& end_jd_ut,
     int event_kind,
+    uint64_t flags,
     VisibilityAltitudeSearchResult* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -384,12 +392,13 @@ Status planet_visibility_search_transit_ut(
         || !out
         || !valid_planet_body_id(body_id)
         || !valid_transit_event_kind(event_kind)
+        || !valid_transit_flags(flags)
         || !split_julian_date_is_finite(start_jd_ut)
         || !split_julian_date_is_finite(end_jd_ut)
         || !(end_jd_ut > start_jd_ut)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    PlanetTransitSampleData data = { context, body_id };
+    PlanetTransitSampleData data = { context, body_id, flags };
     VisibilityAngleTargetSearchSpec spec;
     spec.start_jd_ut = start_jd_ut;
     spec.end_jd_ut = end_jd_ut;

@@ -253,7 +253,7 @@ taiyin::runtime::VisibilityAltitudeSearchSpec solar_spec(
     int residual_mode,
     int crossing_direction,
     double start_jd_ut,
-    uint32_t observed_flags
+    uint64_t observed_flags
 ) {
     taiyin::runtime::VisibilityAltitudeSearchSpec spec;
     spec.body_id = taiyin::TAIYIN_BODY_SUN;

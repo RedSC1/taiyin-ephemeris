@@ -3,6 +3,7 @@
 
 #include "taiyin/c/base.h"
 #include "taiyin/c/context.h"
+#include "taiyin/c/position.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -143,12 +144,17 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizo
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
+/*
+ * Transit flags use the shared uint64 layering convention: low 32 bits are
+ * taiyin_position_flags passed through unchanged; high 32 bits are reserved.
+ */
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
     int32_t event_kind,
+    uint64_t flags,
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );

@@ -9,6 +9,7 @@
 #include "taiyin/runtime/native_position.h"
 #include "taiyin/runtime/phenomena.h"
 #include "taiyin/runtime/runtime.h"
+#include "taiyin/runtime/star_position.h"
 #include "taiyin/status.h"
 #include "taiyin/time.h"
 
@@ -632,6 +633,14 @@ std::string repo_opm2_major_body_root() {
         return std::string(root) + "/data/ephemerides/opm2/major-bodies/600y";
     }
     return "../data/ephemerides/opm2/major-bodies/600y";
+}
+
+std::string repo_fixed_star_catalog_path() {
+    const char* root = std::getenv("TAIYIN_REPO_ROOT");
+    if (root && root[0] != '\0') {
+        return std::string(root) + "/data/stars/catalogs/stars-fixed-traditional.tsc1";
+    }
+    return "../data/stars/catalogs/stars-fixed-traditional.tsc1";
 }
 
 std::string external_de441_path() {
@@ -2487,6 +2496,331 @@ void test_minimum_angular_separation_sanity(int* failures) {
         failures);
 }
 
+void test_minimum_body_star_angular_separation_sanity(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    expect_status(
+        add_global_tsc1_star_catalog(repo_fixed_star_catalog_path().c_str()),
+        TAIYIN_STATUS_OK,
+        "load traditional-star catalog for body-star separation",
+        failures);
+
+    NativeCalcContext context = make_context();
+    expect_status(
+        native_context_set_route_rule(&context, TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC),
+        TAIYIN_STATUS_OK,
+        "set semi-analytical route for body-star separation",
+        failures);
+
+    BodyStarAngularSeparationSearchResult result;
+    EphemerisEvalDiagnostic diagnostic;
+    const Status status = search_minimum_body_star_angular_separation_ut(
+        &context,
+        TAIYIN_BODY_SUN,
+        "antares",
+        split_jd(2460634.5),
+        split_jd(2460654.5),
+        1.0,
+        TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX,
+        &result,
+        &diagnostic);
+    expect_status(status, TAIYIN_STATUS_OK, "minimum Sun-Antares separation", failures);
+    if (status == TAIYIN_STATUS_OK) {
+        expect_true(result.body_id == TAIYIN_BODY_SUN, "body-star result body id", failures);
+        expect_true(
+            result.jd > split_jd(2460634.5) && result.jd < split_jd(2460654.5),
+            "Sun-Antares minimum lies inside search interval",
+            failures);
+        expect_true(
+            result.separation_rad < 6.0 * TAIYIN_DEG_TO_RAD,
+            "Sun-Antares conjunction reaches the expected ecliptic-latitude scale",
+            failures);
+        expect_true(
+            std::fabs(result.separation_rate_rad_per_day) <= 1.0e-6,
+            "body-star minimum separation rate is near zero",
+            failures);
+        expect_true(result.evaluation_count > 0, "body-star search evaluates targets", failures);
+    }
+
+    NativeCalcContext topocentric_context = context;
+    const NativeObserverLocation changan =
+        native_observer_location_degrees(108.94, 34.26, 400.0);
+    expect_status(
+        native_context_set_simple_topocentric_observer(
+            &topocentric_context,
+            changan,
+            split_jd(2460644.5),
+            split_jd(2460644.5)),
+        TAIYIN_STATUS_OK,
+        "set topocentric observer for body-star separation",
+        failures);
+    BodyStarAngularSeparationSearchResult topocentric_result;
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &topocentric_context,
+            TAIYIN_BODY_SUN,
+            "antares",
+            split_jd(2460634.5),
+            split_jd(2460654.5),
+            1.0,
+            TAIYIN_NATIVE_POSITION_TOPOCENTRIC
+                | TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX,
+            &topocentric_result,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "topocentric body-star separation applies one observer to both targets",
+        failures);
+
+    NativeCalcContext shifted_topocentric_context = context;
+    expect_status(
+        native_context_set_simple_topocentric_observer(
+            &shifted_topocentric_context,
+            changan,
+            split_jd(2460644.75),
+            split_jd(2460644.75)),
+        TAIYIN_STATUS_OK,
+        "set a differently seeded topocentric observer",
+        failures);
+    BodyStarAngularSeparationSearchResult moon_topocentric_result;
+    BodyStarAngularSeparationSearchResult moon_shifted_topocentric_result;
+    const uint64_t topocentric_flags =
+        TAIYIN_NATIVE_POSITION_TOPOCENTRIC
+        | TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX;
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &topocentric_context,
+            TAIYIN_BODY_MOON,
+            "antares",
+            split_jd(2460634.5),
+            split_jd(2460654.5),
+            0.5,
+            topocentric_flags,
+            &moon_topocentric_result,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "topocentric Moon-star separation",
+        failures);
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &shifted_topocentric_context,
+            TAIYIN_BODY_MOON,
+            "antares",
+            split_jd(2460634.5),
+            split_jd(2460654.5),
+            0.5,
+            topocentric_flags,
+            &moon_shifted_topocentric_result,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "topocentric Moon-star separation ignores setter epoch",
+        failures);
+    expect_near(
+        moon_shifted_topocentric_result.jd,
+        moon_topocentric_result.jd,
+        1.0e-12,
+        "topocentric Moon-star minimum rebuilds observer at every sample",
+        failures);
+    expect_near(
+        moon_shifted_topocentric_result.separation_rad,
+        moon_topocentric_result.separation_rad,
+        1.0e-14,
+        "topocentric Moon-star separation ignores setter epoch",
+        failures);
+
+    NativeCalcContext explicit_offset_context = topocentric_context;
+    const CartesianState explicit_offset =
+        explicit_offset_context.apparent_options.observer_offset;
+    expect_status(
+        native_context_set_topocentric_observer_offset(
+            &explicit_offset_context, explicit_offset),
+        TAIYIN_STATUS_OK,
+        "set explicit topocentric offset for angular-separation search",
+        failures);
+    expect_true(
+        explicit_offset_context.topocentric_observer_model
+            == TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_EXPLICIT_OFFSET,
+        "explicit observer offset retains its setup mode",
+        failures);
+    expect_status(
+        native_context_refresh_topocentric_observer(
+            &explicit_offset_context, split_jd(2460645.0), split_jd(2460645.0)),
+        TAIYIN_STATUS_OK,
+        "explicit observer offset is not rebuilt for a search sample",
+        failures);
+    expect_near(
+        explicit_offset_context.apparent_options.observer_offset.position_au.x,
+        explicit_offset.position_au.x,
+        0.0,
+        "explicit observer offset x survives sample refresh",
+        failures);
+    expect_near(
+        explicit_offset_context.apparent_options.observer_offset.position_au.y,
+        explicit_offset.position_au.y,
+        0.0,
+        "explicit observer offset y survives sample refresh",
+        failures);
+    expect_near(
+        explicit_offset_context.apparent_options.observer_offset.position_au.z,
+        explicit_offset.position_au.z,
+        0.0,
+        "explicit observer offset z survives sample refresh",
+        failures);
+
+    BodyStarAngularSeparationSearchResult tt_result;
+    expect_status(
+        search_minimum_body_star_angular_separation_tt(
+            &context,
+            TAIYIN_BODY_SUN,
+            "antares",
+            split_jd(2460634.5),
+            split_jd(2460654.5),
+            1.0,
+            0u,
+            &tt_result,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "minimum Sun-Antares separation TT",
+        failures);
+    expect_near(
+        tt_result.separation_rad,
+        result.separation_rad,
+        1.0e-8,
+        "UT and TT body-star minima agree in angle",
+        failures);
+
+    SplitJulianDate historical_start;
+    expect_true(
+        julian_day_split({833, 6, 9, 0, 0, 0.0}, &historical_start),
+        "construct Tang-era body-star search date",
+        failures);
+    double historical_star_position[6] = {};
+    expect_status(
+        calc_star_position_ut(
+            &context,
+            "antares",
+            historical_start,
+            TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED,
+            historical_star_position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "heliocentric historical star position needs no approximation flag",
+        failures);
+
+    NativeCalcContext mars_observer = context;
+    expect_status(
+        native_context_set_geocentric_observer(
+            &mars_observer,
+            TAIYIN_BODY_MARS_BARYCENTER,
+            TAIYIN_BODY_SUN),
+        TAIYIN_STATUS_OK,
+        "set Mars-barycenter observer",
+        failures);
+    double mars_true_star[6] = {};
+    expect_status(
+        calc_star_position_ut(
+            &mars_observer,
+            "antares",
+            historical_start,
+            TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_TRUEPOS,
+            mars_true_star,
+            &diagnostic),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "fixed-star position rejects non-Earth observer",
+        failures);
+
+    ObservedPosition mars_observed;
+    expect_status(
+        calc_observed_star_ut(
+            &mars_observer,
+            "antares",
+            historical_start,
+            0u,
+            &mars_observed,
+            &diagnostic),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "observed fixed star rejects non-Earth observer",
+        failures);
+
+    expect_status(
+        calc_observed_star_ut(
+            &mars_observer,
+            "antares",
+            historical_start,
+            TAIYIN_OBSERVED_TOPOCENTRIC | TAIYIN_OBSERVED_HORIZONTAL,
+            &mars_observed,
+            &diagnostic),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "topocentric fixed-star observation rejects non-Earth observer",
+        failures);
+
+    BodyStarAngularSeparationSearchResult non_earth_search;
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &mars_observer,
+            TAIYIN_BODY_SUN,
+            "antares",
+            historical_start,
+            historical_start + 2.0,
+            0.25,
+            0u,
+            &non_earth_search,
+            &diagnostic),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "body-star search rejects non-Earth observer",
+        failures);
+
+    BodyStarAngularSeparationSearchResult historical_result;
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &context,
+            TAIYIN_BODY_MARS,
+            "antares",
+            historical_start,
+            historical_start + 2.0,
+            0.25,
+            TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX,
+            &historical_result,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "Tang-era Mars-Antares minimum uses barycenter approximation",
+        failures);
+    expect_true(
+        historical_result.separation_rad < 3.0 * TAIYIN_DEG_TO_RAD,
+        "Tang-era Mars remains near Antares",
+        failures);
+
+    BodyStarAngularSeparationSearchResult rejected;
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &context,
+            TAIYIN_BODY_SUN,
+            "",
+            split_jd(2460634.5),
+            split_jd(2460654.5),
+            1.0,
+            0u,
+            &rejected,
+            &diagnostic),
+        TAIYIN_ERROR_INVALID_ARGUMENT,
+        "body-star search rejects empty star key",
+        failures);
+    expect_status(
+        search_minimum_body_star_angular_separation_ut(
+            &context,
+            TAIYIN_BODY_SUN,
+            "not-a-real-star",
+            split_jd(2460634.5),
+            split_jd(2460654.5),
+            1.0,
+            0u,
+            &rejected,
+            &diagnostic),
+        TAIYIN_FILE_ERROR_NOT_FOUND,
+        "body-star search reports missing star",
+        failures);
+}
+
 void test_solar_transit_search_sanity(int* failures) {
     using namespace taiyin;
     using namespace taiyin::runtime;
@@ -3664,6 +3998,7 @@ int main() {
         test_real_body_longitude_station_smoke(&failures);
         test_greatest_elongation_opm2_semi_analytic_sanity(&failures);
         test_minimum_angular_separation_sanity(&failures);
+        test_minimum_body_star_angular_separation_sanity(&failures);
         test_solar_transit_search_sanity(&failures);
         test_local_solar_transit_search_sanity(&failures);
         test_mars_2003_opposition_seds_reference(&failures);

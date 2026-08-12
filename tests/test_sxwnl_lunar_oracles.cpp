@@ -1,4 +1,4 @@
-#include "runtime/eclipse/lunar_eclipse_sxwnl.h"
+#include "legacy/sxwnl/eclipse/lunar_eclipse_sxwnl.h"
 
 #include <cmath>
 #include <cstdio>

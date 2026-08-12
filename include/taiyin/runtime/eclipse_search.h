@@ -263,7 +263,9 @@ struct SolarEclipseResult {
     double axis_distance_km;
     double penumbra_radius_km;
     double core_radius_km;      // positive umbra, negative antumbra
-    double penumbral_margin_km; // axis_distance - (Earth radius + penumbra)
+    // Signed penumbral clearance in the WGS84 ellipsoid-normalized radial
+    // metric. Negative values mean that the penumbral cone intersects Earth.
+    double penumbral_margin_km;
     double central_margin_km;   // axis_distance - Earth radius
     double maximum_latitude_deg;
     double maximum_longitude_deg;
@@ -386,6 +388,8 @@ struct SolarEclipseRouteRow {
     SolarEclipsePathPoint south_limit;
     SolarEclipsePathPoint half_magnitude_north_limit;
     SolarEclipsePathPoint half_magnitude_south_limit;
+    // Center-line-normal width of the closed core path, including horizon
+    // caps near path emergence/disappearance.
     double path_width_km;
     double duration_seconds;
     double sun_altitude_deg;
@@ -805,6 +809,9 @@ Status compute_solar_eclipse_route_row_ut(
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept;
 
+// Batch route sampling advances on the time scale named by the function.
+// Both endpoints are inclusive; the exact end epoch is emitted once, and the
+// final interval may be shorter than step_minutes.
 Status compute_solar_eclipse_route_tt(
     const NativeCalcContext* context,
     SplitJulianDate start_jd_tt,

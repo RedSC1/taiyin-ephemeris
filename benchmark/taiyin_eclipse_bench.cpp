@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -136,6 +137,16 @@ double local_solar_checksum(const taiyin::runtime::LocalSolarEclipseResultUt& re
 int main(int argc, char** argv) {
     const char* data_root = argc > 1 ? argv[1] : "data";
     const int iterations = argc > 2 ? std::atoi(argv[2]) : 1000;
+    const char* mode = argc > 3 ? argv[3] : "all";
+    const bool solar_global_only = std::strcmp(mode, "solar-global") == 0;
+    const bool solar_next_all_only = std::strcmp(mode, "solar-next-all") == 0;
+    const bool solar_next_central_only = std::strcmp(mode, "solar-next-central") == 0;
+    const bool solar_previous_all_only = std::strcmp(mode, "solar-previous-all") == 0;
+    const bool solar_previous_central_only = std::strcmp(mode, "solar-previous-central") == 0;
+    const bool single_solar_case = solar_next_all_only
+        || solar_next_central_only
+        || solar_previous_all_only
+        || solar_previous_central_only;
 
     if (iterations <= 0) {
         std::cerr << "iterations must be positive\n";
@@ -173,56 +184,66 @@ int main(int argc, char** argv) {
     std::cout << "catalog_size=" << taiyin::runtime::global_ephemeris_catalog_size()
               << " cache_entries=" << taiyin::runtime::global_ephemeris_cache_entry_count() << "\n";
 
-    print_result(time_case("solar next all", iterations, [&](int i) {
-        taiyin::runtime::SolarEclipseResultUt result;
-        taiyin::runtime::EphemerisEvalDiagnostic diag;
-        const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
-            &context, starts[static_cast<size_t>(i)], 0, flags, &result, &diag);
-        return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
-    }));
+    if (!single_solar_case || solar_next_all_only) {
+        print_result(time_case("solar next all", iterations, [&](int i) {
+            taiyin::runtime::SolarEclipseResultUt result;
+            taiyin::runtime::EphemerisEvalDiagnostic diag;
+            const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
+                &context, starts[static_cast<size_t>(i)], 0, flags, &result, &diag);
+            return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
+        }));
+    }
 
-    print_result(time_case("solar next central", iterations, [&](int i) {
-        taiyin::runtime::SolarEclipseResultUt result;
-        taiyin::runtime::EphemerisEvalDiagnostic diag;
-        const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
-            &context,
-            starts[static_cast<size_t>(i)],
-            taiyin::runtime::TAIYIN_ECLIPSE_TOTAL
-                | taiyin::runtime::TAIYIN_ECLIPSE_ANNULAR
-                | taiyin::runtime::TAIYIN_ECLIPSE_HYBRID,
-            flags,
-            &result,
-            &diag);
-        return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
-    }));
+    if (!single_solar_case || solar_next_central_only) {
+        print_result(time_case("solar next central", iterations, [&](int i) {
+            taiyin::runtime::SolarEclipseResultUt result;
+            taiyin::runtime::EphemerisEvalDiagnostic diag;
+            const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
+                &context,
+                starts[static_cast<size_t>(i)],
+                taiyin::runtime::TAIYIN_ECLIPSE_TOTAL
+                    | taiyin::runtime::TAIYIN_ECLIPSE_ANNULAR
+                    | taiyin::runtime::TAIYIN_ECLIPSE_HYBRID,
+                flags,
+                &result,
+                &diag);
+            return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
+        }));
+    }
 
-    print_result(time_case("solar previous all", iterations, [&](int i) {
-        taiyin::runtime::SolarEclipseResultUt result;
-        taiyin::runtime::EphemerisEvalDiagnostic diag;
-        const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
-            &context,
-            reverse_starts[static_cast<size_t>(i)],
-            0,
-            flags | taiyin::runtime::TAIYIN_ECLIPSE_BACKWARD,
-            &result,
-            &diag);
-        return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
-    }));
+    if (!single_solar_case || solar_previous_all_only) {
+        print_result(time_case("solar previous all", iterations, [&](int i) {
+            taiyin::runtime::SolarEclipseResultUt result;
+            taiyin::runtime::EphemerisEvalDiagnostic diag;
+            const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
+                &context,
+                reverse_starts[static_cast<size_t>(i)],
+                0,
+                flags | taiyin::runtime::TAIYIN_ECLIPSE_BACKWARD,
+                &result,
+                &diag);
+            return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
+        }));
+    }
 
-    print_result(time_case("solar previous central", iterations, [&](int i) {
-        taiyin::runtime::SolarEclipseResultUt result;
-        taiyin::runtime::EphemerisEvalDiagnostic diag;
-        const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
-            &context,
-            reverse_starts[static_cast<size_t>(i)],
-            taiyin::runtime::TAIYIN_ECLIPSE_TOTAL
-                | taiyin::runtime::TAIYIN_ECLIPSE_ANNULAR
-                | taiyin::runtime::TAIYIN_ECLIPSE_HYBRID,
-            flags | taiyin::runtime::TAIYIN_ECLIPSE_BACKWARD,
-            &result,
-            &diag);
-        return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
-    }));
+    if (!single_solar_case || solar_previous_central_only) {
+        print_result(time_case("solar previous central", iterations, [&](int i) {
+            taiyin::runtime::SolarEclipseResultUt result;
+            taiyin::runtime::EphemerisEvalDiagnostic diag;
+            const taiyin::Status status = taiyin::runtime::search_next_solar_eclipse_ut(
+                &context,
+                reverse_starts[static_cast<size_t>(i)],
+                taiyin::runtime::TAIYIN_ECLIPSE_TOTAL
+                    | taiyin::runtime::TAIYIN_ECLIPSE_ANNULAR
+                    | taiyin::runtime::TAIYIN_ECLIPSE_HYBRID,
+                flags | taiyin::runtime::TAIYIN_ECLIPSE_BACKWARD,
+                &result,
+                &diag);
+            return status == taiyin::TAIYIN_STATUS_OK ? solar_checksum(result) : -1000.0;
+        }));
+    }
+
+    if (solar_global_only || single_solar_case) return 0;
 
     print_result(time_case("lunar next all", iterations, [&](int i) {
         taiyin::runtime::LunarEclipseResultUt result;

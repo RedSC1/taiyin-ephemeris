@@ -1,4 +1,5 @@
 #include "taiyin/body_id.h"
+#include "taiyin/c/position.h"
 #include "taiyin/internal/ephemeris_block.h"
 
 #include <cassert>
@@ -6,6 +7,33 @@
 #include <string>
 
 namespace {
+
+static_assert(TAIYIN_BODY_PHOBOS == taiyin::TAIYIN_BODY_PHOBOS,
+              "C and C++ Phobos IDs must match");
+static_assert(TAIYIN_BODY_TRITON == taiyin::TAIYIN_BODY_TRITON,
+              "C and C++ Triton IDs must match");
+static_assert(TAIYIN_BODY_CHARON == taiyin::TAIYIN_BODY_CHARON,
+              "C and C++ Charon IDs must match");
+static_assert(TAIYIN_BODY_NIX == taiyin::TAIYIN_BODY_NIX,
+              "C and C++ Nix IDs must match");
+static_assert(TAIYIN_BODY_HYDRA == taiyin::TAIYIN_BODY_HYDRA,
+              "C and C++ Hydra IDs must match");
+static_assert(TAIYIN_BODY_KERBEROS == taiyin::TAIYIN_BODY_KERBEROS,
+              "C and C++ Kerberos IDs must match");
+static_assert(TAIYIN_BODY_STYX == taiyin::TAIYIN_BODY_STYX,
+              "C and C++ Styx IDs must match");
+static_assert(taiyin::TAIYIN_BODY_ARIEL == 701
+              && taiyin::TAIYIN_BODY_UMBRIEL == 702
+              && taiyin::TAIYIN_BODY_TITANIA == 703
+              && taiyin::TAIYIN_BODY_OBERON == 704
+              && taiyin::TAIYIN_BODY_MIRANDA == 705,
+              "Uranian satellite IDs must use the NAIF mapping");
+static_assert(TAIYIN_BODY_ARIEL == 701
+              && TAIYIN_BODY_UMBRIEL == 702
+              && TAIYIN_BODY_TITANIA == 703
+              && TAIYIN_BODY_OBERON == 704
+              && TAIYIN_BODY_MIRANDA == 705,
+              "C Uranian satellite IDs must use the NAIF mapping");
 
 void expect_true(bool value, const char* label) {
     if (!value) {
@@ -93,9 +121,25 @@ int main() {
     expect_body_id("europa", taiyin::TAIYIN_BODY_EUROPA);
     expect_body_id("ganymede", taiyin::TAIYIN_BODY_GANYMEDE);
     expect_body_id("callisto", taiyin::TAIYIN_BODY_CALLISTO);
+    expect_body_id("mimas", taiyin::TAIYIN_BODY_MIMAS);
+    expect_body_id("enceladus", taiyin::TAIYIN_BODY_ENCELADUS);
+    expect_body_id("tethys", taiyin::TAIYIN_BODY_TETHYS);
+    expect_body_id("dione", taiyin::TAIYIN_BODY_DIONE);
+    expect_body_id("rhea", taiyin::TAIYIN_BODY_RHEA);
     expect_body_id("titan", taiyin::TAIYIN_BODY_TITAN);
+    expect_body_id("hyperion", taiyin::TAIYIN_BODY_HYPERION);
+    expect_body_id("iapetus", taiyin::TAIYIN_BODY_IAPETUS);
+    expect_body_id("miranda", taiyin::TAIYIN_BODY_MIRANDA);
+    expect_body_id("ariel", taiyin::TAIYIN_BODY_ARIEL);
+    expect_body_id("umbriel", taiyin::TAIYIN_BODY_UMBRIEL);
+    expect_body_id("titania", taiyin::TAIYIN_BODY_TITANIA);
+    expect_body_id("oberon", taiyin::TAIYIN_BODY_OBERON);
     expect_body_id("triton", taiyin::TAIYIN_BODY_TRITON);
     expect_body_id("charon", taiyin::TAIYIN_BODY_CHARON);
+    expect_body_id("nix", taiyin::TAIYIN_BODY_NIX);
+    expect_body_id("hydra", taiyin::TAIYIN_BODY_HYDRA);
+    expect_body_id("kerberos", taiyin::TAIYIN_BODY_KERBEROS);
+    expect_body_id("styx", taiyin::TAIYIN_BODY_STYX);
 
     expect_body_id("ceres", taiyin::TAIYIN_BODY_CERES);
     expect_body_id("pallas", taiyin::TAIYIN_BODY_PALLAS);

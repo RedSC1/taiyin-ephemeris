@@ -1,11 +1,12 @@
 #include "taiyin/runtime/eclipse_search.h"
 
 #include "runtime/eclipse/eclipse_time.h"
-#include "runtime/eclipse/lunar_eclipse_sxwnl.h"
+#include "runtime/eclipse/lunar_shadow_geometry.h"
 
 #include "taiyin/time.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -144,12 +145,12 @@ bool include_contacts(uint64_t flags) {
 // ---------------------------------------------------------------------------
 // Classify eclipse from geometry
 // ---------------------------------------------------------------------------
-uint32_t classify_eclipse(const sxwnl::lunar::LecGeometry& geo, bool include_penumbral) {
-    const double rmin = geo.rmin_rad;
-    const double mr_toward = geo.moon_radius_toward_shadow_rad;
-    const double mr_away = geo.moon_radius_away_from_shadow_rad;
-    const double er   = geo.umbra_radius_rad;
-    const double Er   = geo.penumbra_radius_rad;
+uint32_t classify_eclipse(const LunarShadowGeometry& geo, bool include_penumbral) {
+    const double rmin = geo.axis_distance_km;
+    const double mr_toward = geo.moon_radius_toward_shadow_km;
+    const double mr_away = geo.moon_radius_away_from_shadow_km;
+    const double er = geo.umbra_radius_km;
+    const double Er = geo.penumbra_radius_km;
 
     if (er > 0.0 && rmin <= er - mr_away) {
         return TAIYIN_ECLIPSE_TOTAL;
@@ -167,23 +168,22 @@ uint32_t classify_eclipse(const sxwnl::lunar::LecGeometry& geo, bool include_pen
 // Fill LunarEclipseResult from geometry at maximum eclipse
 // ---------------------------------------------------------------------------
 void fill_result(
-    const sxwnl::lunar::LecGeometry& geo,
+    const LunarShadowGeometry& geo,
     SplitJulianDate jd_max_tt,
     LunarEclipseResult* out
 ) noexcept {
     out->maximum_jd_tt = jd_max_tt;
-    out->axis_distance_rad = geo.rmin_rad;
-    out->umbra_radius_rad = geo.umbra_radius_rad;
-    out->penumbra_radius_rad = geo.penumbra_radius_rad;
-    out->moon_radius_rad = geo.moon_radius_rad;
+    out->axis_distance_rad = std::atan2(geo.axis_distance_km, geo.axial_distance_km);
+    out->umbra_radius_rad = std::atan2(geo.umbra_radius_km, geo.moon_distance_km);
+    out->penumbra_radius_rad = std::atan2(geo.penumbra_radius_km, geo.moon_distance_km);
+    out->moon_radius_rad = std::atan2(geo.moon_radius_km, geo.moon_distance_km);
 
-    // Magnitude (taiyin-ephemeris-ts/src/events/eclipse.ts:253-254)
-    const double mr = geo.moon_radius_rad;
-    const double rho = geo.rmin_rad;
+    const double mr = geo.moon_radius_km;
+    const double rho = geo.axis_distance_km;
     out->umbral_magnitude =
-        (geo.umbra_radius_rad + mr - rho) / (2.0 * mr);
+        (geo.umbra_radius_km + mr - rho) / (2.0 * mr);
     out->penumbral_magnitude =
-        (geo.penumbra_radius_rad + mr - rho) / (2.0 * mr);
+        (geo.penumbra_radius_km + mr - rho) / (2.0 * mr);
 }
 
 // Initialize contact times to NAN.
@@ -236,107 +236,426 @@ enum LunarContactBoundary {
     LUNAR_CONTACT_UMBRAL_INNER,
 };
 
-Status eval_lunar_contact_scalar(
-    const NativeCalcContext* context,
-    SplitJulianDate jd_tt,
-    uint64_t flags,
-    LunarContactBoundary boundary,
-    double* out,
-    EphemerisEvalDiagnostic* diagnostic
+double contact_boundary_radius_km(
+    const LunarShadowGeometry& geometry,
+    LunarContactBoundary boundary
 ) noexcept {
-    if (!out) return TAIYIN_ERROR_INVALID_ARGUMENT;
-    sxwnl::lunar::LecGeometry geometry;
-    const Status status = sxwnl::lunar::lecXY(
-        context, jd_tt, flags, &geometry, diagnostic);
-    if (status != TAIYIN_STATUS_OK) return status;
-    double contact_radius = std::nan("");
     switch (boundary) {
     case LUNAR_CONTACT_PENUMBRAL_OUTER:
-        contact_radius = geometry.penumbra_radius_rad
-            + geometry.moon_radius_toward_shadow_rad;
-        break;
+        return geometry.penumbra_radius_km
+            + geometry.moon_radius_toward_shadow_km;
     case LUNAR_CONTACT_UMBRAL_OUTER:
-        contact_radius = geometry.umbra_radius_rad
-            + geometry.moon_radius_toward_shadow_rad;
-        break;
+        return geometry.umbra_radius_km
+            + geometry.moon_radius_toward_shadow_km;
     case LUNAR_CONTACT_UMBRAL_INNER:
-        contact_radius = geometry.umbra_radius_rad
-            - geometry.moon_radius_away_from_shadow_rad;
-        break;
+        return geometry.umbra_radius_km
+            - geometry.moon_radius_away_from_shadow_km;
     }
-    *out = geometry.rmin_rad - contact_radius;
-    return std::isfinite(*out) ? TAIYIN_STATUS_OK : TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    return std::nan("");
 }
 
-// Compute a single contact time using the original linear estimate. When a
-// limb model is requested, polish that seed against the directional profile.
-Status compute_contact_time(
+double transverse_distance_squared(const LunarShadowGeometry& geometry) noexcept {
+    return vector3_dot(geometry.transverse_offset_km, geometry.transverse_offset_km);
+}
+
+Status refine_lunar_greatest(
     const NativeCalcContext* context,
-    SplitJulianDate jd_max,
-    double x, double y, double vx, double vy,
-    double r,
-    int n,
-    LunarContactBoundary boundary,
+    SplitJulianDate seed_jd_tt,
     uint64_t flags,
-    SplitJulianDate* out,
+    SplitJulianDate* out_jd_tt,
+    LunarShadowGeometry* out_geometry,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    if (!out) return TAIYIN_ERROR_INVALID_ARGUMENT;
-    *out = invalid_jd();
-    // First estimate
-    const double dt1 = sxwnl::lunar::lineT(x, y, vx, vy, r, n);
-    if (!std::isfinite(dt1)) {
-        return TAIYIN_ERROR_UNSUPPORTED;
+    if (!context || !out_jd_tt || !out_geometry) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    const SplitJulianDate jd_contact1 = jd_max + dt1;
 
-    // Refine: re-eval at contact time, recompute velocity, lineT again
-    sxwnl::lunar::LecMaxResult eval_contact;
-    {
-        const Status st = sxwnl::lunar::lecMax(
-            context, jd_contact1, flags, &eval_contact, diagnostic);
-        if (st != TAIYIN_STATUS_OK) {
-            return st;
+    constexpr double kStepDays = 60.0 / 86400.0;
+    constexpr double kMaxStepDays = 0.25;
+    SplitJulianDate center = seed_jd_tt;
+    for (int iteration = 0; iteration < 4; ++iteration) {
+        LunarShadowGeometry minus;
+        LunarShadowGeometry current;
+        LunarShadowGeometry plus;
+        Status status = evaluate_lunar_shadow_geometry(
+            context, center - kStepDays, flags, &minus, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+        status = evaluate_lunar_shadow_geometry(
+            context, center, flags, &current, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+        status = evaluate_lunar_shadow_geometry(
+            context, center + kStepDays, flags, &plus, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+
+        const double fm = transverse_distance_squared(minus);
+        const double f0 = transverse_distance_squared(current);
+        const double fp = transverse_distance_squared(plus);
+        const double curvature = fm - 2.0 * f0 + fp;
+        double correction = std::nan("");
+        if (std::isfinite(curvature) && curvature > 0.0) {
+            correction = 0.5 * kStepDays * (fm - fp) / curvature;
+        }
+        if (!std::isfinite(correction)) {
+            const Vector3 velocity = vector3_scale(
+                vector3_subtract(plus.transverse_offset_km, minus.transverse_offset_km),
+                1.0 / (2.0 * kStepDays));
+            const double speed2 = vector3_dot(velocity, velocity);
+            if (!(speed2 > 0.0)) return TAIYIN_ERROR_UNSUPPORTED;
+            correction = -vector3_dot(current.transverse_offset_km, velocity) / speed2;
+        }
+        correction = std::max(-kMaxStepDays, std::min(kMaxStepDays, correction));
+        center += correction;
+        if (std::fabs(correction) < 0.001 / 86400.0) {
+            break;
         }
     }
-    const double dt2 = sxwnl::lunar::lineT(
-        eval_contact.geometry.x_rad,
-        eval_contact.geometry.y_rad,
-        eval_contact.vx_rad_per_day,
-        eval_contact.vy_rad_per_day,
-        r,
-        n);
-    SplitJulianDate result = std::isfinite(dt2) ? jd_contact1 + dt2 : jd_contact1;
-    if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) == 0u) {
-        *out = result;
-        return TAIYIN_STATUS_OK;
-    }
 
-    constexpr double kDerivativeStepDays = 0.5 / 86400.0;
-    constexpr double kMaxCorrectionDays = 30.0 / 86400.0;
-    for (int iteration = 0; iteration < 4; ++iteration) {
-        double f0 = std::nan("");
-        double fm = std::nan("");
-        double fp = std::nan("");
-        Status status = eval_lunar_contact_scalar(
-            context, result, flags, boundary, &f0, diagnostic);
+    const Status status = evaluate_lunar_shadow_geometry(
+        context, center, flags, out_geometry, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    *out_jd_tt = center;
+    return TAIYIN_STATUS_OK;
+}
+
+struct LunarShadowLocalMotion {
+    LunarShadowGeometry center;
+    Vector3 transverse_velocity_km_per_day;
+    double boundary_radius_rate_km_per_day[3];
+};
+
+Status evaluate_lunar_shadow_local_motion(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_max,
+    uint64_t flags,
+    LunarShadowLocalMotion* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    constexpr double kStepDays = 60.0 / 86400.0;
+    LunarShadowGeometry minus;
+    LunarShadowGeometry plus;
+    Status status = evaluate_lunar_shadow_geometry(
+        context, jd_max - kStepDays, flags, &minus, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    status = evaluate_lunar_shadow_geometry(
+        context, jd_max, flags, &out->center, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    status = evaluate_lunar_shadow_geometry(
+        context, jd_max + kStepDays, flags, &plus, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+
+    out->transverse_velocity_km_per_day = vector3_scale(
+        vector3_subtract(plus.transverse_offset_km, minus.transverse_offset_km),
+        1.0 / (2.0 * kStepDays));
+    for (int boundary = LUNAR_CONTACT_PENUMBRAL_OUTER;
+         boundary <= LUNAR_CONTACT_UMBRAL_INNER;
+         ++boundary) {
+        const LunarContactBoundary kind = static_cast<LunarContactBoundary>(boundary);
+        out->boundary_radius_rate_km_per_day[boundary] =
+            (contact_boundary_radius_km(plus, kind)
+             - contact_boundary_radius_km(minus, kind))
+            / (2.0 * kStepDays);
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+bool solve_moving_shadow_boundary(
+    const LunarShadowLocalMotion& motion,
+    LunarContactBoundary boundary,
+    bool later_contact,
+    double* out_dt_days
+) noexcept {
+    if (!out_dt_days) return false;
+    const Vector3& q = motion.center.transverse_offset_km;
+    const Vector3& velocity = motion.transverse_velocity_km_per_day;
+    const double radius = contact_boundary_radius_km(motion.center, boundary);
+    const double radius_rate = motion.boundary_radius_rate_km_per_day[boundary];
+    if (!(radius > 0.0) || !std::isfinite(radius_rate)) return false;
+
+    const double a = vector3_dot(velocity, velocity) - radius_rate * radius_rate;
+    const double b = vector3_dot(q, velocity) - radius * radius_rate;
+    const double c = vector3_dot(q, q) - radius * radius;
+    if (std::fabs(a) < 1.0e-20) {
+        if (std::fabs(b) < 1.0e-20) return false;
+        *out_dt_days = -c / (2.0 * b);
+        return std::isfinite(*out_dt_days);
+    }
+    const double discriminant = b * b - a * c;
+    if (!(discriminant >= 0.0)) return false;
+    const double sqrt_discriminant = std::sqrt(discriminant);
+    const double first = (-b - sqrt_discriminant) / a;
+    const double second = (-b + sqrt_discriminant) / a;
+    *out_dt_days = later_contact ? std::max(first, second) : std::min(first, second);
+    return std::isfinite(*out_dt_days);
+}
+
+constexpr size_t kLunarElementSampleCount = 5;
+constexpr double kLunarElementHalfSpanDays = 0.25;
+
+// Five full Sun/Moon evaluations fit cubic local elements for the transverse
+// vector q and every contact-boundary radius R. Circular-limb contacts need no
+// further ephemeris work; TLL1 contacts receive one direct Newton correction
+// because the topographic limb radius is not globally smooth.
+struct LunarShadowElements {
+    std::array<double, kLunarElementSampleCount> offsets_days;
+    std::array<LunarShadowGeometry, kLunarElementSampleCount> geometries;
+    std::array<std::array<double, 4>, 3> q_coefficients;
+    std::array<std::array<double, 4>, 3> radius_coefficients;
+};
+
+double contact_function_value(
+    const LunarShadowGeometry& geometry,
+    LunarContactBoundary boundary
+) noexcept {
+    const double radius = contact_boundary_radius_km(geometry, boundary);
+    return transverse_distance_squared(geometry) - radius * radius;
+}
+
+double vector_component(const Vector3& value, size_t component) noexcept {
+    return component == 0 ? value.x : (component == 1 ? value.y : value.z);
+}
+
+bool fit_cubic_element(
+    const std::array<double, kLunarElementSampleCount>& values,
+    std::array<double, 4>* out
+) noexcept {
+    if (!out) return false;
+    double normal[4][5] = {};
+    for (size_t sample = 0; sample < kLunarElementSampleCount; ++sample) {
+        const double x = -1.0 + 2.0 * static_cast<double>(sample)
+            / static_cast<double>(kLunarElementSampleCount - 1);
+        double powers[7] = {1.0};
+        for (size_t power = 1; power < 7; ++power) {
+            powers[power] = powers[power - 1] * x;
+        }
+        for (size_t row = 0; row < 4; ++row) {
+            for (size_t column = 0; column < 4; ++column) {
+                normal[row][column] += powers[row + column];
+            }
+            normal[row][4] += values[sample] * powers[row];
+        }
+    }
+    for (size_t column = 0; column < 4; ++column) {
+        size_t pivot = column;
+        for (size_t row = column + 1; row < 4; ++row) {
+            if (std::fabs(normal[row][column]) > std::fabs(normal[pivot][column])) {
+                pivot = row;
+            }
+        }
+        if (std::fabs(normal[pivot][column]) < 1.0e-18) return false;
+        if (pivot != column) {
+            for (size_t item = column; item < 5; ++item) {
+                std::swap(normal[pivot][item], normal[column][item]);
+            }
+        }
+        const double divisor = normal[column][column];
+        for (size_t item = column; item < 5; ++item) {
+            normal[column][item] /= divisor;
+        }
+        for (size_t row = 0; row < 4; ++row) {
+            if (row == column) continue;
+            const double factor = normal[row][column];
+            for (size_t item = column; item < 5; ++item) {
+                normal[row][item] -= factor * normal[column][item];
+            }
+        }
+    }
+    for (size_t index = 0; index < 4; ++index) {
+        (*out)[index] = normal[index][4];
+    }
+    return true;
+}
+
+void evaluate_cubic_element(
+    const std::array<double, 4>& coefficients,
+    double offset_days,
+    double* value,
+    double* derivative_per_day = nullptr
+) noexcept {
+    const double x = offset_days / kLunarElementHalfSpanDays;
+    if (value) {
+        *value = coefficients[0]
+            + x * (coefficients[1]
+                   + x * (coefficients[2] + x * coefficients[3]));
+    }
+    if (derivative_per_day) {
+        *derivative_per_day =
+            (coefficients[1] + x * (2.0 * coefficients[2]
+                                    + 3.0 * x * coefficients[3]))
+            / kLunarElementHalfSpanDays;
+    }
+}
+
+Status fit_lunar_shadow_elements(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_max,
+    uint64_t flags,
+    LunarShadowElements* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    const double spacing = 2.0 * kLunarElementHalfSpanDays
+        / static_cast<double>(kLunarElementSampleCount - 1);
+    for (size_t index = 0; index < kLunarElementSampleCount; ++index) {
+        const double offset = -kLunarElementHalfSpanDays
+            + spacing * static_cast<double>(index);
+        out->offsets_days[index] = offset;
+        const Status status = evaluate_lunar_shadow_geometry(
+            context,
+            jd_max + offset,
+            flags,
+            &out->geometries[index],
+            diagnostic);
         if (status != TAIYIN_STATUS_OK) return status;
-        status = eval_lunar_contact_scalar(
-            context, result - kDerivativeStepDays, flags, boundary, &fm, diagnostic);
-        if (status != TAIYIN_STATUS_OK) return status;
-        status = eval_lunar_contact_scalar(
-            context, result + kDerivativeStepDays, flags, boundary, &fp, diagnostic);
-        if (status != TAIYIN_STATUS_OK) return status;
-        const double slope = (fp - fm) / (2.0 * kDerivativeStepDays);
-        if (!std::isfinite(slope) || std::fabs(slope) < 1.0e-12) {
+    }
+    std::array<double, kLunarElementSampleCount> values;
+    for (size_t component = 0; component < 3; ++component) {
+        for (size_t sample = 0; sample < kLunarElementSampleCount; ++sample) {
+            values[sample] = vector_component(
+                out->geometries[sample].transverse_offset_km, component);
+        }
+        if (!fit_cubic_element(values, &out->q_coefficients[component])) {
             return TAIYIN_ERROR_UNSUPPORTED;
         }
-        double correction = -f0 / slope;
-        correction = std::max(-kMaxCorrectionDays, std::min(kMaxCorrectionDays, correction));
-        result += correction;
-        if (std::fabs(correction) < 0.01 / 86400.0) break;
     }
-    *out = result;
+    for (int boundary = LUNAR_CONTACT_PENUMBRAL_OUTER;
+         boundary <= LUNAR_CONTACT_UMBRAL_INNER;
+         ++boundary) {
+        const LunarContactBoundary kind = static_cast<LunarContactBoundary>(boundary);
+        for (size_t sample = 0; sample < kLunarElementSampleCount; ++sample) {
+            values[sample] = contact_boundary_radius_km(out->geometries[sample], kind);
+        }
+        if (!fit_cubic_element(values, &out->radius_coefficients[boundary])) {
+            return TAIYIN_ERROR_UNSUPPORTED;
+        }
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+double evaluate_fitted_contact_function(
+    const LunarShadowElements& elements,
+    LunarContactBoundary boundary,
+    double offset_days,
+    double* derivative_per_day = nullptr
+) noexcept {
+    Vector3 q{0.0, 0.0, 0.0};
+    Vector3 velocity{0.0, 0.0, 0.0};
+    for (size_t component = 0; component < 3; ++component) {
+        double value = 0.0;
+        double derivative = 0.0;
+        evaluate_cubic_element(
+            elements.q_coefficients[component], offset_days,
+            &value, derivative_per_day ? &derivative : nullptr);
+        if (component == 0) {
+            q.x = value;
+            velocity.x = derivative;
+        } else if (component == 1) {
+            q.y = value;
+            velocity.y = derivative;
+        } else {
+            q.z = value;
+            velocity.z = derivative;
+        }
+    }
+    double radius = 0.0;
+    double radius_rate = 0.0;
+    evaluate_cubic_element(
+        elements.radius_coefficients[boundary], offset_days,
+        &radius, derivative_per_day ? &radius_rate : nullptr);
+    if (derivative_per_day) {
+        *derivative_per_day = 2.0 * vector3_dot(q, velocity)
+            - 2.0 * radius * radius_rate;
+    }
+    return vector3_dot(q, q) - radius * radius;
+}
+
+bool solve_fitted_shadow_boundary(
+    const LunarShadowElements& elements,
+    LunarContactBoundary boundary,
+    bool later_contact,
+    double* out_dt_days
+) noexcept {
+    if (!out_dt_days) return false;
+    const size_t center = kLunarElementSampleCount / 2;
+    size_t bracket = kLunarElementSampleCount;
+    if (later_contact) {
+        for (size_t index = center; index + 1 < kLunarElementSampleCount; ++index) {
+            const double left = contact_function_value(elements.geometries[index], boundary);
+            const double right = contact_function_value(elements.geometries[index + 1], boundary);
+            if (left <= 0.0 && right >= 0.0) {
+                bracket = index;
+                break;
+            }
+        }
+    } else {
+        for (size_t index = center; index > 0; --index) {
+            const double left = contact_function_value(elements.geometries[index - 1], boundary);
+            const double right = contact_function_value(elements.geometries[index], boundary);
+            if (left >= 0.0 && right <= 0.0) {
+                bracket = index - 1;
+                break;
+            }
+        }
+    }
+    if (bracket >= kLunarElementSampleCount - 1) return false;
+
+    double left = elements.offsets_days[bracket];
+    double right = elements.offsets_days[bracket + 1];
+    double f_left = evaluate_fitted_contact_function(elements, boundary, left);
+    const double f_right = evaluate_fitted_contact_function(elements, boundary, right);
+    if (!std::isfinite(f_left) || !std::isfinite(f_right) || f_left * f_right > 0.0) {
+        return false;
+    }
+    for (int iteration = 0; iteration < 64; ++iteration) {
+        const double middle = 0.5 * (left + right);
+        const double f_middle = evaluate_fitted_contact_function(
+            elements, boundary, middle);
+        if (!std::isfinite(f_middle)) return false;
+        if (f_left * f_middle <= 0.0) {
+            right = middle;
+        } else {
+            left = middle;
+            f_left = f_middle;
+        }
+        if (right - left < 1.0e-11) break;
+    }
+    *out_dt_days = 0.5 * (left + right);
+    return std::isfinite(*out_dt_days);
+}
+
+Status refine_tll1_contact_once(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_max,
+    uint64_t flags,
+    const LunarShadowElements& elements,
+    LunarContactBoundary boundary,
+    double* dt_days,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !dt_days || !std::isfinite(*dt_days)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) == 0u) {
+        return TAIYIN_STATUS_OK;
+    }
+    LunarShadowGeometry exact;
+    const Status status = evaluate_lunar_shadow_geometry(
+        context, jd_max + *dt_days, flags, &exact, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    const double exact_f = contact_function_value(exact, boundary);
+    double fitted_derivative = std::nan("");
+    evaluate_fitted_contact_function(
+        elements, boundary, *dt_days, &fitted_derivative);
+    if (!std::isfinite(exact_f) || !std::isfinite(fitted_derivative)
+        || std::fabs(fitted_derivative) < 1.0e-12) {
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
+    const double correction = -exact_f / fitted_derivative;
+    constexpr double kMaximumCorrectionDays = 30.0 / 86400.0;
+    if (!std::isfinite(correction) || std::fabs(correction) > kMaximumCorrectionDays) {
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
+    *dt_days += correction;
     return TAIYIN_STATUS_OK;
 }
 
@@ -379,27 +698,11 @@ Status solve_lunar_eclipse_for_meeus_k(
     }
     const SplitJulianDate jd_seed = meeus_max_jd(k);
 
-    // Linear extrapolation (寿星 style).
-    sxwnl::lunar::LecMaxResult eval1;
+    SplitJulianDate jd_max;
+    LunarShadowGeometry geo_max;
     {
-        const Status st = sxwnl::lunar::lecMax(
-            context, jd_seed, flags, &eval1, diagnostic);
-        if (st != TAIYIN_STATUS_OK) return st;
-    }
-    const SplitJulianDate jd1 = jd_seed + eval1.dt_days;
-
-    sxwnl::lunar::LecMaxResult eval2;
-    {
-        const Status st = sxwnl::lunar::lecMax(
-            context, jd1, flags, &eval2, diagnostic);
-        if (st != TAIYIN_STATUS_OK) return st;
-    }
-    const SplitJulianDate jd_max = jd1 + eval2.dt_days;
-
-    sxwnl::lunar::LecGeometry geo_max;
-    {
-        const Status st = sxwnl::lunar::lecXY(
-            context, jd_max, flags, &geo_max, diagnostic);
+        const Status st = refine_lunar_greatest(
+            context, jd_seed, flags, &jd_max, &geo_max, diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
     }
 
@@ -411,61 +714,74 @@ Status solve_lunar_eclipse_for_meeus_k(
     }
 
     if (include_contacts(flags)) {
-        sxwnl::lunar::LecMaxResult eval_max;
-        const Status st = sxwnl::lunar::lecMax(
-            context, jd_max, flags, &eval_max, diagnostic);
-        if (st == TAIYIN_STATUS_OK) {
-            const double mr = geo_max.moon_radius_rad;
-            const double er = geo_max.umbra_radius_rad;
-            const double Er = geo_max.penumbra_radius_rad;
-            const double vx = eval_max.vx_rad_per_day;
-            const double vy = eval_max.vy_rad_per_day;
-            const double x  = eval_max.geometry.x_rad;
-            const double y  = eval_max.geometry.y_rad;
-
-            SplitJulianDate p1 = invalid_jd();
-            SplitJulianDate p4 = invalid_jd();
-            Status contact_status = compute_contact_time(
-                context, jd_max, x, y, vx, vy, mr + Er, 0,
-                LUNAR_CONTACT_PENUMBRAL_OUTER, flags, &p1, diagnostic);
-            if (contact_status != TAIYIN_STATUS_OK) return contact_status;
-            contact_status = compute_contact_time(
-                context, jd_max, x, y, vx, vy, mr + Er, 1,
-                LUNAR_CONTACT_PENUMBRAL_OUTER, flags, &p4, diagnostic);
-            if (contact_status != TAIYIN_STATUS_OK) return contact_status;
-            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_P1] = p1;
-            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_P4] = p4;
-            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_GREATEST] = jd_max;
-
-            if (kind & (TAIYIN_ECLIPSE_PARTIAL | TAIYIN_ECLIPSE_TOTAL)) {
-                SplitJulianDate u1 = invalid_jd();
-                SplitJulianDate u4 = invalid_jd();
-                contact_status = compute_contact_time(
-                    context, jd_max, x, y, vx, vy, mr + er, 0,
-                    LUNAR_CONTACT_UMBRAL_OUTER, flags, &u1, diagnostic);
-                if (contact_status != TAIYIN_STATUS_OK) return contact_status;
-                contact_status = compute_contact_time(
-                    context, jd_max, x, y, vx, vy, mr + er, 1,
-                    LUNAR_CONTACT_UMBRAL_OUTER, flags, &u4, diagnostic);
-                if (contact_status != TAIYIN_STATUS_OK) return contact_status;
-                out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U1] = u1;
-                out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U4] = u4;
+        LunarShadowElements elements;
+        const Status elements_status = fit_lunar_shadow_elements(
+            context, jd_max, flags, &elements, diagnostic);
+        if (elements_status != TAIYIN_STATUS_OK) return elements_status;
+        LunarShadowLocalMotion fallback_motion;
+        bool fallback_attempted = false;
+        Status fallback_status = TAIYIN_STATUS_OK;
+        Status contact_solve_status = TAIYIN_STATUS_OK;
+        const auto solve_boundary = [&](LunarContactBoundary boundary,
+                                        bool later,
+                                        double* out_dt) noexcept -> bool {
+            bool solved = solve_fitted_shadow_boundary(
+                elements, boundary, later, out_dt);
+            if (!solved) {
+                if (!fallback_attempted) {
+                    fallback_attempted = true;
+                    fallback_status = evaluate_lunar_shadow_local_motion(
+                        context, jd_max, flags, &fallback_motion, diagnostic);
+                }
+                solved = fallback_status == TAIYIN_STATUS_OK
+                    && solve_moving_shadow_boundary(
+                        fallback_motion, boundary, later, out_dt);
             }
-
-            if (kind & TAIYIN_ECLIPSE_TOTAL) {
-                SplitJulianDate u2 = invalid_jd();
-                SplitJulianDate u3 = invalid_jd();
-                contact_status = compute_contact_time(
-                    context, jd_max, x, y, vx, vy, er - mr, 0,
-                    LUNAR_CONTACT_UMBRAL_INNER, flags, &u2, diagnostic);
-                if (contact_status != TAIYIN_STATUS_OK) return contact_status;
-                contact_status = compute_contact_time(
-                    context, jd_max, x, y, vx, vy, er - mr, 1,
-                    LUNAR_CONTACT_UMBRAL_INNER, flags, &u3, diagnostic);
-                if (contact_status != TAIYIN_STATUS_OK) return contact_status;
-                out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U2] = u2;
-                out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U3] = u3;
+            if (!solved) return false;
+            contact_solve_status = refine_tll1_contact_once(
+                context, jd_max, flags, elements, boundary, out_dt, diagnostic);
+            return contact_solve_status == TAIYIN_STATUS_OK;
+        };
+        const auto contact_failure_status = [&]() noexcept -> Status {
+            if (contact_solve_status != TAIYIN_STATUS_OK) {
+                return contact_solve_status;
             }
+            return fallback_attempted && fallback_status != TAIYIN_STATUS_OK
+                ? fallback_status
+                : TAIYIN_ERROR_UNSUPPORTED;
+        };
+
+        double dt = std::nan("");
+        if (!solve_boundary(LUNAR_CONTACT_PENUMBRAL_OUTER, false, &dt)) {
+            return contact_failure_status();
+        }
+        out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_P1] = jd_max + dt;
+        if (!solve_boundary(LUNAR_CONTACT_PENUMBRAL_OUTER, true, &dt)) {
+            return contact_failure_status();
+        }
+        out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_P4] = jd_max + dt;
+        out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_GREATEST] = jd_max;
+
+        if (kind & (TAIYIN_ECLIPSE_PARTIAL | TAIYIN_ECLIPSE_TOTAL)) {
+            if (!solve_boundary(LUNAR_CONTACT_UMBRAL_OUTER, false, &dt)) {
+                return contact_failure_status();
+            }
+            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U1] = jd_max + dt;
+            if (!solve_boundary(LUNAR_CONTACT_UMBRAL_OUTER, true, &dt)) {
+                return contact_failure_status();
+            }
+            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U4] = jd_max + dt;
+        }
+
+        if (kind & TAIYIN_ECLIPSE_TOTAL) {
+            if (!solve_boundary(LUNAR_CONTACT_UMBRAL_INNER, false, &dt)) {
+                return contact_failure_status();
+            }
+            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U2] = jd_max + dt;
+            if (!solve_boundary(LUNAR_CONTACT_UMBRAL_INNER, true, &dt)) {
+                return contact_failure_status();
+            }
+            out->contact_jd_tt[TAIYIN_LUNAR_ECLIPSE_CONTACT_U3] = jd_max + dt;
         }
     }
 

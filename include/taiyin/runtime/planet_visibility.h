@@ -2,6 +2,7 @@
 #define TAIYIN_RUNTIME_PLANET_VISIBILITY_H
 
 #include "taiyin/runtime/native_context.h"
+#include "taiyin/runtime/native_position.h"
 #include "taiyin/status.h"
 
 #include <stdint.h>
@@ -78,6 +79,9 @@ Status search_planet_transit_ut(
     const SplitJulianDate& start_jd_ut,
     const SplitJulianDate& end_jd_ut,
     int event_kind,
+    // Low 32 bits are TAIYIN_NATIVE_POSITION_* and pass through unchanged;
+    // high 32 bits are reserved for transit-search options.
+    uint64_t flags,
     PlanetVisibilityEventResult* out,
     EphemerisEvalDiagnostic* diagnostic = 0
 ) noexcept;

@@ -115,22 +115,23 @@ int main(int argc, char** argv) {
         || strcmp(taiyin_get_library_codename(), "Singularity") != 0) {
         return fail("library codename mismatch");
     }
-    if ((taiyin_get_capabilities()
-            & (TAIYIN_CAPABILITY_POSITION
-                | TAIYIN_CAPABILITY_ECLIPSE
-                | TAIYIN_CAPABILITY_ASTROLOGY
-                | TAIYIN_CAPABILITY_SPLIT_TIME))
-        != (TAIYIN_CAPABILITY_POSITION
+    {
+        uint64_t expected_capabilities = TAIYIN_CAPABILITY_POSITION
             | TAIYIN_CAPABILITY_ECLIPSE
-            | TAIYIN_CAPABILITY_ASTROLOGY
-            | TAIYIN_CAPABILITY_SPLIT_TIME)) {
-        return fail("capability mask mismatch");
+            | TAIYIN_CAPABILITY_SPLIT_TIME;
+#ifndef TAIYIN_TEST_MODULAR_C_API
+        expected_capabilities |= TAIYIN_CAPABILITY_ASTROLOGY;
+#endif
+        if ((taiyin_get_capabilities() & expected_capabilities)
+            != expected_capabilities) {
+            return fail("capability mask mismatch");
+        }
     }
-#if TAIYIN_TEST_EXPECT_BAZI
+#if TAIYIN_TEST_EXPECT_BAZI && !defined(TAIYIN_TEST_MODULAR_C_API)
     if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_BAZI) == 0u) {
         return fail("BaZi-enabled build does not advertise its capability");
     }
-#else
+#elif !TAIYIN_TEST_EXPECT_BAZI && !defined(TAIYIN_TEST_MODULAR_C_API)
     if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_BAZI) != 0u) {
         return fail("BaZi-disabled build advertises the BaZi capability");
     }
@@ -197,6 +198,66 @@ int main(int argc, char** argv) {
     }
     if (taiyin_runtime_initialize(&runtime_config) != TAIYIN_STATUS_OK) {
         return fail("runtime initialization failed");
+    }
+    if (taiyin_runtime_set_ephemeris_source_priority(
+            "test-ephemeris-priority.bsp", 10) != TAIYIN_STATUS_OK) {
+        return fail("ephemeris source priority setup failed");
+    }
+    if (taiyin_runtime_clear_ephemeris_source_priority(
+            "test-ephemeris-priority.bsp") != TAIYIN_STATUS_OK) {
+        return fail("ephemeris source priority clear failed");
+    }
+    if (taiyin_runtime_set_ephemeris_source_priority(
+            "test-ephemeris-priority.bsp", -10) != TAIYIN_STATUS_OK) {
+        return fail("ephemeris source priority reset failed");
+    }
+    taiyin_runtime_clear_all_ephemeris_source_priorities();
+    {
+        const size_t source_count =
+            taiyin_runtime_registered_data_source_count();
+        size_t i;
+        int found_ephemeris = 0;
+        int found_builtin_eop = 0;
+        if (source_count < 2u) {
+            return fail("registered runtime data source count is too small");
+        }
+        for (i = 0; i < source_count; ++i) {
+            taiyin_runtime_registered_data_source source_info;
+            char source[2048];
+            size_t required_size = 0;
+            taiyin_runtime_registered_data_source_init(&source_info);
+            if (taiyin_runtime_get_registered_data_source(
+                    i, &source_info, NULL, 0, &required_size)
+                    != TAIYIN_STATUS_OK
+                || required_size == 0u
+                || required_size > sizeof(source)
+                || taiyin_runtime_get_registered_data_source(
+                    i,
+                    &source_info,
+                    source,
+                    sizeof(source),
+                    &required_size) != TAIYIN_STATUS_OK
+                || source[0] == '\0') {
+                return fail("registered runtime data source query failed");
+            }
+            if (source_info.kind
+                    == TAIYIN_RUNTIME_DATA_SOURCE_EPHEMERIS
+                && source_info.item_count > 0u
+                && (source_info.flags
+                    & TAIYIN_RUNTIME_DATA_SOURCE_HAS_COVERAGE) != 0u) {
+                found_ephemeris = 1;
+            }
+            if (source_info.kind
+                    == TAIYIN_RUNTIME_DATA_SOURCE_EARTH_ORIENTATION
+                && source_info.format
+                    == TAIYIN_RUNTIME_DATA_FORMAT_BUILTIN_EOP
+                && strcmp(source, "builtin:eop") == 0) {
+                found_builtin_eop = 1;
+            }
+        }
+        if (!found_ephemeris || !found_builtin_eop) {
+            return fail("registered runtime data sources are incomplete");
+        }
     }
     {
         char star_catalog_path[2048];
@@ -422,9 +483,7 @@ int main(int argc, char** argv) {
         probe.day = 15;
         probe.hour = 12;
 
-        if ((taiyin_get_capabilities()
-                & TAIYIN_CAPABILITY_CHINESE_CALENDAR) == 0
-            || taiyin_chinese_calendar_context_create(
+        if (taiyin_chinese_calendar_context_create(
                 context, &calendar_config, &calendar_context)
                 != TAIYIN_STATUS_OK
             || !calendar_context
@@ -529,6 +588,59 @@ int main(int argc, char** argv) {
         != TAIYIN_STATUS_OK) {
         taiyin_context_destroy(context);
         return fail("observer setup failed");
+    }
+
+    {
+        taiyin_context* non_earth = NULL;
+        taiyin_cartesian_state zero_offset;
+        taiyin_observed_position observed;
+        taiyin_ephemeris_diagnostic diagnostic;
+        const int32_t body_id = TAIYIN_BODY_SUN;
+        double position[6] = {0.0};
+        taiyin_cartesian_state_init(&zero_offset);
+        taiyin_observed_position_init(&observed);
+        taiyin_ephemeris_diagnostic_init(&diagnostic);
+        if (taiyin_context_clone(context, &non_earth) != TAIYIN_STATUS_OK
+            || !non_earth
+            || taiyin_context_set_geocentric_observer(
+                    non_earth,
+                    TAIYIN_BODY_MARS_BARYCENTER,
+                    TAIYIN_BODY_SUN) != TAIYIN_STATUS_OK
+            || taiyin_context_set_topocentric_observer_offset(
+                    non_earth, &zero_offset) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_context_set_simple_topocentric_observer(
+                    non_earth, &observer, &jd_2460409, &jd_2460409_0008)
+                != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_context_set_precise_topocentric_observer(
+                    non_earth, &observer, &jd_2460409, &jd_2460409_0008)
+                != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_calc_position_ut(
+                    non_earth,
+                    TAIYIN_BODY_SUN,
+                    &jd_2460409,
+                    TAIYIN_POSITION_XYZ | TAIYIN_POSITION_TOPOCENTRIC,
+                    position,
+                    &diagnostic) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_calc_observed_bodies_ut(
+                    non_earth,
+                    &jd_2460409,
+                    &body_id,
+                    1,
+                    TAIYIN_OBSERVED_TOPOCENTRIC,
+                    &observed,
+                    &diagnostic) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_calc_star_position_tt(
+                    non_earth,
+                    "spica",
+                    &jd_2460409,
+                    TAIYIN_POSITION_XYZ,
+                    position,
+                    &diagnostic) != TAIYIN_ERROR_UNSUPPORTED) {
+            taiyin_context_destroy(non_earth);
+            taiyin_context_destroy(context);
+            return fail("non-Earth topocentric/star boundary failed");
+        }
+        taiyin_context_destroy(non_earth);
     }
 
     {
@@ -914,10 +1026,46 @@ int main(int argc, char** argv) {
         double batch_tdb_position[6] = {0.0};
         taiyin_observed_position observed_stars[2];
         taiyin_ephemeris_diagnostic diagnostics[2];
+        taiyin_split_julian_date body_star_start;
+        taiyin_split_julian_date body_star_end;
+        taiyin_body_star_angular_separation_result body_star_minimum;
         taiyin_observed_position_init(&observed_stars[0]);
         taiyin_observed_position_init(&observed_stars[1]);
         taiyin_ephemeris_diagnostic_init(&diagnostics[0]);
         taiyin_ephemeris_diagnostic_init(&diagnostics[1]);
+        taiyin_body_star_angular_separation_result_init(&body_star_minimum);
+        if (taiyin_split_julian_date_from_parts(
+                2460634, 0.5, &body_star_start) != TAIYIN_STATUS_OK
+            || taiyin_split_julian_date_from_parts(
+                2460654, 0.5, &body_star_end) != TAIYIN_STATUS_OK
+            || taiyin_search_minimum_body_star_angular_separation_ut(
+                context,
+                TAIYIN_BODY_SUN,
+                "antares",
+                &body_star_start,
+                &body_star_end,
+                1.0,
+                0u,
+                &body_star_minimum,
+                NULL) != TAIYIN_STATUS_OK
+            || body_star_minimum.body_id != TAIYIN_BODY_SUN
+            || !isfinite(body_star_minimum.separation_rad)
+            || !(body_star_minimum.jd.day_number > body_star_start.day_number
+                || (body_star_minimum.jd.day_number == body_star_start.day_number
+                    && body_star_minimum.jd.day_fraction > body_star_start.day_fraction))
+            || taiyin_search_minimum_body_star_angular_separation_ut(
+                context,
+                TAIYIN_BODY_SUN,
+                "",
+                &body_star_start,
+                &body_star_end,
+                1.0,
+                0u,
+                &body_star_minimum,
+                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+            taiyin_context_destroy(context);
+            return fail("body-star angular-separation C API failed");
+        }
         if (taiyin_calc_star_positions_tt(
                 context,
                 star_keys,
@@ -1517,6 +1665,18 @@ int main(int argc, char** argv) {
         taiyin_context_destroy(context);
         return fail("runtime lunar-limb clear failed");
     }
+
+#ifdef TAIYIN_TEST_MODULAR_C_API
+    if (taiyin_astrology_module_shutdown() != TAIYIN_STATUS_OK
+        || taiyin_astrology_module_shutdown() != TAIYIN_STATUS_OK
+        || taiyin_register_ayanamsha_model(
+               10003, &test_ayanamsha_evaluator, -1, NULL)
+               != TAIYIN_ERROR_INTERNAL) {
+        taiyin_context_destroy(clone);
+        taiyin_context_destroy(context);
+        return fail("modular astrology shutdown lifecycle failed");
+    }
+#endif
 
     taiyin_context_destroy(clone);
     taiyin_context_destroy(context);

@@ -68,10 +68,10 @@ bool refine_root_newton(
 ) noexcept;
 
 /**
- * @brief 寿星万年历经典二次相切求根器 (lineT)
+ * @brief 局部直线运动与圆相交的二次求根器
  * 
  * 将局部轨道运动做直线性化，直接以一元二次方程解析求解圆盘（影子与月盘）相切的接触时间。
- * 算法来源：寿星万年历 eph.js 中的 rsPL.lineT；这里使用等价的标准二次方程形式。
+ * 将局部轨道运动做直线性化，并解标准二次方程得到两个接触时刻。
  * 
  * @param t0 极值基准时间 JD
  * @param x0 极值时间 t0 处的相对平面 x 坐标
@@ -119,9 +119,9 @@ bool intersect_line_spheroid(
 ) noexcept;
 
 /**
- * @brief 圆与地平边缘投影椭圆解析求交 (cirOvl)
+ * @brief 圆与地平边缘投影椭圆求交
  * 
- * 用于求解全球日食界线在根本平面上，圆心影锥（圆）与扁地球投影边缘（椭圆）的交点。无任何数值迭代！
+ * 用于求解全球日食界线在根本平面上，圆心影锥（圆）与扁地球投影边缘（椭圆）的交点。
  * 
  * @param ellipse_major_axis 投影椭圆长半轴 (地球赤道半径 1.0)
  * @param axis_ratio 投影椭圆极赤比 b/a
@@ -147,7 +147,7 @@ int intersect_ellipse_circle(
 ) noexcept;
 
 /**
- * @brief 贝塞尔交点至地球地理经纬度投影 (lineEar2)
+ * @brief 贝塞尔交点至地球地理经纬度投影
  * 
  * 利用影轴瞬时赤纬 d、时角 mu 及真恒星时，通过旋转解析投影出扁球体表面的地理经纬度。
  * 
@@ -171,10 +171,10 @@ bool project_bessel_to_geodetic(
 ) noexcept;
 
 /**
- * @brief 地球物理投影阴影半径大气补偿计算 (ysPL.lecXY)
+ * @brief 地球影锥的本影和半影角半径计算
  * 
  * 输入日地/地月距离与地/日/视差各自的放大系数，求解月球处的本影和半影实际物理视半径。
- * 算法来源：寿星万年历 eph.js 中的 ysPL.lecXY；这里将阴影模型参数化为 Taiyin 的 dispatch model。
+ * 按日地、地月几何和可配置的尺度因子计算月球距离处的影锥角半径。
  * 
  * @param moon_distance_equatorial_radii 地月质心距 (地球赤道半径为单位)
  * @param sun_distance_au 日地质心距 (AU)
@@ -196,10 +196,10 @@ bool calculate_earth_shadow_radii(
 ) noexcept;
 
 /**
- * @brief 日月黄道视差相对平面直角坐标投影 (ysPL.lecXY)
+ * @brief 日月黄道相对位置的局部平面投影
  * 
  * 输入时刻 t 处计算出的太阳、月亮视黄经和视黄纬，投影映射出在根本影面上的相对直角相对坐标 x, y。
- * 算法来源：寿星万年历 eph.js 中的 ysPL.lecXY；这里保留等价投影形式并使用 Taiyin 的位置模型。
+ * 使用平均纬度的余弦缩放，把反日点附近的角差映射到局部平面。
  * 
  * @param moon_longitude_rad 月亮视黄经
  * @param moon_latitude_rad 月亮视黄纬

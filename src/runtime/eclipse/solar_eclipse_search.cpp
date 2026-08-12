@@ -2,7 +2,7 @@
 
 #include "runtime/eclipse/eclipse_time.h"
 #include "runtime/apparent/fast_apparent.h"
-#include "runtime/eclipse/solar_eclipse_besselian_solver.h"
+#include "runtime/eclipse/solar_eclipse_direct_solver.h"
 #include "runtime/core/native_context_checks.h"
 
 #include "taiyin/body_id.h"
@@ -338,8 +338,8 @@ Status solve_solar_eclipse_at(
     }
     init_solar_result(out);
 
-    return solve_solar_eclipse_besselian_for_meeus_k(
-        context, solar_meeus_k_for_jd(jd_tt), flags, true, true, out, diagnostic);
+    return solve_solar_eclipse_direct_for_meeus_k(
+        context, solar_meeus_k_for_jd(jd_tt), flags, 0, true, true, out, diagnostic);
 }
 
 Status solve_solar_eclipse_at_ut(
@@ -388,17 +388,13 @@ Status search_next_solar_eclipse_tt(
 
     const int direction = backward ? -1 : 1;
     const int k_limit = backward ? k - 100000 : k + 100000;
-    const bool use_probe = (flags & TAIYIN_ECLIPSE_INCLUDE_CONTACTS) != 0 || kind_filter != 0;
     for (int ki = k; backward ? ki > k_limit : ki < k_limit; ki += direction) {
         if (!solar_meeus_filter_passes(ki)) {
             continue;
         }
         SolarEclipseResult result;
-        Status st = use_probe
-            ? solve_solar_eclipse_besselian_search_for_meeus_k(
-                context, ki, flags, true, true, &result, diagnostic)
-            : solve_solar_eclipse_besselian_for_meeus_k(
-                context, ki, flags, true, true, &result, diagnostic);
+        Status st = solve_solar_eclipse_direct_for_meeus_k(
+            context, ki, flags, kind_filter, true, true, &result, diagnostic);
         if (st != TAIYIN_STATUS_OK) {
             return st;
         }
@@ -474,7 +470,6 @@ Status search_solar_eclipses_tt(
 
     int k = solar_meeus_k_for_jd(start_jd_tt) - 1;
     const int k_end = solar_meeus_k_for_jd(end_jd_tt) + 1;
-    const bool use_probe = (flags & TAIYIN_ECLIPSE_INCLUDE_CONTACTS) != 0 || kind_filter != 0;
     for (; k <= k_end; ++k) {
         if (!solar_meeus_filter_passes(k)) {
             continue;
@@ -488,11 +483,8 @@ Status search_solar_eclipses_tt(
         }
 
         SolarEclipseResult result;
-        Status st = use_probe
-            ? solve_solar_eclipse_besselian_search_for_meeus_k(
-                context, k, flags, true, true, &result, diagnostic)
-            : solve_solar_eclipse_besselian_for_meeus_k(
-                context, k, flags, true, true, &result, diagnostic);
+        Status st = solve_solar_eclipse_direct_for_meeus_k(
+            context, k, flags, kind_filter, true, true, &result, diagnostic);
         if (st != TAIYIN_STATUS_OK) {
             return st;
         }

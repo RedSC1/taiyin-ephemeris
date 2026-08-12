@@ -2,7 +2,8 @@
 
 #include "runtime/eclipse/eclipse_time.h"
 #include "runtime/apparent/fast_apparent.h"
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
+#include "runtime/eclipse/solar_shadow_geometry.h"
+#include "runtime/eclipse/solar_route_geometry.h"
 
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
@@ -99,6 +100,12 @@ constexpr uint32_t kRouteCurveLayerAll =
     | kRouteCurveLayerPenumbral
     | kRouteCurveLayerCore
     | kRouteCurveLayerHalfMagnitude;
+constexpr double kRouteEndpointSnapRelativeToStep = 1.0e-5;
+constexpr double kRouteEndpointSnapMaximumSeconds = 1.0e-3;
+// Even the longest partial phase is measured in hours. A larger gap between
+// returned rows therefore identifies separate eclipse events, including
+// sparse batches whose requested span covers multiple lunations.
+constexpr double kRouteBatchEventGapDays = 2.0;
 
 Status fill_route_path_point(
     const NativeCalcContext* context,
@@ -127,7 +134,7 @@ Status route_frame_from_besselian_elements(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
     const SolarBesselianElements& e,
-    sxwnl::solar::BesselianFrame* out,
+    solar_route_geometry::Frame* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (!context || !out || !split_julian_date_is_finite(jd_tt)) return TAIYIN_ERROR_INVALID_ARGUMENT;
@@ -146,49 +153,10 @@ Status route_frame_from_besselian_elements(
     const double mu = e.mu_deg * M_PI / 180.0;
     const double dec = e.d_deg * M_PI / 180.0;
     const double ra = gast - mu;
-    out->J_rad = ra - M_PI / 2.0;
-    out->W_rad = M_PI / 2.0 + dec;
-    out->gst_rad = gast;
+    out->right_ascension_offset_rad = ra - M_PI / 2.0;
+    out->pole_rotation_rad = M_PI / 2.0 + dec;
+    out->gast_rad = gast;
     return TAIYIN_STATUS_OK;
-}
-
-struct RouteJieXSampleContext {
-    const NativeCalcContext* context;
-    const SolarBesselianPolynomial* polynomial;
-    EphemerisEvalDiagnostic* diagnostic;
-    Status status;
-};
-
-bool sample_route_jiex(
-    void* user_data,
-    SplitJulianDate jd_tt,
-    sxwnl::solar::JieXSample* out
-) {
-    RouteJieXSampleContext* sample_context =
-        static_cast<RouteJieXSampleContext*>(user_data);
-    if (!sample_context || !sample_context->context || !sample_context->polynomial || !out) {
-        return false;
-    }
-    SolarBesselianElements elements;
-    sample_context->status = evaluate_solar_besselian_polynomial(
-        sample_context->polynomial,
-        (jd_tt - sample_context->polynomial->t0_jd_tt) * 24.0,
-        &elements);
-    if (sample_context->status != TAIYIN_STATUS_OK) return false;
-    sxwnl::solar::BesselianFrame frame;
-    sample_context->status = route_frame_from_besselian_elements(
-        sample_context->context,
-        jd_tt,
-        elements,
-        &frame,
-        sample_context->diagnostic);
-    if (sample_context->status != TAIYIN_STATUS_OK) return false;
-    out->jd_tt = jd_tt;
-    out->M = {-elements.x, elements.y, elements.zeta};
-    out->B = {elements.l1, elements.l2, std::fabs(elements.l2), 0.0};
-    out->I = frame;
-    out->sun = {};
-    return true;
 }
 
 struct RouteBoundaryPoint {
@@ -235,7 +203,7 @@ RouteBoundaryPoint route_shadow_boundary_point(
     int side,
     double radius,
     double occluder_radius_ratio,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     double earth_axis_ratio
 ) noexcept {
     RouteBoundaryPoint out{};
@@ -258,41 +226,43 @@ RouteBoundaryPoint route_shadow_boundary_point(
         } else {
             z = std::sqrt(z);
         }
-
         if (std::fabs(shadow_z) > 1e-14) {
             x -= (x - shadow_x) * z / shadow_z;
             y -= (y - shadow_y) * z / shadow_z;
         }
-
-        const double surface_velocity_x = velocity_x_per_day
-            - 2.0 * M_PI * (std::sin(frame.W_rad) * z - std::cos(frame.W_rad) * y);
-        const double surface_velocity_y = velocity_y_per_day
-            - 2.0 * M_PI * std::cos(frame.W_rad) * x;
-        const double surface_speed = std::hypot(surface_velocity_x, surface_velocity_y);
-        if (!(surface_speed > 0.0)) return out;
-
-        sin_angle = side_sign * surface_velocity_y / surface_speed;
-        cos_angle = side_sign * surface_velocity_x / surface_speed;
+        const double relative_x = velocity_x_per_day
+            - 2.0 * M_PI * (std::sin(frame.pole_rotation_rad) * z
+                - std::cos(frame.pole_rotation_rad) * y);
+        const double relative_y = velocity_y_per_day
+            - 2.0 * M_PI * std::cos(frame.pole_rotation_rad) * x;
+        const double speed = std::hypot(relative_x, relative_y);
+        if (!(speed > 0.0)) return out;
+        sin_angle = side_sign * relative_y / speed;
+        cos_angle = side_sign * relative_x / speed;
         x = shadow_x - radius * sin_angle;
         y = shadow_y + radius * cos_angle;
     }
-
-    const sxwnl::solar::GeoPoint p = sxwnl::solar::lineEar2(
-        shadow_x - occluder_radius_ratio * sin_angle,
-        shadow_y + occluder_radius_ratio * cos_angle,
-        shadow_z,
-        x,
-        y,
-        0.0,
-        earth_axis_ratio,
-        1.0,
-        frame);
     out.x = x;
     out.y = y;
-    if (!p.valid) return out;
+    const double generator_angle = std::atan2(cos_angle, -sin_angle);
+    SolarConeEarthPoint earth_point;
+    if (!intersect_solar_circular_cone_generator_with_oblate_earth(
+            shadow_x,
+            shadow_y,
+            shadow_z,
+            occluder_radius_ratio,
+            radius,
+            generator_angle,
+            frame.pole_rotation_rad,
+            frame.right_ascension_offset_rad - frame.gast_rad,
+            earth_axis_ratio,
+            &earth_point)
+        || !earth_point.valid) {
+        return out;
+    }
     out.valid = true;
-    out.longitude_rad = p.longitude_rad;
-    out.latitude_rad = p.latitude_rad;
+    out.longitude_rad = earth_point.longitude_rad;
+    out.latitude_rad = earth_point.latitude_rad;
     return out;
 }
 
@@ -355,7 +325,7 @@ Status prepare_route_lunar_limb_geometry(
 
 Status route_lunar_limb_radius_ratio(
     const RouteLunarLimbGeometry& geometry,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     const RouteBoundaryPoint& point,
     bool away_from_sun,
     double* out_radius_ratio
@@ -366,7 +336,7 @@ Status route_lunar_limb_radius_ratio(
     const Vector3 ecef_m = geodetic_to_ecef_m(
         point.longitude_rad, point.latitude_rad, 0.0);
     const Vector3 surface_km = vector3_scale(
-        rotate_z(ecef_m, frame.gst_rad), 1.0 / 1000.0);
+        rotate_z(ecef_m, frame.gast_rad), 1.0 / 1000.0);
     const Vector3 observer_to_moon = vector3_subtract(geometry.moon_km, surface_km);
     const Vector3 observer_to_sun = vector3_subtract(geometry.sun_km, surface_km);
     Vector3 limb_direction;
@@ -398,7 +368,7 @@ enum RouteLimbContourKind {
 
 Status polish_profiled_route_boundary(
     const RouteLunarLimbGeometry& geometry,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     RouteLimbContourKind contour_kind,
     bool away_from_sun,
     RouteBoundaryPoint* point
@@ -414,7 +384,7 @@ Status profiled_route_shadow_boundary_point(
     double smooth_shadow_radius,
     RouteLimbContourKind contour_kind,
     bool away_from_sun,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     double earth_axis_ratio,
     const RouteLunarLimbGeometry& geometry,
     RouteBoundaryPoint* out
@@ -489,10 +459,10 @@ Status apply_profiled_route_curve_point(
     double smooth_shadow_radius,
     RouteLimbContourKind contour_kind,
     bool away_from_sun,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     double earth_axis_ratio,
     const RouteLunarLimbGeometry& geometry,
-    sxwnl::solar::MQieResult* inout
+    solar_route_geometry::LimitSample* inout
 ) noexcept {
     if (!inout) return TAIYIN_ERROR_INVALID_ARGUMENT;
     if (!geometry.enabled || !inout->valid) return TAIYIN_STATUS_OK;
@@ -615,7 +585,7 @@ bool offset_geodetic_point_km(
 
 Status eval_profiled_route_contour_scalar(
     const RouteLunarLimbGeometry& geometry,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     double longitude_deg,
     double latitude_deg,
     RouteLimbContourKind contour_kind,
@@ -638,7 +608,7 @@ Status eval_profiled_route_contour_scalar(
     const Vector3 surface_km = vector3_scale(
         rotate_z(
             geodetic_to_ecef_m(point.longitude_rad, point.latitude_rad, 0.0),
-            frame.gst_rad),
+            frame.gast_rad),
         1.0 / 1000.0);
     const Vector3 observer_to_moon = vector3_subtract(geometry.moon_km, surface_km);
     const Vector3 observer_to_sun = vector3_subtract(geometry.sun_km, surface_km);
@@ -676,7 +646,7 @@ Status eval_profiled_route_contour_scalar(
 
 Status polish_profiled_route_boundary(
     const RouteLunarLimbGeometry& geometry,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     RouteLimbContourKind contour_kind,
     bool away_from_sun,
     RouteBoundaryPoint* point
@@ -1015,11 +985,19 @@ Status compute_route_center_point_tt(
     Status st = compute_solar_besselian_elements_tt_with_corrections(
         context, jd_tt, 0.0, flags, nullptr, &e, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    sxwnl::solar::BesselianFrame frame;
+    solar_route_geometry::Frame frame;
     st = route_frame_from_besselian_elements(context, jd_tt, e, &frame, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    const sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(
-        -e.x, e.y, frame, true);
+    SolarConeEarthPoint center;
+    if (!intersect_solar_shadow_axis_with_oblate_earth(
+            -e.x,
+            e.y,
+            frame.pole_rotation_rad,
+            frame.right_ascension_offset_rad - frame.gast_rad,
+            TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM,
+            &center)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
     if (!center.valid) return TAIYIN_STATUS_OK;
     st = fill_route_path_point_rad(
         context, jd_tt, flags, center.longitude_rad, center.latitude_rad, out, diagnostic);
@@ -1071,7 +1049,7 @@ Status compute_core_route_limits_at_tt(
     Status st = compute_solar_besselian_elements_tt_with_corrections(
         context, jd_tt, 0.0, flags, nullptr, &e, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    sxwnl::solar::BesselianFrame I;
+    solar_route_geometry::Frame I;
     st = route_frame_from_besselian_elements(context, jd_tt, e, &I, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
@@ -1087,8 +1065,19 @@ Status compute_core_route_limits_at_tt(
     const double vx_per_day = ((-after.x) - (-before.x)) / (2.0 * velocity_step_days);
     const double vy_per_day = (after.y - before.y) / (2.0 * velocity_step_days);
     const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
-    const sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(-e.x, e.y, I, true);
-    const double core_radius = center.valid ? e.l2 + e.tan_f2 * center.r2 : e.l2;
+    SolarConeEarthPoint center;
+    if (!intersect_solar_shadow_axis_with_oblate_earth(
+            -e.x,
+            e.y,
+            I.pole_rotation_rad,
+            I.right_ascension_offset_rad - I.gast_rad,
+            earth_axis_ratio,
+            &center)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+    const double core_radius = center.valid
+        ? e.l2 + e.tan_f2 * center.distance_to_parameter_one
+        : e.l2;
     RouteLunarLimbGeometry limb_geometry;
     st = prepare_route_lunar_limb_geometry(
         context, jd_tt, flags, e, &limb_geometry, diagnostic);
@@ -1467,7 +1456,7 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
     Status st = eclipse_tt_to_ut(*context, jd_tt, &out->jd_ut, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    sxwnl::solar::BesselianFrame I;
+    solar_route_geometry::Frame I;
     st = route_frame_from_besselian_elements(context, jd_tt, e, &I, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
@@ -1476,7 +1465,16 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
         context, jd_tt, flags, e, &limb_geometry, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    const sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(-e.x, e.y, I, true);
+    SolarConeEarthPoint center;
+    if (!intersect_solar_shadow_axis_with_oblate_earth(
+            -e.x,
+            e.y,
+            I.pole_rotation_rad,
+            I.right_ascension_offset_rad - I.gast_rad,
+            earth_axis_ratio,
+            &center)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
     if (center.valid) {
         if (compute_metrics) {
             st = fill_route_path_point_rad(
@@ -1557,7 +1555,9 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
     double core_radius = NAN;
     RouteBoundaryPoint north{};
     RouteBoundaryPoint south{};
-    core_radius = center.valid ? e.l2 + e.tan_f2 * center.r2 : e.l2;
+    core_radius = center.valid
+        ? e.l2 + e.tan_f2 * center.distance_to_parameter_one
+        : e.l2;
     st = profiled_route_shadow_boundary_point(
         -e.x, e.y, e.zeta, vx_per_day, vy_per_day, +1, e.l2,
         ROUTE_LIMB_CONTOUR_CORE, core_radius < 0.0,
@@ -1634,7 +1634,7 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
             }
         }
 
-        const RouteSurfaceVelocity sv = route_surface_shadow_velocity(-e.x, e.y, I.W_rad, vx_per_day, vy_per_day);
+        const RouteSurfaceVelocity sv = route_surface_shadow_velocity(-e.x, e.y, I.pole_rotation_rad, vx_per_day, vy_per_day);
         if (sv.speed > 1e-14 && (north.valid || south.valid)) {
             out->duration_seconds = 2.0 * std::fabs(core_radius) / sv.speed * 86400.0;
             if (limb_geometry.enabled) {
@@ -1658,10 +1658,28 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
     return TAIYIN_STATUS_OK;
 }
 
-Status compute_solar_eclipse_route_row_tt(
+Status build_core_route_polygon_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_near_tt,
+    uint64_t flags,
+    size_t route_sample_count,
+    std::vector<SolarEclipseRouteProductPoint>* out_polygon,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+double core_polygon_width_at_track(
+    const SolarEclipseRouteProductPoint* polygon,
+    size_t polygon_count,
+    const SolarEclipsePathPoint& center,
+    double track_east,
+    double track_north
+) noexcept;
+
+static Status compute_solar_eclipse_route_row_tt_impl(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
     uint64_t flags,
+    bool refine_closed_path_width,
     SolarEclipseRouteRow* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -1686,8 +1704,59 @@ Status compute_solar_eclipse_route_row_tt(
     if (st != TAIYIN_STATUS_OK) return st;
     const double vx_per_day = ((-after.x) - (-before.x)) / (2.0 * velocity_step_days);
     const double vy_per_day = (after.y - before.y) / (2.0 * velocity_step_days);
-    return compute_solar_eclipse_route_row_from_elements_tt(
+    st = compute_solar_eclipse_route_row_from_elements_tt(
         context, jd_tt, flags, e, vx_per_day, vy_per_day, true, out, diagnostic);
+    if (st != TAIYIN_STATUS_OK || !refine_closed_path_width
+        || !std::isfinite(out->center_line.latitude_deg)
+        || !(out->sun_altitude_deg < 12.0)) {
+        return st;
+    }
+
+    const double track_step_days = 10.0 / 86400.0;
+    SolarEclipsePathPoint before_center;
+    SolarEclipsePathPoint after_center;
+    st = compute_route_center_point_tt(
+        context, jd_tt - track_step_days, flags, &before_center, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+    st = compute_route_center_point_tt(
+        context, jd_tt + track_step_days, flags, &after_center, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+    double before_east = NAN;
+    double before_north = NAN;
+    double after_east = NAN;
+    double after_north = NAN;
+    if (!local_tangent_coordinates_km(
+            out->center_line, before_center, &before_east, &before_north)
+        || !local_tangent_coordinates_km(
+            out->center_line, after_center, &after_east, &after_north)) {
+        return TAIYIN_STATUS_OK;
+    }
+    double track_east = after_east - before_east;
+    double track_north = after_north - before_north;
+    const double track_norm = std::hypot(track_east, track_north);
+    if (!(track_norm > 1.0e-9)) return TAIYIN_STATUS_OK;
+    track_east /= track_norm;
+    track_north /= track_norm;
+
+    std::vector<SolarEclipseRouteProductPoint> polygon;
+    st = build_core_route_polygon_tt(
+        context, jd_tt, flags, 256, &polygon, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+    const double closed_width = core_polygon_width_at_track(
+        polygon.data(), polygon.size(), out->center_line, track_east, track_north);
+    if (std::isfinite(closed_width)) out->path_width_km = closed_width;
+    return TAIYIN_STATUS_OK;
+}
+
+Status compute_solar_eclipse_route_row_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    uint64_t flags,
+    SolarEclipseRouteRow* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    return compute_solar_eclipse_route_row_tt_impl(
+        context, jd_tt, flags, true, out, diagnostic);
 }
 
 Status compute_solar_eclipse_route_row_ut(
@@ -1705,6 +1774,235 @@ Status compute_solar_eclipse_route_row_ut(
     const Status st = eclipse_ut_to_tt(*context, jd_ut, &jd_tt, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     return compute_solar_eclipse_route_row_tt(context, jd_tt, flags, out, diagnostic);
+}
+
+bool route_row_track_unit(
+    const SolarEclipseRouteRow* rows,
+    size_t count,
+    size_t index,
+    double* out_east,
+    double* out_north
+) noexcept {
+    if (!rows || index >= count || !out_east || !out_north
+        || !std::isfinite(rows[index].center_line.latitude_deg)) {
+        return false;
+    }
+    size_t before = index;
+    while (before > 0) {
+        --before;
+        if (std::isfinite(rows[before].center_line.latitude_deg)) break;
+    }
+    size_t after = index;
+    while (after + 1 < count) {
+        ++after;
+        if (std::isfinite(rows[after].center_line.latitude_deg)) break;
+    }
+    const bool have_before = before < index
+        && std::isfinite(rows[before].center_line.latitude_deg);
+    const bool have_after = after > index
+        && std::isfinite(rows[after].center_line.latitude_deg);
+    if (!have_before && !have_after) return false;
+
+    double before_east = 0.0;
+    double before_north = 0.0;
+    double after_east = 0.0;
+    double after_north = 0.0;
+    if (have_before && !local_tangent_coordinates_km(
+            rows[index].center_line,
+            rows[before].center_line,
+            &before_east,
+            &before_north)) {
+        return false;
+    }
+    if (have_after && !local_tangent_coordinates_km(
+            rows[index].center_line,
+            rows[after].center_line,
+            &after_east,
+            &after_north)) {
+        return false;
+    }
+    double east = have_after ? after_east : -before_east;
+    double north = have_after ? after_north : -before_north;
+    if (have_before && have_after) {
+        east = after_east - before_east;
+        north = after_north - before_north;
+    }
+    const double norm = std::hypot(east, north);
+    if (!(norm > 1.0e-9)) return false;
+    *out_east = east / norm;
+    *out_north = north / norm;
+    return true;
+}
+
+double core_polygon_width_at_track(
+    const SolarEclipseRouteProductPoint* polygon,
+    size_t polygon_count,
+    const SolarEclipsePathPoint& center,
+    double track_east,
+    double track_north
+) noexcept {
+    if (!polygon || polygon_count < 3) return std::nan("");
+    double minimum_projection = std::numeric_limits<double>::infinity();
+    double maximum_projection = -std::numeric_limits<double>::infinity();
+    for (size_t point_index = 0; point_index + 1 < polygon_count; ++point_index) {
+        SolarEclipsePathPoint a;
+        SolarEclipsePathPoint b;
+        init_path_point(&a);
+        init_path_point(&b);
+        a.latitude_deg = polygon[point_index].latitude_deg;
+        a.longitude_deg = polygon[point_index].longitude_deg;
+        b.latitude_deg = polygon[point_index + 1].latitude_deg;
+        b.longitude_deg = polygon[point_index + 1].longitude_deg;
+        double projection = NAN;
+        if (intersect_boundary_curve_with_center_normal(
+                center, a, b, track_east, track_north, &projection)) {
+            minimum_projection = std::min(minimum_projection, projection);
+            maximum_projection = std::max(maximum_projection, projection);
+        }
+    }
+    if (!(minimum_projection < 0.0 && maximum_projection > 0.0)) {
+        return std::nan("");
+    }
+    const double width = maximum_projection - minimum_projection;
+    return std::isfinite(width) && width > 0.0 ? width : std::nan("");
+}
+
+void apply_core_polygon_widths(
+    const SolarEclipseRouteProductPoint* polygon,
+    size_t polygon_count,
+    SolarEclipseRouteRow* rows,
+    size_t row_count
+) noexcept {
+    if (!polygon || polygon_count < 3 || !rows) return;
+    for (size_t row_index = 0; row_index < row_count; ++row_index) {
+        SolarEclipseRouteRow& row = rows[row_index];
+        double track_east = NAN;
+        double track_north = NAN;
+        if (!route_row_track_unit(
+                rows, row_count, row_index, &track_east, &track_north)) {
+            continue;
+        }
+        const double width = core_polygon_width_at_track(
+            polygon, polygon_count, row.center_line, track_east, track_north);
+        if (std::isfinite(width)) row.path_width_km = width;
+    }
+}
+
+Status compute_solar_eclipse_route_product_curve_points_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_near_tt,
+    uint64_t flags,
+    size_t route_sample_count,
+    std::vector<SolarEclipseRouteCurvePoint>* out_points,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+Status build_core_route_polygon_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_near_tt,
+    uint64_t flags,
+    size_t route_sample_count,
+    std::vector<SolarEclipseRouteProductPoint>* out_polygon,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out_polygon) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    out_polygon->clear();
+    std::vector<SolarEclipseRouteCurvePoint> curve_points;
+    Status status = compute_solar_eclipse_route_product_curve_points_tt(
+        context,
+        jd_near_tt,
+        flags,
+        route_sample_count,
+        &curve_points,
+        diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    const size_t core_north_count = count_route_curve_kind(
+        curve_points.data(), curve_points.size(), TAIYIN_SOLAR_ROUTE_CURVE_CORE_NORTH);
+    const size_t core_south_count = count_route_curve_kind(
+        curve_points.data(), curve_points.size(), TAIYIN_SOLAR_ROUTE_CURVE_CORE_SOUTH);
+    const size_t core_begin_horizon_count = count_route_curve_kind(
+        curve_points.data(), curve_points.size(), TAIYIN_SOLAR_ROUTE_CURVE_CORE_BEGIN_HORIZON);
+    const size_t core_end_horizon_count = count_route_curve_kind(
+        curve_points.data(), curve_points.size(), TAIYIN_SOLAR_ROUTE_CURVE_CORE_END_HORIZON);
+    size_t polygon_count = route_polygon_required_count(
+        core_north_count,
+        core_south_count,
+        core_begin_horizon_count,
+        core_end_horizon_count);
+    if (polygon_count < 3) return TAIYIN_STATUS_OK;
+    try {
+        out_polygon->resize(polygon_count);
+    } catch (const std::bad_alloc&) {
+        return TAIYIN_ERROR_OUT_OF_MEMORY;
+    }
+    status = fill_route_polygons(
+        curve_points.data(),
+        curve_points.size(),
+        true,
+        false,
+        false,
+        polygon_count,
+        out_polygon->data(),
+        out_polygon->size(),
+        &polygon_count,
+        nullptr);
+    if (status != TAIYIN_STATUS_OK) {
+        out_polygon->clear();
+        return status;
+    }
+    out_polygon->resize(polygon_count);
+    return TAIYIN_STATUS_OK;
+}
+
+static Status apply_batch_core_polygon_widths(
+    const NativeCalcContext* context,
+    uint64_t flags,
+    SolarEclipseRouteRow* rows,
+    size_t row_count,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!rows || row_count == 0) return TAIYIN_STATUS_OK;
+
+    size_t group_begin = 0;
+    while (group_begin < row_count) {
+        size_t group_end = group_begin + 1;
+        while (group_end < row_count
+            && rows[group_end].jd_tt - rows[group_end - 1].jd_tt
+                <= kRouteBatchEventGapDays) {
+            ++group_end;
+        }
+        const size_t group_count = group_end - group_begin;
+        SolarEclipseRouteRow* const group_rows = rows + group_begin;
+        if (group_count == 1) {
+            SolarEclipseRouteRow refined;
+            const Status status = compute_solar_eclipse_route_row_tt_impl(
+                context,
+                group_rows[0].jd_tt,
+                flags,
+                true,
+                &refined,
+                diagnostic);
+            if (status != TAIYIN_STATUS_OK) return status;
+            // Preserve the public batch grid exactly; the refined row
+            // represents the same TT epoch but may have obtained UT through
+            // a numerical round trip.
+            refined.jd_ut = group_rows[0].jd_ut;
+            group_rows[0] = refined;
+        } else {
+            const SplitJulianDate near_jd_tt =
+                group_rows[group_count / 2].jd_tt;
+            std::vector<SolarEclipseRouteProductPoint> polygon;
+            const Status status = build_core_route_polygon_tt(
+                context, near_jd_tt, flags, 256, &polygon, diagnostic);
+            if (status != TAIYIN_STATUS_OK) return status;
+            if (polygon.size() >= 3) {
+                apply_core_polygon_widths(
+                    polygon.data(), polygon.size(), group_rows, group_count);
+            }
+        }
+        group_begin = group_end;
+    }
+    return TAIYIN_STATUS_OK;
 }
 
 Status compute_solar_eclipse_route_tt(
@@ -1736,8 +2034,8 @@ Status compute_solar_eclipse_route_tt(
     for (;;) {
         const SplitJulianDate sample_jd_tt = std::min(jd, end_jd_tt);
         SolarEclipseRouteRow row;
-        const Status st = compute_solar_eclipse_route_row_tt(
-            context, sample_jd_tt, flags, &row, diagnostic);
+        const Status st = compute_solar_eclipse_route_row_tt_impl(
+            context, sample_jd_tt, flags, false, &row, diagnostic);
         if (st != TAIYIN_STATUS_OK) {
             *out_row_count = count;
             return st;
@@ -1761,6 +2059,12 @@ Status compute_solar_eclipse_route_tt(
         const SplitJulianDate next_jd = jd + step_days;
         jd = next_jd > jd ? next_jd : end_jd_tt;
     }
+    const Status polygon_status = apply_batch_core_polygon_widths(
+        context, flags, out_rows, count, diagnostic);
+    if (polygon_status != TAIYIN_STATUS_OK) {
+        *out_row_count = count;
+        return polygon_status;
+    }
     *out_row_count = count;
     return TAIYIN_STATUS_OK;
 }
@@ -1780,32 +2084,73 @@ Status compute_solar_eclipse_route_ut(
         || !split_julian_date_is_finite(start_jd_ut)
         || !split_julian_date_is_finite(end_jd_ut)
         || !std::isfinite(step_minutes)
-        || !valid_solar_eclipse_route_flags(flags)) {
+        || !valid_solar_eclipse_route_flags(flags)
+        || !(step_minutes > 0.0)
+        || end_jd_ut < start_jd_ut) {
         if (out_row_count) *out_row_count = 0;
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    SplitJulianDate start_jd_tt;
-    SplitJulianDate end_jd_tt;
-    Status st = eclipse_ut_to_tt(*context, start_jd_ut, &start_jd_tt, nullptr, diagnostic);
-    if (st != TAIYIN_STATUS_OK) {
-        if (out_row_count) *out_row_count = 0;
-        return st;
+
+    *out_row_count = 0;
+    const double step_days = step_minutes / 1440.0;
+    size_t count = 0;
+    SplitJulianDate jd_ut = start_jd_ut;
+    for (;;) {
+        const SplitJulianDate sample_jd_ut = std::min(jd_ut, end_jd_ut);
+        SplitJulianDate sample_jd_tt;
+        Status status = eclipse_ut_to_tt(
+            *context, sample_jd_ut, &sample_jd_tt, nullptr, diagnostic);
+        if (status != TAIYIN_STATUS_OK) {
+            *out_row_count = count;
+            return status;
+        }
+
+        SolarEclipseRouteRow row;
+        status = compute_solar_eclipse_route_row_tt_impl(
+            context, sample_jd_tt, flags, false, &row, diagnostic);
+        if (status != TAIYIN_STATUS_OK) {
+            *out_row_count = count;
+            return status;
+        }
+        // Preserve the exact public input-grid epoch. The internal TT row
+        // conversion is only a numerical round trip back to the same UT.
+        row.jd_ut = sample_jd_ut;
+        const bool has_data = std::isfinite(row.center_line.latitude_deg)
+            || std::isfinite(row.penumbral_north_limit.latitude_deg)
+            || std::isfinite(row.penumbral_south_limit.latitude_deg)
+            || std::isfinite(row.north_limit.latitude_deg)
+            || std::isfinite(row.south_limit.latitude_deg);
+        if (has_data) {
+            if (out_rows) {
+                if (count >= max_row_count) {
+                    *out_row_count = count;
+                    return TAIYIN_ERROR_OUT_OF_MEMORY;
+                }
+                out_rows[count] = row;
+            }
+            ++count;
+        }
+        if (!(sample_jd_ut < end_jd_ut)) break;
+        const double remaining_days = end_jd_ut - sample_jd_ut;
+        const double endpoint_snap_days = std::min(
+            step_days * kRouteEndpointSnapRelativeToStep,
+            kRouteEndpointSnapMaximumSeconds / 86400.0);
+        if (remaining_days <= step_days + endpoint_snap_days) {
+            jd_ut = end_jd_ut;
+        } else {
+            const SplitJulianDate next_jd = jd_ut + step_days;
+            jd_ut = next_jd > jd_ut ? next_jd : end_jd_ut;
+        }
     }
-    st = eclipse_ut_to_tt(*context, end_jd_ut, &end_jd_tt, nullptr, diagnostic);
-    if (st != TAIYIN_STATUS_OK) {
-        if (out_row_count) *out_row_count = 0;
-        return st;
+
+    const Status polygon_status = apply_batch_core_polygon_widths(
+        context, flags, out_rows, count, diagnostic);
+    if (polygon_status != TAIYIN_STATUS_OK) {
+        *out_row_count = count;
+        return polygon_status;
     }
-    return compute_solar_eclipse_route_tt(
-        context,
-        start_jd_tt,
-        end_jd_tt,
-        step_minutes,
-        flags,
-        out_rows,
-        max_row_count,
-        out_row_count,
-        diagnostic);
+    *out_row_count = count;
+    return TAIYIN_STATUS_OK;
 }
 
 Status compute_solar_eclipse_route_product_curve_points_tt(
@@ -1995,215 +2340,6 @@ struct RouteCurveBuckets {
     }
 };
 
-Status append_jiex_curve_point(
-    const NativeCalcContext* context,
-    const sxwnl::solar::CurvePoint& source_point,
-    uint32_t curve_kind,
-    std::vector<SolarEclipseRouteCurvePoint>* destination,
-    EphemerisEvalDiagnostic* diagnostic
-) noexcept {
-    if (!context || !destination) return TAIYIN_ERROR_INVALID_ARGUMENT;
-    if (!std::isfinite(source_point.longitude_rad)
-        || !std::isfinite(source_point.latitude_rad)
-        || !split_julian_date_is_finite(source_point.jd_tt)) {
-        return TAIYIN_STATUS_OK;
-    }
-    SolarEclipseRouteCurvePoint point{};
-    point.jd_tt = source_point.jd_tt;
-    const Status status = eclipse_tt_to_ut(
-        *context, point.jd_tt, &point.jd_ut, nullptr, diagnostic);
-    if (status != TAIYIN_STATUS_OK) return status;
-    point.curve_kind = curve_kind;
-    point.latitude_deg = source_point.latitude_rad * 180.0 / M_PI;
-    point.longitude_deg = normalize_degrees(
-        source_point.longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
-    try {
-        destination->push_back(point);
-    } catch (const std::bad_alloc&) {
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
-    }
-    return TAIYIN_STATUS_OK;
-}
-
-Status append_jiex_curve(
-    const NativeCalcContext* context,
-    const sxwnl::solar::CurveList& source,
-    uint32_t curve_kind,
-    std::vector<SolarEclipseRouteCurvePoint>* destination,
-    EphemerisEvalDiagnostic* diagnostic
-) noexcept {
-    if (!context || !destination) return TAIYIN_ERROR_INVALID_ARGUMENT;
-    try {
-        destination->reserve(destination->size() + source.points.size());
-    } catch (const std::bad_alloc&) {
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
-    }
-    for (const sxwnl::solar::CurvePoint& source_point : source.points) {
-        const Status status = append_jiex_curve_point(
-            context, source_point, curve_kind, destination, diagnostic);
-        if (status != TAIYIN_STATUS_OK) return status;
-    }
-    return TAIYIN_STATUS_OK;
-}
-
-Status append_jiex_core_curve(
-    const NativeCalcContext* context,
-    const SolarBesselianPolynomial& polynomial,
-    const sxwnl::solar::CurveList& source,
-    bool source_is_l3,
-    RouteCurveBuckets* buckets,
-    EphemerisEvalDiagnostic* diagnostic
-) noexcept {
-    if (!context || !buckets) return TAIYIN_ERROR_INVALID_ARGUMENT;
-    for (const sxwnl::solar::CurvePoint& source_point : source.points) {
-        if (!split_julian_date_is_finite(source_point.jd_tt)) continue;
-        SolarBesselianElements elements;
-        const Status sample_status = evaluate_solar_besselian_polynomial(
-            &polynomial,
-            (source_point.jd_tt - polynomial.t0_jd_tt) * 24.0,
-            &elements);
-        if (sample_status != TAIYIN_STATUS_OK) return sample_status;
-        sxwnl::solar::BesselianFrame frame;
-        const Status frame_status = route_frame_from_besselian_elements(
-            context, source_point.jd_tt, elements, &frame, diagnostic);
-        if (frame_status != TAIYIN_STATUS_OK) return frame_status;
-        const sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(
-            -elements.x, elements.y, frame, true);
-        const double core_radius = center.valid
-            ? elements.l2 + elements.tan_f2 * center.r2
-            : elements.l2;
-        const bool annular = core_radius < 0.0;
-        const bool north = source_is_l3 ? !annular : annular;
-        const Status append_status = append_jiex_curve_point(
-            context,
-            source_point,
-            north ? TAIYIN_SOLAR_ROUTE_CURVE_CORE_NORTH
-                : TAIYIN_SOLAR_ROUTE_CURVE_CORE_SOUTH,
-            north ? &buckets->core_north : &buckets->core_south,
-            diagnostic);
-        if (append_status != TAIYIN_STATUS_OK) return append_status;
-    }
-    return TAIYIN_STATUS_OK;
-}
-
-Status build_route_curve_buckets_from_jiex(
-    const NativeCalcContext* context,
-    const SolarBesselianPolynomial& polynomial,
-    size_t route_sample_count,
-    RouteCurveBuckets* buckets,
-    EphemerisEvalDiagnostic* diagnostic
-) noexcept {
-    if (!context || !buckets || !valid_solar_route_sample_count(route_sample_count)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
-    }
-
-    const double hours_per_day = 24.0;
-    const double days_scale = hours_per_day * hours_per_day;
-    sxwnl::solar::FeatureResult feature{};
-    feature.jd_suo_tt = polynomial.t0_jd_tt;
-    feature.maximum_jd_tt = polynomial.t0_jd_tt;
-    feature.vx = -polynomial.x[1] * hours_per_day;
-    feature.vy = polynomial.y[1] * hours_per_day;
-    feature.ax = polynomial.degree >= 2
-        ? -2.0 * polynomial.x[2] * days_scale
-        : 0.0;
-    feature.ay = polynomial.degree >= 2
-        ? 2.0 * polynomial.y[2] * days_scale
-        : 0.0;
-    feature.v = std::hypot(feature.vx, feature.vy);
-    feature.xc = -polynomial.center.x;
-    feature.yc = polynomial.center.y;
-    feature.zc = polynomial.center.zeta;
-    feature.D = feature.v > 1.0e-14
-        ? (feature.vx * feature.yc - feature.vy * feature.xc) / feature.v
-        : 0.0;
-    feature.d = std::fabs(feature.D);
-    if (!(feature.v > 1.0e-14) || !std::isfinite(feature.d)) {
-        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
-    }
-
-    sxwnl::solar::BesselianFrame center_frame;
-    Status status = route_frame_from_besselian_elements(
-        context,
-        polynomial.t0_jd_tt,
-        polynomial.center,
-        &center_frame,
-        diagnostic);
-    if (status != TAIYIN_STATUS_OK) return status;
-    feature.I = center_frame;
-
-    const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
-    const double shadow_declination = center_frame.W_rad - M_PI / 2.0;
-    const double projected_axis_ratio = earth_axis_ratio * (
-        1.0
-        + (1.0 - earth_axis_ratio * earth_axis_ratio)
-            * std::sin(shadow_declination) * std::sin(shadow_declination) / 2.0);
-
-    RouteJieXSampleContext sample_context{
-        context,
-        &polynomial,
-        diagnostic,
-        TAIYIN_STATUS_OK,
-    };
-    sxwnl::solar::JieXContext jiex_context{};
-    jiex_context.bba = projected_axis_ratio;
-    jiex_context.k = route_moon_radius_ratio(*context);
-    jiex_context.earth_axis_ratio = earth_axis_ratio;
-    jiex_context.jd_suo_tt = polynomial.t0_jd_tt;
-    jiex_context.user_data = &sample_context;
-    jiex_context.sample = sample_route_jiex;
-    jiex_context.refine_transition_endpoints = true;
-
-    sxwnl::solar::JieXResult curves;
-    try {
-        curves = sxwnl::solar::jieX(jiex_context, feature, route_sample_count);
-    } catch (const std::bad_alloc&) {
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
-    }
-    if (sample_context.status != TAIYIN_STATUS_OK) return sample_context.status;
-
-    struct CurveMapping {
-        const sxwnl::solar::CurveList* source;
-        uint32_t kind;
-        std::vector<SolarEclipseRouteCurvePoint>* destination;
-    };
-    const CurveMapping mappings[] = {
-        {&curves.p1, TAIYIN_SOLAR_ROUTE_CURVE_PARTIAL_BEGIN_A, &buckets->partial_begin_a},
-        {&curves.p2, TAIYIN_SOLAR_ROUTE_CURVE_PARTIAL_BEGIN_B, &buckets->partial_begin_b},
-        {&curves.p3, TAIYIN_SOLAR_ROUTE_CURVE_PARTIAL_END_A, &buckets->partial_end_a},
-        {&curves.p4, TAIYIN_SOLAR_ROUTE_CURVE_PARTIAL_END_B, &buckets->partial_end_b},
-        {&curves.q1, TAIYIN_SOLAR_ROUTE_CURVE_SUNRISE_MAX_A, &buckets->sunrise_max_a},
-        {&curves.q2, TAIYIN_SOLAR_ROUTE_CURVE_SUNRISE_MAX_B, &buckets->sunrise_max_b},
-        {&curves.q3, TAIYIN_SOLAR_ROUTE_CURVE_SUNSET_MAX_A, &buckets->sunset_max_a},
-        {&curves.q4, TAIYIN_SOLAR_ROUTE_CURVE_SUNSET_MAX_B, &buckets->sunset_max_b},
-        {&curves.L0, TAIYIN_SOLAR_ROUTE_CURVE_CENTER_LINE, &buckets->center_line},
-        {&curves.L1, TAIYIN_SOLAR_ROUTE_CURVE_PENUMBRAL_NORTH, &buckets->penumbral_north},
-        {&curves.L2, TAIYIN_SOLAR_ROUTE_CURVE_PENUMBRAL_SOUTH, &buckets->penumbral_south},
-        {&curves.L5, TAIYIN_SOLAR_ROUTE_CURVE_HALF_MAGNITUDE_NORTH,
-            &buckets->half_magnitude_north},
-        {&curves.L6, TAIYIN_SOLAR_ROUTE_CURVE_HALF_MAGNITUDE_SOUTH,
-            &buckets->half_magnitude_south},
-    };
-    for (const CurveMapping& mapping : mappings) {
-        status = append_jiex_curve(
-            context, *mapping.source, mapping.kind, mapping.destination, diagnostic);
-        if (status != TAIYIN_STATUS_OK) return status;
-    }
-    status = append_jiex_core_curve(
-        context, polynomial, curves.L3, true, buckets, diagnostic);
-    if (status != TAIYIN_STATUS_OK) return status;
-    status = append_jiex_core_curve(
-        context, polynomial, curves.L4, false, buckets, diagnostic);
-    if (status != TAIYIN_STATUS_OK) return status;
-    const auto by_epoch = [](const SolarEclipseRouteCurvePoint& a,
-                             const SolarEclipseRouteCurvePoint& b) {
-        return a.jd_tt < b.jd_tt;
-    };
-    std::stable_sort(buckets->core_north.begin(), buckets->core_north.end(), by_epoch);
-    std::stable_sort(buckets->core_south.begin(), buckets->core_south.end(), by_epoch);
-    return TAIYIN_STATUS_OK;
-}
-
 Status append_route_curve_bucket(
     std::vector<SolarEclipseRouteCurvePoint>* out_points,
     const std::vector<SolarEclipseRouteCurvePoint>& bucket
@@ -2271,11 +2407,11 @@ Status flatten_route_curve_buckets(
     return append_route_curve_bucket(out_points, buckets.half_magnitude_sunset_b);
 }
 
-Status append_route_mqie_endpoint(
+Status append_route_limit_endpoint(
     const NativeCalcContext* context,
     SplitJulianDate sample_jd_tt,
     SplitJulianDate endpoint_jd_tt,
-    const sxwnl::solar::MQieResult& endpoint,
+    const solar_route_geometry::LimitSample& endpoint,
     uint32_t curve_kind,
     std::vector<SolarEclipseRouteCurvePoint>* out_points,
     EphemerisEvalDiagnostic* diagnostic
@@ -2301,10 +2437,10 @@ Status append_route_mqie_endpoint(
     return TAIYIN_STATUS_OK;
 }
 
-Status append_route_mqie_point(
+Status append_route_limit_point(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
-    const sxwnl::solar::MQieResult& boundary,
+    const solar_route_geometry::LimitSample& boundary,
     uint32_t curve_kind,
     std::vector<SolarEclipseRouteCurvePoint>* out_points,
     EphemerisEvalDiagnostic* diagnostic
@@ -2336,7 +2472,7 @@ Status append_route_center_endpoint(
     double center_y,
     double vx_per_day,
     double vy_per_day,
-    const sxwnl::solar::BesselianFrame& frame,
+    const solar_route_geometry::Frame& frame,
     double projected_axis_ratio,
     std::vector<SolarEclipseRouteCurvePoint>* out_points,
     EphemerisEvalDiagnostic* diagnostic
@@ -2344,17 +2480,19 @@ Status append_route_center_endpoint(
     if (!context || !out_points || !split_julian_date_is_finite(endpoint_jd_tt)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    const sxwnl::solar::OvlResult crossing = sxwnl::solar::lineOvl(
+    const solar_route_geometry::ProjectedIntersection crossing = solar_route_geometry::intersect_projected_ellipse_line(
         center_x, center_y, vx_per_day, vy_per_day, 1.0, projected_axis_ratio);
     const double speed = std::hypot(vx_per_day, vy_per_day);
-    if (crossing.n == 0 || !(speed > 1.0e-14)) return TAIYIN_STATUS_OK;
+    if (crossing.count == 0 || !(speed > 1.0e-14)) return TAIYIN_STATUS_OK;
 
-    const double distance = entering ? crossing.r2 : crossing.r1;
+    const double distance = entering
+        ? crossing.distance_b
+        : crossing.distance_a;
     const double x = entering ? crossing.bx : crossing.ax;
     const double y = entering ? crossing.by : crossing.ay;
-    sxwnl::solar::BesselianFrame endpoint_frame = frame;
-    endpoint_frame.gst_rad -= distance / speed * 2.0 * M_PI;
-    const sxwnl::solar::GeoPoint endpoint = sxwnl::solar::bse2db(
+    solar_route_geometry::Frame endpoint_frame = frame;
+    endpoint_frame.gast_rad -= distance / speed * 2.0 * M_PI;
+    const solar_route_geometry::SurfacePoint endpoint = solar_route_geometry::fundamental_to_geodetic(
         x, y, 0.0, endpoint_frame, true);
     if (!endpoint.valid) return TAIYIN_STATUS_OK;
 
@@ -2377,7 +2515,7 @@ Status append_route_center_endpoint(
 Status append_route_horizon_point(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
-    const sxwnl::solar::MDianResult& horizon,
+    const solar_route_geometry::HorizonPoint& horizon,
     uint32_t curve_kind,
     std::vector<SolarEclipseRouteCurvePoint>* out_points,
     EphemerisEvalDiagnostic* diagnostic
@@ -2403,7 +2541,7 @@ Status append_route_horizon_point(
 Status append_route_geo_point(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
-    const sxwnl::solar::GeoPoint& geo,
+    const solar_route_geometry::SurfacePoint& geo,
     uint32_t curve_kind,
     std::vector<SolarEclipseRouteCurvePoint>* out_points,
     EphemerisEvalDiagnostic* diagnostic
@@ -2489,12 +2627,12 @@ Status append_core_horizon_curve_tt(
         if (sample_status != TAIYIN_STATUS_OK) return sample_status;
         const double sample_vx_per_day = ((-after.x) - (-before.x)) / (2.0 * probe_step_days);
         const double sample_vy_per_day = (after.y - before.y) / (2.0 * probe_step_days);
-        sxwnl::solar::BesselianFrame frame;
+        solar_route_geometry::Frame frame;
         sample_status = route_frame_from_besselian_elements(
             context, sample_jd_tt, elements, &frame, diagnostic);
         if (sample_status != TAIYIN_STATUS_OK) return sample_status;
         const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
-        const double shadow_declination = frame.W_rad - M_PI / 2.0;
+        const double shadow_declination = frame.pole_rotation_rad - M_PI / 2.0;
         const double projected_axis_ratio = earth_axis_ratio * (
             1.0
             + (1.0 - earth_axis_ratio * earth_axis_ratio)
@@ -2502,7 +2640,7 @@ Status append_core_horizon_curve_tt(
         const double sample_core_radius = std::fabs(elements.l2);
         for (int root = 0; root < 2; ++root) {
             if (root_filter >= 0 && root != root_filter) continue;
-            const sxwnl::solar::MDianResult horizon = sxwnl::solar::mDian(
+            const solar_route_geometry::HorizonPoint horizon = solar_route_geometry::find_horizon_curve_point(
                 -elements.x,
                 elements.y,
                 sample_vx_per_day,
@@ -2714,7 +2852,7 @@ Status append_core_horizon_curve_tt(
         if (!inserted) break;
     }
 
-    // The mDian and mQie solvers describe the same geometric junction but use
+    // The horizon and limit solvers describe the same geometric junction but use
     // independent numerical paths. Snap the exported cap endpoints so the
     // polygon is continuous without adding an artificial connector segment.
     out_points->front().latitude_deg = desired_start.latitude_deg;
@@ -2894,12 +3032,12 @@ Status append_solar_eclipse_route_curve_span_tt(
     }
 
     Status st = TAIYIN_STATUS_OK;
-    sxwnl::solar::MQieState raw_north_state{};
-    sxwnl::solar::MQieState raw_south_state{};
-    sxwnl::solar::MQieState penumbral_north_state{};
-    sxwnl::solar::MQieState penumbral_south_state{};
-    sxwnl::solar::MQieState half_magnitude_north_state{};
-    sxwnl::solar::MQieState half_magnitude_south_state{};
+    solar_route_geometry::LimitState raw_north_state{};
+    solar_route_geometry::LimitState raw_south_state{};
+    solar_route_geometry::LimitState penumbral_north_state{};
+    solar_route_geometry::LimitState penumbral_south_state{};
+    solar_route_geometry::LimitState half_magnitude_north_state{};
+    solar_route_geometry::LimitState half_magnitude_south_state{};
     bool center_was_valid = false;
     int partial_overlap_phase = 0;
     std::vector<SolarEclipseRouteCurvePoint>* max_a = &buckets->sunrise_max_a;
@@ -2954,12 +3092,12 @@ Status append_solar_eclipse_route_curve_span_tt(
         if ((layer_mask & (
                 kRouteCurveLayerCenter | kRouteCurveLayerCore
                 | kRouteCurveLayerPenumbral | kRouteCurveLayerHalfMagnitude)) != 0u) {
-            sxwnl::solar::BesselianFrame frame;
+            solar_route_geometry::Frame frame;
             st = route_frame_from_besselian_elements(
                 context, sample_jd, elements, &frame, diagnostic);
             if (st != TAIYIN_STATUS_OK) return st;
             const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
-            const double shadow_declination = frame.W_rad - M_PI / 2.0;
+            const double shadow_declination = frame.pole_rotation_rad - M_PI / 2.0;
             const double projected_axis_ratio = earth_axis_ratio * (
                 1.0
                 + (1.0 - earth_axis_ratio * earth_axis_ratio)
@@ -2971,21 +3109,21 @@ Status append_solar_eclipse_route_curve_span_tt(
                 if (st != TAIYIN_STATUS_OK) return st;
             }
             if ((layer_mask & kRouteCurveLayerPenumbral) != 0u) {
-                const sxwnl::solar::OvlResult overlap = sxwnl::solar::cirOvl(
+                const solar_route_geometry::ProjectedIntersection overlap = solar_route_geometry::intersect_projected_ellipse_circle(
                     1.0,
                     projected_axis_ratio,
                     elements.l1,
                     -elements.x,
                     elements.y);
                 if ((partial_overlap_phase & 1) != 0) {
-                    if (overlap.n == 0) ++partial_overlap_phase;
-                } else if (overlap.n != 0) {
+                    if (overlap.count == 0) ++partial_overlap_phase;
+                } else if (overlap.count != 0) {
                     ++partial_overlap_phase;
                 }
-                if (overlap.n != 0) {
-                    const sxwnl::solar::GeoPoint point_a = sxwnl::solar::bse2db(
+                if (overlap.count != 0) {
+                    const solar_route_geometry::SurfacePoint point_a = solar_route_geometry::fundamental_to_geodetic(
                         overlap.ax, overlap.ay, 0.0, frame, true);
-                    const sxwnl::solar::GeoPoint point_b = sxwnl::solar::bse2db(
+                    const solar_route_geometry::SurfacePoint point_b = solar_route_geometry::fundamental_to_geodetic(
                         overlap.bx, overlap.by, 0.0, frame, true);
                     if (partial_overlap_phase == 1) {
                         st = append_route_geo_point(
@@ -3024,7 +3162,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     }
                 }
 
-                sxwnl::solar::MDianResult horizon = sxwnl::solar::mDian(
+                solar_route_geometry::HorizonPoint horizon = solar_route_geometry::find_horizon_curve_point(
                     -elements.x,
                     elements.y,
                     vx_per_day,
@@ -3044,7 +3182,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     if (st != TAIYIN_STATUS_OK) return st;
                 }
 
-                horizon = sxwnl::solar::mDian(
+                horizon = solar_route_geometry::find_horizon_curve_point(
                     -elements.x,
                     elements.y,
                     vx_per_day,
@@ -3072,7 +3210,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     }
                 }
 
-                sxwnl::solar::MQieResult north_endpoint = sxwnl::solar::mQie(
+                solar_route_geometry::LimitSample north_endpoint = solar_route_geometry::sample_shadow_limit(
                     -elements.x,
                     elements.y,
                     elements.zeta,
@@ -3085,7 +3223,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     earth_axis_ratio,
                     projected_axis_ratio,
                     &penumbral_north_state);
-                sxwnl::solar::MQieResult south_endpoint = sxwnl::solar::mQie(
+                solar_route_geometry::LimitSample south_endpoint = solar_route_geometry::sample_shadow_limit(
                     -elements.x,
                     elements.y,
                     elements.zeta,
@@ -3128,7 +3266,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     limb_geometry,
                     &south_endpoint);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_endpoint(
+                st = append_route_limit_endpoint(
                     context,
                     sample_jd,
                     sample_jd,
@@ -3137,7 +3275,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->penumbral_north,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_point(
+                st = append_route_limit_point(
                     context,
                     sample_jd,
                     north_endpoint,
@@ -3145,7 +3283,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->penumbral_north,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_endpoint(
+                st = append_route_limit_endpoint(
                     context,
                     sample_jd,
                     sample_jd,
@@ -3154,7 +3292,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->penumbral_south,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_point(
+                st = append_route_limit_point(
                     context,
                     sample_jd,
                     south_endpoint,
@@ -3165,7 +3303,7 @@ Status append_solar_eclipse_route_curve_span_tt(
             }
             if ((layer_mask & kRouteCurveLayerHalfMagnitude) != 0u) {
                 const double half_magnitude_radius = 0.5 * (elements.l1 + elements.l2);
-                sxwnl::solar::MDianResult horizon = sxwnl::solar::mDian(
+                solar_route_geometry::HorizonPoint horizon = solar_route_geometry::find_horizon_curve_point(
                     -elements.x,
                     elements.y,
                     vx_per_day,
@@ -3187,7 +3325,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                         context, sample_jd, horizon, curve_kind, half_max_a, diagnostic);
                     if (st != TAIYIN_STATUS_OK) return st;
                 }
-                horizon = sxwnl::solar::mDian(
+                horizon = solar_route_geometry::find_horizon_curve_point(
                     -elements.x,
                     elements.y,
                     vx_per_day,
@@ -3219,7 +3357,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                         half_max_b = &buckets->half_magnitude_sunset_b;
                     }
                 }
-                sxwnl::solar::MQieResult north_endpoint = sxwnl::solar::mQie(
+                solar_route_geometry::LimitSample north_endpoint = solar_route_geometry::sample_shadow_limit(
                     -elements.x,
                     elements.y,
                     elements.zeta,
@@ -3232,7 +3370,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     earth_axis_ratio,
                     projected_axis_ratio,
                     &half_magnitude_north_state);
-                sxwnl::solar::MQieResult south_endpoint = sxwnl::solar::mQie(
+                solar_route_geometry::LimitSample south_endpoint = solar_route_geometry::sample_shadow_limit(
                     -elements.x,
                     elements.y,
                     elements.zeta,
@@ -3275,7 +3413,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     limb_geometry,
                     &south_endpoint);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_endpoint(
+                st = append_route_limit_endpoint(
                     context,
                     sample_jd,
                     sample_jd,
@@ -3284,7 +3422,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->half_magnitude_north,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_point(
+                st = append_route_limit_point(
                     context,
                     sample_jd,
                     north_endpoint,
@@ -3292,7 +3430,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->half_magnitude_north,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_endpoint(
+                st = append_route_limit_endpoint(
                     context,
                     sample_jd,
                     sample_jd,
@@ -3301,7 +3439,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->half_magnitude_south,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_point(
+                st = append_route_limit_point(
                     context,
                     sample_jd,
                     south_endpoint,
@@ -3311,7 +3449,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                 if (st != TAIYIN_STATUS_OK) return st;
             }
             if ((layer_mask & kRouteCurveLayerCenter) != 0u) {
-                const sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(
+                const solar_route_geometry::SurfacePoint center = solar_route_geometry::shadow_axis_to_geodetic(
                     -elements.x, elements.y, frame, true);
                 if (center.valid != center_was_valid) {
                     st = append_route_center_endpoint(
@@ -3341,7 +3479,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                 }
             }
             if ((layer_mask & kRouteCurveLayerCore) != 0u) {
-                sxwnl::solar::MQieResult north_endpoint = sxwnl::solar::mQie(
+                solar_route_geometry::LimitSample north_endpoint = solar_route_geometry::sample_shadow_limit(
                     -elements.x,
                     elements.y,
                     elements.zeta,
@@ -3354,7 +3492,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     earth_axis_ratio,
                     projected_axis_ratio,
                     &raw_north_state);
-                sxwnl::solar::MQieResult south_endpoint = sxwnl::solar::mQie(
+                solar_route_geometry::LimitSample south_endpoint = solar_route_geometry::sample_shadow_limit(
                     -elements.x,
                     elements.y,
                     elements.zeta,
@@ -3367,10 +3505,12 @@ Status append_solar_eclipse_route_curve_span_tt(
                     earth_axis_ratio,
                     projected_axis_ratio,
                     &raw_south_state);
-                const sxwnl::solar::GeoPoint core_center = sxwnl::solar::bseXY2db(
+                const solar_route_geometry::SurfacePoint core_center = solar_route_geometry::shadow_axis_to_geodetic(
                     -elements.x, elements.y, frame, true);
                 const double core_radius = core_center.valid
-                    ? elements.l2 + elements.tan_f2 * core_center.r2
+                    ? elements.l2
+                        + elements.tan_f2
+                            * core_center.distance_to_fundamental_plane
                     : elements.l2;
                 st = apply_profiled_route_curve_point(
                     -elements.x,
@@ -3405,7 +3545,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                 if (core_radius < 0.0) {
                     std::swap(north_endpoint, south_endpoint);
                 }
-                st = append_route_mqie_endpoint(
+                st = append_route_limit_endpoint(
                     context,
                     sample_jd,
                     sample_jd <= polynomial.t0_jd_tt
@@ -3416,7 +3556,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->core_north,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_point(
+                st = append_route_limit_point(
                     context,
                     sample_jd,
                     north_endpoint,
@@ -3424,7 +3564,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->core_north,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_endpoint(
+                st = append_route_limit_endpoint(
                     context,
                     sample_jd,
                     sample_jd <= polynomial.t0_jd_tt
@@ -3435,7 +3575,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                     &buckets->core_south,
                     diagnostic);
                 if (st != TAIYIN_STATUS_OK) return st;
-                st = append_route_mqie_point(
+                st = append_route_limit_point(
                     context,
                     sample_jd,
                     south_endpoint,
@@ -3452,6 +3592,8 @@ Status append_solar_eclipse_route_curve_span_tt(
             return a.jd_tt < b.jd_tt;
         };
         std::stable_sort(buckets->center_line.begin(), buckets->center_line.end(), by_epoch);
+        std::stable_sort(buckets->core_north.begin(), buckets->core_north.end(), by_epoch);
+        std::stable_sort(buckets->core_south.begin(), buckets->core_south.end(), by_epoch);
     }
     if ((layer_mask & (kRouteCurveLayerPenumbral | kRouteCurveLayerHalfMagnitude)) != 0u) {
         st = stitch_wide_route_boundary(
@@ -3554,46 +3696,31 @@ Status compute_solar_eclipse_route_product_curve_points_tt(
     if (st != TAIYIN_STATUS_OK) return st;
 
     RouteCurveBuckets buckets;
-    if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) != 0u) {
+    st = append_solar_eclipse_route_curve_span_tt(
+        context,
+        polynomial,
+        start,
+        end,
+        flags,
+        kRouteCurveLayerPenumbral | kRouteCurveLayerHalfMagnitude,
+        route_sample_count,
+        invalid_jd(),
+        invalid_jd(),
+        &buckets,
+        diagnostic);
+    if (st == TAIYIN_STATUS_OK && central) {
         st = append_solar_eclipse_route_curve_span_tt(
             context,
             polynomial,
-            start,
-            end,
+            core_start,
+            core_end,
             flags,
-            kRouteCurveLayerPenumbral | kRouteCurveLayerHalfMagnitude,
+            kRouteCurveLayerCenter | kRouteCurveLayerCore,
             route_sample_count,
-            invalid_jd(),
-            invalid_jd(),
+            core_start,
+            core_end,
             &buckets,
             diagnostic);
-        if (st == TAIYIN_STATUS_OK && central) {
-            st = append_solar_eclipse_route_curve_span_tt(
-                context,
-                polynomial,
-                core_start,
-                core_end,
-                flags,
-                kRouteCurveLayerCenter | kRouteCurveLayerCore,
-                route_sample_count,
-                core_start,
-                core_end,
-                &buckets,
-                diagnostic);
-        }
-    } else {
-        st = build_route_curve_buckets_from_jiex(
-            context, polynomial, route_sample_count, &buckets, diagnostic);
-        if (st == TAIYIN_STATUS_OK && central) {
-            st = append_core_horizon_caps_tt(
-                context,
-                polynomial,
-                core_start,
-                core_end,
-                route_sample_count,
-                &buckets,
-                diagnostic);
-        }
     }
     if (st != TAIYIN_STATUS_OK) {
         out_points->clear();
@@ -3673,46 +3800,31 @@ Status compute_solar_eclipse_route_map_curve_points_tt(
     if (st != TAIYIN_STATUS_OK) return st;
 
     RouteCurveBuckets buckets;
-    if ((flags & TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION) != 0u) {
+    st = append_solar_eclipse_route_curve_span_tt(
+        context,
+        polynomial,
+        wide_start,
+        wide_end,
+        flags,
+        kRouteCurveLayerPenumbral | kRouteCurveLayerHalfMagnitude,
+        route_sample_count,
+        invalid_jd(),
+        invalid_jd(),
+        &buckets,
+        diagnostic);
+    if (st == TAIYIN_STATUS_OK && central) {
         st = append_solar_eclipse_route_curve_span_tt(
             context,
             polynomial,
-            wide_start,
-            wide_end,
+            core_start,
+            core_end,
             flags,
-            kRouteCurveLayerPenumbral | kRouteCurveLayerHalfMagnitude,
+            kRouteCurveLayerCenter | kRouteCurveLayerCore,
             route_sample_count,
-            invalid_jd(),
-            invalid_jd(),
+            core_start,
+            core_end,
             &buckets,
             diagnostic);
-        if (st == TAIYIN_STATUS_OK && central) {
-            st = append_solar_eclipse_route_curve_span_tt(
-                context,
-                polynomial,
-                core_start,
-                core_end,
-                flags,
-                kRouteCurveLayerCenter | kRouteCurveLayerCore,
-                route_sample_count,
-                core_start,
-                core_end,
-                &buckets,
-                diagnostic);
-        }
-    } else {
-        st = build_route_curve_buckets_from_jiex(
-            context, polynomial, route_sample_count, &buckets, diagnostic);
-        if (st == TAIYIN_STATUS_OK && central) {
-            st = append_core_horizon_caps_tt(
-                context,
-                polynomial,
-                core_start,
-                core_end,
-                route_sample_count,
-                &buckets,
-                diagnostic);
-        }
     }
     if (st != TAIYIN_STATUS_OK) {
         out_points->clear();

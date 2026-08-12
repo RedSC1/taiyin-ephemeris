@@ -98,7 +98,7 @@ The same four lunar-body entries also have a convenience overload without `targe
 
 `compute_lunar_*_occultation_local_visibility_ut()` does not search again. It takes an existing lunar occultation result, samples local horizontal coordinates at C1/C2/maximum/C3/C4, and returns Moon, target, and Sun altitude/azimuth plus visibility bits. It also requires an observer in the context.
 
-`compute_lunar_*_occultation_where_ut()` also does not search again. It takes an existing lunar occultation event from either a geocentric search or a local/topocentric search; the `where` entry only uses the event kind and maximum-occultation time. It projects the Moon-target center line onto the Earth with sxwnl-style line-Earth geometry. If the center line hits the Earth, the result contains the center-line point, sampled center-line path, outer-contact limit band, and closed polygon. If the center line misses the Earth, the result contains a first-version best-observer point for a noncentral occultation.
+`compute_lunar_*_occultation_where_ut()` also does not search again. It takes an existing lunar occultation event from either a geocentric search or a local/topocentric search; the `where` entry only uses the event kind and maximum-occultation time. It projects the Moon-target center line onto an oblate Earth with Taiyin's analytic line-ellipsoid geometry. If the center line hits the Earth, the result contains the center-line point, sampled center-line path, outer-contact limit band, and closed polygon. If the center line misses the Earth, the result contains a first-version best-observer point for a noncentral occultation.
 
 ## Capability Boundary
 

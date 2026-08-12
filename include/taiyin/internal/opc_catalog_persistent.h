@@ -12,6 +12,10 @@ namespace taiyin {
 namespace internal {
 
 const uint32_t OPC_VERSION = 3;
+// Bump when discovery semantics change even if the packed record schema does
+// not. Cached descriptor sets from older discovery implementations must then
+// be rebuilt from their source files.
+const uint32_t OPC_DISCOVERY_VERSION = 4;
 const uint64_t OPC_FINGERPRINT_EMPTY = 14695981039346656037ULL;
 
 #pragma pack(push, 1)

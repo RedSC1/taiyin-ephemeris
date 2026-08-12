@@ -1,7 +1,7 @@
 # Event Search
 
 Status: Current
-Last reviewed: 2026-07-01
+Last reviewed: 2026-08-07
 Primary header: `include/taiyin/runtime/event_search.h`
 
 Event search is Taiyin runtime's low-level numeric root-solving capability. It only answers "when does this angular condition become true?" It does not directly generate almanacs, solar-term tables, astrology event objects, or visualization results.
@@ -17,7 +17,8 @@ Current public APIs cover:
 - lunar phase, i.e. `Moon - Sun = phase`;
 - exact aspects, i.e. hits against one or more aspect separations;
 - longitude stations, where longitude speed is zero;
-- minimum three-dimensional angular separation between two bodies.
+- minimum three-dimensional angular separation between two bodies;
+- minimum angular separation between a body and a named catalog star.
 
 All these functions use the caller's `NativeCalcContext`. Observer, time model, precession/nutation model, route rule, data-source selection, and ordinary `calc_position_*` behavior therefore stay consistent. Event search does not bypass the context and does not swap in a separate data source.
 
@@ -294,9 +295,40 @@ Minimum-separation entry points:
 ```cpp
 search_minimum_angular_separation_ut(...)
 search_minimum_angular_separation_tt(...)
+search_minimum_body_star_angular_separation_ut(...)
+search_minimum_body_star_angular_separation_tt(...)
 ```
 
 These functions search for the minimum three-dimensional angle between two body direction vectors. This differs from the longitude difference used by `search_body_aspect_*()`: two bodies can share longitude while still being separated in latitude. The API is therefore a low-level primitive for appulses, occultations, transits, and closest-approach workflows; event names, conjunction/orb rules, and display semantics belong in upper layers.
+
+The `body_star` variants pair one solar-system `body_id` with a named star from
+the loaded TSC1/TSF1 catalog. They are intended for historical and observational
+records such as a planet guarding or approaching a named star. The caller must
+load the star catalog first and keeps ownership of `star_key`; the result stores
+the body ID, time, angular separation, first derivative, and solver counters.
+The star's apparent position and velocity contribute to the separation and its
+first derivative. Its unavailable public apparent acceleration is used only as
+a zero-valued Newton curvature contribution: Newton proposals remain bracketed,
+and bisection/value minimization preserve convergence independently of that
+curvature approximation.
+
+`TAIYIN_NATIVE_POSITION_TOPOCENTRIC` is supported for an Earth topocentric
+context. The body and star are both evaluated from the same configured
+topocentric observer; applying the flag to only one side would not represent a
+physical angular separation.
+
+For long historical spans, the built-in semi-analytical route synthesizes a
+Sun-to-SSB state from its nine heliocentric planetary-barycenter states. Named-
+star apparent positions therefore keep the catalog, Earth observer, Sun, and
+stellar direction in one barycentric frame instead of mixing a barycentric
+catalog with a heliocentric observer. This coordinate-origin route is separate
+from caller-selected body approximation. The 1.0 fixed-star and body-star search APIs return
+`TAIYIN_ERROR_UNSUPPORTED` for a non-Earth context observer.
+`TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` remains separate and only
+opts a requested major-planet center into its corresponding barycenter when
+the body route is unavailable. See
+[`examples/tang_833_antares.cpp`](../examples/tang_833_antares.cpp) for a
+runnable historical example.
 
 The current solver uses the same angular-separation kinematics helper as greatest elongation: it first brackets a local minimum with `separation_rate`, then uses `separation_acceleration` to build a guarded Newton candidate. If the candidate is not finite or leaves the bracket, the solver continues with bisection. If no sign-change bracket is found, it falls back to value minimization near the best sampled point.
 
@@ -341,7 +373,7 @@ The first stage locates candidate inferior-conjunction cycles with a Mercury/Ven
 
 Solar-transit search does not treat the caller's `NativeCalcContext::apparent_options.output_frame_id` as candidate-search semantics. Candidate conjunction and the latitude gate use true ecliptic-of-date internally, or mean ecliptic-of-date when `TAIYIN_NATIVE_POSITION_NONUT` is passed. Transit confirmation remains the job of the three-dimensional minimum-separation and contact root solvers.
 
-`tools/validate_solar_transit_seed_de441.py` is an offline DE441 validation tool for the `jd -> k` bootstrap, empirical seed coverage, and conservative mean-`k` fallback window. In the default sampled validation, the worst empirical-seed error against DE441 inferior conjunction roots is about `2.38 day` for Mercury and `0.33 day` for Venus, both inside the production small windows. The tool follows the actual BSP coverage before sampling `k` values so ephemeris-file boundaries are not confused with search failures.
+A private offline DE441 validation workflow checks the `jd -> k` bootstrap, empirical seed coverage, and conservative mean-`k` fallback window. In the default sampled validation, the worst empirical-seed error against DE441 inferior conjunction roots is about `2.38 day` for Mercury and `0.33 day` for Venus, both inside the production small windows. It follows the actual BSP coverage before sampling `k` values so ephemeris-file boundaries are not confused with search failures.
 
 The latitude gate is a necessary-condition filter, not an event confirmation. In other words, `abs(latitude) > 2 deg` means definitely no transit, while `abs(latitude) <= 2 deg` only means the candidate may still transit. Transit confirmation remains the job of the Sun-body three-dimensional minimum separation and contact root solver. The threshold is guarded by DE441 hard-scan regression cases: the tests compare the `k` search against a `k`-independent three-dimensional minimum-separation scan near ancient, mid-range, modern, and future DE441 epochs.
 
@@ -474,15 +506,15 @@ Examples already expressible with current primitive search and suitable for name
 - Retrograde events: search stations, then let the upper layer use speeds before and after the JD to label direct station, retrograde station, retrograde start, or retrograde end.
 - Named aspects: search exact aspects, then let an astrology extension apply orb, name, display, applying/separating rules.
 
-Directions better placed in astronomy/calendar extension layers:
+Current astronomy/calendar extension work builds on the primitives already provided by the runtime:
 
-- multi-day rise/set, meridian transit, day length, and twilight tables;
-- visibility windows for the Sun, Moon, planets, and stars;
-- heliacal rising/setting, first visibility, evening/morning visibility, acronychal/cosmical events, and similar traditional visibility events;
-- planetary phenomena such as phase angle, elongation, illuminated fraction, apparent diameter, and magnitude;
+- multi-day rise/set, meridian-transit, day-length, and twilight tables built from the current visibility APIs;
+- richer solar, lunar, planetary, and fixed-star visibility-window products;
+- heliacal rising/setting, first visibility, evening/morning visibility, acronychal/cosmical events, and similar traditional visibility products;
+- presentation and higher-level use of the current phenomena APIs: phase angle, elongation, illuminated fraction, apparent diameter, and magnitude;
 - Mercury/Venus greatest eastern/western elongations;
-- batch lunar star-catalog scans, mutual planetary occultations, and minimum separation/appulse for Moon-planet conjunctions;
-- Mercury/Venus transits of the Sun;
+- batch lunar star-catalog scans, mutual planetary occultations, and minimum-separation/appulse products for Moon-planet conjunctions;
+- higher-level presentation and table/batch products for the existing Mercury/Venus solar-transit APIs;
 - calendar-oriented local solar/lunar eclipse visibility tables, observer summaries, and batch queries.
 
 Directions better placed in astrology extension layers:
@@ -494,7 +526,7 @@ Directions better placed in astrology extension layers:
 - dignity/debility, lunar mansions, void-of-course Moon, electional rules;
 - Arabic parts, midpoints, Lilith variants, virtual points, and other synthetic chart points.
 
-These extensions can reuse runtime longitude, relative longitude, station, visibility, eclipse, and future occultation capabilities while providing APIs closer to their use cases.
+These extensions can reuse runtime longitude, relative longitude, station, visibility, eclipse, and current occultation APIs while providing APIs closer to their use cases.
 
 ## Implementation Priorities
 
@@ -511,6 +543,6 @@ Future feature priority is guided by the public capability surface already provi
 | P2 | Occultations, transits, and minimum separation | `swe_lun_occult_*`, solar transit/occultation workflows | Guarded Newton/bisection minimum angular separation primitive, Mercury/Venus transits, and first lunar fixed-star / solar-system-body next-search APIs with maximum/begin/end/contact and basic local visibility summaries are available; next strengthen specified-target lunar occultation seed/refine, `where`-style visibility regions, and more oracle coverage. Batch star-catalog scanning is not a SwissEph single-target API parity item and is deferred to a later catalog/almanac layer. |
 | P2 | Nodes, apsides, and orbital quantities | `swe_nod_aps*`, `swe_get_orbital_elements`, `swe_orbit_max_min_true_distance` | Generic osculating elements, physical node/apsis searches, and the optional extension's mean/true lunar node plus Delaunay-mean and osculating lunar apogee are available. Natural/interpolated apogee and school-specific synthetic points remain extension work. |
 | P3 | Heliacal and traditional visibility | `swe_heliacal_ut`, `swe_heliacal_pheno_ut`, `swe_vis_limit_mag`, `swe_heliacal_angle`, `swe_topo_arcus_visionis` | Point-source morning/evening first/last search is available with Belokrylov (2011) and Schaefer (1993) profiles. Next: artificial sky glow, crescent-specific lunar visibility, traditional event aliases, and external behavior oracles. |
-| P3 | House and astrology-event extensions | `swe_houses*`, `swe_house_pos`, `swe_gauquelin_sector` | Implement ASC/MC, house systems, sign/house ingress, returns, transit-to-natal, and Gauquelin sector in an astrology extension. |
+| P3 | House and astrology-event extensions | `swe_houses*`, `swe_house_pos`, `swe_gauquelin_sector` | The astrology extension already provides ASC/MC and typed house systems; next add sign/house ingress, returns, transit-to-natal, Gauquelin sector, and other chart-event products. |
 
 The core ordering principle is to implement reliable observables first, then event wrappers: positions, horizontal coordinates, phenomena, angular separations, and visibility decisions should be stable before greatest elongation, occultation, transit, heliacal events, and astrology events.

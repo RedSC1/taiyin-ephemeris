@@ -257,7 +257,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const CalendarDateTime datetime_ut = { 2024, 1, 1, 12, 0, 0.0 };
+    // CalendarDateTime uses astronomical year numbering: year 0 is 1 BCE,
+    // therefore historical 1046 BCE is represented as year -1045.
+    const CalendarDateTime datetime_ut = { -1045, 1, 20, 6, 30, 0.0 };
     const double jd_ut = julian_day(datetime_ut);
 
     NativeCalcContext context;
@@ -339,7 +341,8 @@ int main(int argc, char** argv) {
     };
 
     std::cout << "Taiyin apparent bare chart\n";
-    std::cout << "Date: 2024-01-01 12:00 UT (simplified UT/UT1 path)\n";
+    std::cout << "Date: 1046 BCE-01-20 06:30 UT"
+              << " (astronomical year -1045, simplified UT/UT1 path)\n";
     std::cout << "Data: " << data_root << "\n\n";
 
     std::cout << "Observer and frame\n";

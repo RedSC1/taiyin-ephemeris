@@ -1183,6 +1183,147 @@ int main() {
             return 1;
         }
         if (expect_close_value(early_row.path_width_km, 280.7, 12.0, "2026 PMO early route path width")) return 1;
+
+        // Route-table widths near central-path emergence/disappearance must
+        // intersect the closed path polygon, including its horizon caps.
+        // Extrapolating only the moving north/south limit curves is singular
+        // here and used to overstate these two rows by roughly 80 km.
+        const SplitJulianDate begin_start = split_jd(tt(2026, 8, 12, 17, 2, 5));
+        const SplitJulianDate begin_end = split_jd(tt(2026, 8, 12, 17, 2, 15));
+        SolarEclipseRouteRow begin_rows[3];
+        size_t begin_count = 0;
+        if (expect_status(
+                compute_solar_eclipse_route_ut(
+                    &ctx,
+                    begin_start,
+                    begin_end,
+                    5.0 / 60.0,
+                    0,
+                    begin_rows,
+                    3,
+                    &begin_count,
+                    &diag),
+                "compute_solar_eclipse_route_ut 2026 PMO begin cap")) {
+            return 1;
+        }
+        if (begin_count != 3
+            || expect_close_value(
+                seconds_between_split_jd(begin_rows[0].jd_ut, begin_rows[1].jd_ut),
+                5.0,
+                1.0e-9,
+                "2026 PMO begin-cap UT step 1")
+            || expect_close_value(
+                seconds_between_split_jd(begin_rows[2].jd_ut, begin_end),
+                0.0,
+                1.0e-9,
+                "2026 PMO begin-cap exact UT endpoint")
+            || expect_close_value(
+                begin_rows[0].path_width_km,
+                280.2,
+                8.0,
+                "2026 PMO begin-cap path width")) {
+            return 1;
+        }
+
+        // A zero-length batch is the batch form of the single-row API and
+        // must receive the same closed-polygon width refinement.
+        SolarEclipseRouteRow begin_single_row;
+        if (expect_status(
+                compute_solar_eclipse_route_row_ut(
+                    &ctx,
+                    begin_start,
+                    0,
+                    &begin_single_row,
+                    &diag),
+                "compute_solar_eclipse_route_row_ut 2026 PMO single row")
+            || expect_status(
+                compute_solar_eclipse_route_ut(
+                    &ctx,
+                    begin_start,
+                    begin_start,
+                    5.0 / 60.0,
+                    0,
+                    begin_rows,
+                    3,
+                    &begin_count,
+                    &diag),
+                "compute_solar_eclipse_route_ut 2026 PMO zero-length batch")) {
+            return 1;
+        }
+        if (begin_count != 1
+            || expect_close_value(
+                begin_rows[0].path_width_km,
+                begin_single_row.path_width_km,
+                1.0e-9,
+                "2026 PMO zero-length batch path width")) {
+            return 1;
+        }
+
+        // A sparse batch may contain rows from separate eclipses.  Each event
+        // must use its own closed path polygon rather than the polygon nearest
+        // the middle row of the entire batch.
+        const SplitJulianDate second_event = split_jd(2461443.2438330743);
+        SolarEclipseRouteRow multi_event_rows[2];
+        size_t multi_event_count = 0;
+        if (expect_status(
+                compute_solar_eclipse_route_ut(
+                    &ctx,
+                    begin_start,
+                    second_event,
+                    (second_event - begin_start) * 1440.0,
+                    0,
+                    multi_event_rows,
+                    2,
+                    &multi_event_count,
+                    &diag),
+                "compute_solar_eclipse_route_ut multi-event batch")) {
+            return 1;
+        }
+        if (multi_event_count != 2
+            || expect_close_value(
+                multi_event_rows[0].path_width_km,
+                begin_single_row.path_width_km,
+                1.0e-9,
+                "multi-event batch first eclipse path width")) {
+            return 1;
+        }
+
+        const SplitJulianDate end_start = split_jd(tt(2026, 8, 12, 18, 30, 5));
+        const SplitJulianDate end_end = split_jd(tt(2026, 8, 12, 18, 30, 15));
+        SolarEclipseRouteRow end_rows[3];
+        size_t end_count = 0;
+        if (expect_status(
+                compute_solar_eclipse_route_ut(
+                    &ctx,
+                    end_start,
+                    end_end,
+                    5.0 / 60.0,
+                    0,
+                    end_rows,
+                    3,
+                    &end_count,
+                    &diag),
+                "compute_solar_eclipse_route_ut 2026 PMO end cap")) {
+            return 1;
+        }
+        if (end_count != 3
+            || expect_close_value(
+                seconds_between_split_jd(end_rows[0].jd_ut, end_rows[1].jd_ut),
+                5.0,
+                1.0e-9,
+                "2026 PMO end-cap UT step 1")
+            || expect_close_value(
+                seconds_between_split_jd(end_rows[2].jd_ut, end_end),
+                0.0,
+                1.0e-9,
+                "2026 PMO end-cap exact UT endpoint")
+            || expect_close_value(
+                end_rows[end_count - 1].path_width_km,
+                300.1,
+                8.0,
+                "2026 PMO end-cap path width")) {
+            return 1;
+        }
     }
 
     // Single-time solar route row at greatest eclipse.
@@ -2188,7 +2329,7 @@ int main() {
         if (expect_close_value(result.duration_seconds, 0.0, 1e-9, "NYC duration")) return 1;
     }
 
-    // Local boundary computation uses the sxwnl rsPL.zbXY/parallax path.
+    // Local boundary computation uses the production shadow/ellipsoid path.
     {
         LocalSolarEclipseBoundary boundary;
         if (expect_status(
@@ -2267,6 +2408,58 @@ int main() {
         if (expect_kind_has(results[2].kind, TAIYIN_ECLIPSE_PARTIAL | TAIYIN_ECLIPSE_NONCENTRAL, "range solar[2] partial")) return 1;
         if (expect_close_days(results[1].maximum_jd_ut, 2460586.281297341, 2.0 / 86400.0, "2024 annular maximum UT")) return 1;
         if (expect_close_days(results[2].maximum_jd_ut, 2460763.949617004, 2.0 / 86400.0, "2025 partial maximum UT")) return 1;
+
+        // A central-only search skips the two partial eclipses in 2025.  The
+        // accepted event must still be fully completed after the early filter.
+        SolarEclipseResultUt central;
+        if (expect_status(
+                search_next_solar_eclipse_ut(
+                    &ctx,
+                    split_jd(jd(2025, 1, 1)),
+                    TAIYIN_ECLIPSE_TOTAL
+                        | TAIYIN_ECLIPSE_ANNULAR
+                        | TAIYIN_ECLIPSE_HYBRID,
+                    flags,
+                    &central,
+                    &diag),
+                "search_next_solar_eclipse_ut central filter")) {
+            return 1;
+        }
+        if (expect_kind_has(central.kind, TAIYIN_ECLIPSE_CENTRAL, "central-filter solar")) return 1;
+        const size_t central_contacts[] = {
+            TAIYIN_SOLAR_ECLIPSE_CONTACT_P1,
+            TAIYIN_SOLAR_ECLIPSE_CONTACT_C1,
+            TAIYIN_SOLAR_ECLIPSE_CONTACT_C4,
+            TAIYIN_SOLAR_ECLIPSE_CONTACT_P4,
+        };
+        for (size_t contact : central_contacts) {
+            if (!split_julian_date_is_finite(central.contact_jd_ut[contact])) {
+                return fail("central-filter solar contacts should be finite");
+            }
+        }
+
+        // Hybrid is known only after the central kind refinement.  A
+        // hybrid-only filter must not reject its preliminary total/annular
+        // classification before that refinement runs.
+        SolarEclipseResultUt hybrid;
+        if (expect_status(
+                search_next_solar_eclipse_ut(
+                    &ctx,
+                    split_jd(jd(2023, 1, 1)),
+                    TAIYIN_ECLIPSE_HYBRID,
+                    flags,
+                    &hybrid,
+                    &diag),
+                "search_next_solar_eclipse_ut hybrid filter")) {
+            return 1;
+        }
+        if (expect_kind_has(hybrid.kind, TAIYIN_ECLIPSE_HYBRID, "hybrid-filter solar")) return 1;
+        if (!split_julian_date_is_finite(
+                hybrid.contact_jd_ut[TAIYIN_SOLAR_ECLIPSE_CONTACT_P1])
+            || !split_julian_date_is_finite(
+                hybrid.contact_jd_ut[TAIYIN_SOLAR_ECLIPSE_CONTACT_P4])) {
+            return fail("hybrid-filter solar contacts should be finite");
+        }
     }
 
     // Local search wrappers must filter by the observer-local eclipse kind, not

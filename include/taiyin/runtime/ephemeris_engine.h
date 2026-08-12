@@ -4,6 +4,7 @@
 #include "taiyin/internal/ephemeris_block.h"
 #include "taiyin/internal/ephemeris_catalog.h"
 #include "taiyin/internal/ephemeris_route_rule.h"
+#include "taiyin/internal/ephemeris_source_priority.h"
 #include "taiyin/internal/ephemeris_segment_cache.h"
 #include "taiyin/internal/route_inflight_map.h"
 #include "taiyin/runtime/body_registry.h"
@@ -119,11 +120,13 @@ public:
     void set_segment_cache(internal::EphemerisSegmentCache* cache) noexcept;
     void set_body_registry(const EphemerisBodyRegistry* registry) noexcept;
     void set_default_route_rules(const internal::EphemerisRouteRuleTable* rules) noexcept;
+    void set_source_priorities(const internal::EphemerisSourcePriorityTable* priorities) noexcept;
 
     const internal::EphemerisBlockCatalog* catalog() const noexcept;
     internal::EphemerisSegmentCache* segment_cache() const noexcept;
     const EphemerisBodyRegistry* body_registry() const noexcept;
     const internal::EphemerisRouteRuleTable* default_route_rules() const noexcept;
+    const internal::EphemerisSourcePriorityTable* source_priorities() const noexcept;
     bool find_descriptor(
         const EphemerisRequest& request,
         internal::EphemerisBlockDescriptor* out
@@ -140,6 +143,19 @@ public:
     ) noexcept;
 
 private:
+    struct RuleSourceUsage {
+        bool used_exact_source;
+        bool used_auxiliary_source;
+
+        RuleSourceUsage() noexcept
+            : used_exact_source(false), used_auxiliary_source(false) {}
+    };
+
+    static void merge_rule_source_usage(
+        RuleSourceUsage* out,
+        const RuleSourceUsage& first,
+        const RuleSourceUsage& second
+    ) noexcept;
     Status eval_direct_state(
         const EphemerisRequest& request,
         EphemerisSelectionResult* selection,
@@ -157,6 +173,7 @@ private:
         const EphemerisRequest& request,
         const internal::EphemerisRouteRule& rule,
         EphemerisResult* out,
+        RuleSourceUsage* usage,
         EphemerisEvalDiagnostic* diagnostic
     ) noexcept;
     Status eval_state_for_rule(
@@ -174,6 +191,7 @@ private:
         const internal::EphemerisRouteRule& rule,
         bool include_descriptor,
         EphemerisResult* out,
+        RuleSourceUsage* usage,
         EphemerisEvalDiagnostic* diagnostic
     ) noexcept;
     Status eval_method_queue_state(
@@ -186,7 +204,6 @@ private:
         const internal::EphemerisBlockDescriptor& source,
         const SplitJulianDate& jd_tdb,
         uint32_t components,
-        bool include_descriptor,
         EphemerisSelectionResult* selection,
         CartesianState* out,
         EphemerisEvalDiagnostic* diagnostic
@@ -195,6 +212,7 @@ private:
     internal::EphemerisBlockCatalog* catalog_;
     internal::EphemerisSegmentCache* segment_cache_;
     const internal::EphemerisRouteRuleTable* default_route_rules_;
+    const internal::EphemerisSourcePriorityTable* source_priorities_;
     const EphemerisBodyRegistry* body_registry_;
     internal::RouteInflightMap inflight_;
 };

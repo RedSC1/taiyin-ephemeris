@@ -1,0 +1,141 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build-preset-${presetName}"
+    },
+    {
+      "name": "release",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "modular-bazi",
+      "displayName": "Modular BaZi (native toolchain)",
+      "description": "Release build with the modular C ABI, Ganzhi, and BaZi enabled.",
+      "inherits": "release",
+      "cacheVariables": {
+        "TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS": "ON",
+        "TAIYIN_BUILD_BAZI_EXTENSION": "ON",
+        "TAIYIN_BUILD_MODULAR_C_API": "ON"
+      }
+    },
+    {
+      "name": "linux-gcc",
+      "displayName": "Linux GCC modular BaZi",
+      "inherits": "modular-bazi",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "linux-clang",
+      "displayName": "Linux Clang modular BaZi",
+      "inherits": "modular-bazi",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "macos-appleclang",
+      "displayName": "macOS AppleClang modular BaZi",
+      "inherits": "modular-bazi"
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows MSVC modular BaZi",
+      "description": "Visual Studio x64 build that verifies the Ganzhi-to-BaZi runtime DLL link.",
+      "inherits": "modular-bazi",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-preset-${presetName}"
+    },
+    {
+      "name": "android-arm64",
+      "displayName": "Android arm64-v8a modular BaZi",
+      "inherits": "modular-bazi",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{ANDROID_NDK}/build/cmake/android.toolchain.cmake",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-24"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "modular-bazi",
+      "configurePreset": "modular-bazi"
+    },
+    {
+      "name": "linux-gcc",
+      "configurePreset": "linux-gcc"
+    },
+    {
+      "name": "linux-clang",
+      "configurePreset": "linux-clang"
+    },
+    {
+      "name": "macos-appleclang",
+      "configurePreset": "macos-appleclang"
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release"
+    },
+    {
+      "name": "android-arm64",
+      "configurePreset": "android-arm64"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "modular-bazi",
+      "configurePreset": "modular-bazi",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-gcc",
+      "configurePreset": "linux-gcc",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-clang",
+      "configurePreset": "linux-clang",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "macos-appleclang",
+      "configurePreset": "macos-appleclang",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

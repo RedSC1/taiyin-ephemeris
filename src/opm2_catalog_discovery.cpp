@@ -26,8 +26,10 @@ bool make_descriptor_from_opm2_file(
     EphemerisFileView bytes;
     Opm2EpheSection ephe;
     Opm2GridSection grid;
+    uint32_t header_source_id = OPM2_SOURCE_UNDEFINED;
     if (!bytes.open_readonly(path)
-        || !parse_opm2_summary(bytes.data(), bytes.size(), &ephe, &grid)) {
+        || !parse_opm2_summary(
+            bytes.data(), bytes.size(), &ephe, &grid, &header_source_id)) {
         return false;
     }
 
@@ -43,7 +45,11 @@ bool make_descriptor_from_opm2_file(
         center_id,
         static_cast<int>(OPM2_METHOD_ID),
         static_cast<int>(block_id));
-    descriptor.source_key = EphemerisBlockKey(OPM2_SOURCE_ID, block_id, OPM2_CONTAINER_VERSION, 0);
+    descriptor.source_key = EphemerisBlockKey(
+        normalize_opm2_source_id(header_source_id),
+        block_id,
+        OPM2_CONTAINER_VERSION,
+        0);
     descriptor.target_id = ephe.target_id;
     descriptor.center_id = center_id;
     descriptor.method_id = static_cast<int>(OPM2_METHOD_ID);

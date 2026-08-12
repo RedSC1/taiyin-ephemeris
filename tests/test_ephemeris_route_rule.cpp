@@ -72,5 +72,17 @@ int main() {
     expect_int((*rules)[0].method_id, 300, "original promoted route restored");
     expect_int((*rules)[0].source_id, 3, "original promoted source restored");
 
+    expect_true(
+        table.upsert_source_method(77, 700, 50, "named primary with auxiliary", true),
+        "insert named source with external SPK auxiliary");
+    rules = &table.rules();
+    bool found_auxiliary_rule = false;
+    for (size_t i = 0; i < rules->size(); ++i) {
+        if ((*rules)[i].source_id == 77 && (*rules)[i].method_id == 700) {
+            found_auxiliary_rule = (*rules)[i].allow_non_de_spk_auxiliary;
+        }
+    }
+    expect_true(found_auxiliary_rule, "auxiliary-SPK flag is retained by route rule");
+
     return 0;
 }

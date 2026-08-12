@@ -28,6 +28,8 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_star_find_magnitude(
 /*
  * The TDB entry points accept a null jd_tt. In that case jd_tdb is also used
  * as the TT epoch, matching the ordinary position C API fallback.
+ * Fixed-star position and observation are Earth-observer-only in the 1.0 API;
+ * calls return TAIYIN_ERROR_UNSUPPORTED for a non-Earth context observer.
  */
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_tdb(
     const taiyin_context* context,

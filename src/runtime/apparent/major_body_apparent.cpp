@@ -1,5 +1,6 @@
 #include "taiyin/runtime/major_body_apparent.h"
 
+#include "runtime/core/native_position_policy.h"
 #include "runtime/core/native_context_checks.h"
 #include "runtime/core/runtime_state_block_adapter.h"
 
@@ -262,7 +263,7 @@ SplitJulianDate resolve_jd_tt(const MajorBodyApparentBatchRequest& request) noex
         : request.jd_tdb;
 }
 
-Status compute_one_body(
+Status compute_one_body_once(
     const RuntimeStateEvalContext& context,
     const MajorBodyApparentBatchRequest& request,
     const ResolvedApparentConfig& config,
@@ -544,6 +545,59 @@ Status compute_one_body(
         diagnostic->center_id = request.observer_id;
         diagnostic->frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
         diagnostic->jd_tdb = request.jd_tdb;
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+Status compute_one_body(
+    const RuntimeStateEvalContext& context,
+    const MajorBodyApparentBatchRequest& request,
+    const ResolvedApparentConfig& config,
+    int body_id,
+    const EphemerisResult& observer,
+    MajorBodyApparentPosition* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    EphemerisEvalDiagnostic strict_diagnostic;
+    const Status strict_status = compute_one_body_once(
+        context,
+        request,
+        config,
+        body_id,
+        observer,
+        out,
+        &strict_diagnostic);
+    if (!native_position_should_try_barycenter_approx(
+            body_id, request.position_flags, strict_status)) {
+        copy_ephemeris_diagnostic(diagnostic, strict_diagnostic);
+        return strict_status;
+    }
+
+    const MajorBodyApparentPosition strict_position = *out;
+    const int approx_body_id = native_position_barycenter_approx_target(body_id);
+    EphemerisEvalDiagnostic approx_diagnostic;
+    const Status approx_status = compute_one_body_once(
+        context,
+        request,
+        config,
+        approx_body_id,
+        observer,
+        out,
+        &approx_diagnostic);
+    if (approx_status != TAIYIN_STATUS_OK) {
+        *out = strict_position;
+        copy_ephemeris_diagnostic(diagnostic, strict_diagnostic);
+        return strict_status;
+    }
+
+    out->body_id = body_id;
+    // Keep the mask selected by the successful barycenter component. The
+    // requested physical NAIF id is intentionally retained in body_id and the
+    // diagnostic, but it does not appear in the barycenter-backed table.
+    out->diagnostic.target_id = body_id;
+    out->diagnostic.component_target_id = approx_body_id;
+    if (diagnostic) {
+        *diagnostic = out->diagnostic;
     }
     return TAIYIN_STATUS_OK;
 }
@@ -960,6 +1014,7 @@ MajorBodyApparentBatchRequest::MajorBodyApparentBatchRequest() noexcept
       center_id(TAIYIN_BODY_SUN),
       body_ids(0),
       body_count(0),
+      position_flags(0u),
       options(0) {}
 
 AstroModelContext get_global_astro_model_context() noexcept {

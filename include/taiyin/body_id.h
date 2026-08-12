@@ -38,9 +38,25 @@ const int TAIYIN_BODY_IO = 501;
 const int TAIYIN_BODY_EUROPA = 502;
 const int TAIYIN_BODY_GANYMEDE = 503;
 const int TAIYIN_BODY_CALLISTO = 504;
+const int TAIYIN_BODY_MIMAS = 601;
+const int TAIYIN_BODY_ENCELADUS = 602;
+const int TAIYIN_BODY_TETHYS = 603;
+const int TAIYIN_BODY_DIONE = 604;
+const int TAIYIN_BODY_RHEA = 605;
 const int TAIYIN_BODY_TITAN = 606;
+const int TAIYIN_BODY_HYPERION = 607;
+const int TAIYIN_BODY_IAPETUS = 608;
+const int TAIYIN_BODY_ARIEL = 701;
+const int TAIYIN_BODY_UMBRIEL = 702;
+const int TAIYIN_BODY_TITANIA = 703;
+const int TAIYIN_BODY_OBERON = 704;
+const int TAIYIN_BODY_MIRANDA = 705;
 const int TAIYIN_BODY_TRITON = 801;
 const int TAIYIN_BODY_CHARON = 901;
+const int TAIYIN_BODY_NIX = 902;
+const int TAIYIN_BODY_HYDRA = 903;
+const int TAIYIN_BODY_KERBEROS = 904;
+const int TAIYIN_BODY_STYX = 905;
 
 // Selected asteroid and minor-body constants mirror the current source
 // descriptor IDs used by Taiyin converters and oracle tests. Do not infer a

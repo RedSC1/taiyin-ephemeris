@@ -3,6 +3,7 @@
 #include "runtime/apparent/builtin_star_position.h"
 
 #include "runtime/core/native_context_checks.h"
+#include "runtime/core/runtime_state_block_adapter.h"
 
 #include "taiyin/angle.h"
 #include "taiyin/apparent_position.h"
@@ -39,17 +40,13 @@ const uint64_t SUPPORTED_STAR_POSITION_FLAGS =
     | TAIYIN_NATIVE_POSITION_ASTROMETRIC
     | TAIYIN_NATIVE_POSITION_NO_ABERR
     | TAIYIN_NATIVE_POSITION_NO_GDEFL
-    | TAIYIN_NATIVE_POSITION_NONUT;
+    | TAIYIN_NATIVE_POSITION_NONUT
+    | TAIYIN_NATIVE_POSITION_TOPOCENTRIC;
 
 const uint64_t SUPPORTED_STAR_OBSERVED_FLAGS =
-    TAIYIN_OBSERVED_SPEED
-    | TAIYIN_OBSERVED_TOPOCENTRIC
+    TAIYIN_OBSERVED_CALCULATION_FLAGS_MASK
     | TAIYIN_OBSERVED_HORIZONTAL
     | TAIYIN_OBSERVED_REFRACTION
-    | TAIYIN_OBSERVED_TRUEPOS
-    | TAIYIN_OBSERVED_ASTROMETRIC
-    | TAIYIN_OBSERVED_NO_ABERR
-    | TAIYIN_OBSERVED_NO_GDEFL
     | TAIYIN_OBSERVED_STRICT_METEOROLOGY;
 
 struct GlobalStarCatalogStore {
@@ -237,6 +234,9 @@ int star_output_frame(const NativeCalcContext& context, uint64_t flags) noexcept
 
 uint32_t observed_flags_from_native_star_flags(uint64_t flags) noexcept {
     uint32_t observed_flags = 0u;
+    if ((flags & TAIYIN_NATIVE_POSITION_TOPOCENTRIC) != 0u) {
+        observed_flags |= TAIYIN_OBSERVED_TOPOCENTRIC;
+    }
     if ((flags & TAIYIN_NATIVE_POSITION_SPEED) != 0u) {
         observed_flags |= TAIYIN_OBSERVED_SPEED;
     }
@@ -336,31 +336,15 @@ Status resolve_ut_to_tdb_tt(
     return TAIYIN_STATUS_OK;
 }
 
-Status eval_ssb_state(
-    int target_id,
-    const SplitJulianDate& jd_tdb,
-    CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
-) noexcept {
-    if (!out || !split_julian_date_is_finite(jd_tdb)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
-    }
-    EphemerisRequest request;
-    request.target_id = target_id;
-    request.center_id = TAIYIN_BODY_SSB;
-    request.frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
-    request.jd_tdb = jd_tdb;
-    EphemerisResult result;
-    const Status status = eval_global_ephemeris_state(request, &result, diagnostic);
-    if (status != TAIYIN_STATUS_OK || !native_cartesian_state_is_finite(result.state)) {
-        set_zero_state(out);
-        return status == TAIYIN_STATUS_OK ? TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED : status;
-    }
-    *out = result.state;
-    return TAIYIN_STATUS_OK;
+bool star_origin_route_unavailable(Status status) noexcept {
+    return status == TAIYIN_EPHEMERIS_ERROR_NO_ROUTE
+        || status == TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP
+        || status == TAIYIN_EPHEMERIS_ERROR_COMPOSITE_MISSING_COMPONENT
+        || status == TAIYIN_EPHEMERIS_ERROR_COMPOSITE_COVERAGE_GAP;
 }
 
-Status eval_relative_state(
+Status eval_context_relative_state(
+    const NativeCalcContext& context,
     int target_id,
     int center_id,
     const SplitJulianDate& jd_tdb,
@@ -370,13 +354,20 @@ Status eval_relative_state(
     if (!out || !split_julian_date_is_finite(jd_tdb)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    EphemerisRequest request;
-    request.target_id = target_id;
-    request.center_id = center_id;
-    request.frame = internal::EphemerisFrame::IcrfJ2000Equatorial;
-    request.jd_tdb = jd_tdb;
+    RuntimeStateEvalContext eval_context;
+    eval_context.route_rule_id = context.route_rule_id;
+    eval_context.route_rules = context.route_rules;
     EphemerisResult result;
-    const Status status = eval_global_ephemeris_state(request, &result, diagnostic);
+    const Status status = eval_runtime_body_state(
+        eval_context,
+        target_id,
+        center_id,
+        jd_tdb,
+        internal::EPHEMERIS_BLOCK_COMPONENT_STATE,
+        context.route_rule_id,
+        context.route_rules,
+        &result,
+        diagnostic);
     if (status != TAIYIN_STATUS_OK || !native_cartesian_state_is_finite(result.state)) {
         set_zero_state(out);
         return status == TAIYIN_STATUS_OK ? TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED : status;
@@ -385,36 +376,97 @@ Status eval_relative_state(
     return TAIYIN_STATUS_OK;
 }
 
-Status eval_earth_ssb_state_for_star(
+struct StarObserverFrame {
+    CartesianState catalog_origin_from_ssb;
+    CartesianState observer_from_origin;
+    CartesianState sun_from_origin;
+
+    StarObserverFrame() noexcept
+        : catalog_origin_from_ssb(),
+          observer_from_origin(),
+          sun_from_origin() {}
+};
+
+Status resolve_exact_star_observer_frame(
+    const NativeCalcContext& context,
+    int origin_id,
     const SplitJulianDate& jd_tdb,
-    CartesianState* out,
+    bool needs_sun,
+    StarObserverFrame* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    Status status = eval_ssb_state(TAIYIN_BODY_EARTH, jd_tdb, out, diagnostic);
-    if (status == TAIYIN_STATUS_OK) {
+    if (!out) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    *out = StarObserverFrame();
+    Status status = eval_context_relative_state(
+        context,
+        context.observer_id,
+        origin_id,
+        jd_tdb,
+        &out->observer_from_origin,
+        diagnostic);
+    if (status != TAIYIN_STATUS_OK) {
+        return status;
+    }
+    status = eval_context_relative_state(
+        context,
+        origin_id,
+        TAIYIN_BODY_SSB,
+        jd_tdb,
+        &out->catalog_origin_from_ssb,
+        diagnostic);
+    if (status != TAIYIN_STATUS_OK) {
+        return status;
+    }
+    if (needs_sun) {
+        status = eval_context_relative_state(
+            context,
+            TAIYIN_BODY_SUN,
+            origin_id,
+            jd_tdb,
+            &out->sun_from_origin,
+            diagnostic);
+        if (status != TAIYIN_STATUS_OK) {
+            return status;
+        }
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+Status resolve_star_observer_frame(
+    const NativeCalcContext& context,
+    const SplitJulianDate& jd_tdb,
+    bool needs_sun,
+    StarObserverFrame* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!out || !split_julian_date_is_finite(jd_tdb)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    Status preferred_status = resolve_exact_star_observer_frame(
+        context, context.center_id, jd_tdb, needs_sun, out, diagnostic);
+    if (preferred_status == TAIYIN_STATUS_OK) {
         return TAIYIN_STATUS_OK;
     }
-
-    CartesianState earth_sun;
-    status = eval_relative_state(TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN, jd_tdb, &earth_sun, diagnostic);
-    if (status != TAIYIN_STATUS_OK) {
-        set_zero_state(out);
-        return status;
+    if (!star_origin_route_unavailable(preferred_status)) {
+        return preferred_status;
     }
 
-    CartesianState sun_ssb;
-    status = eval_ssb_state(TAIYIN_BODY_SUN, jd_tdb, &sun_ssb, diagnostic);
-    if (status != TAIYIN_STATUS_OK) {
-        set_zero_state(out);
-        return status;
+    if (context.center_id != TAIYIN_BODY_SSB) {
+        const Status ssb_status = resolve_exact_star_observer_frame(
+            context, TAIYIN_BODY_SSB, jd_tdb, needs_sun, out, diagnostic);
+        if (ssb_status == TAIYIN_STATUS_OK) {
+            return TAIYIN_STATUS_OK;
+        }
+        if (!star_origin_route_unavailable(ssb_status)) {
+            return ssb_status;
+        }
+        preferred_status = ssb_status;
     }
 
-    out->position_au = vector3_add(sun_ssb.position_au, earth_sun.position_au);
-    out->velocity_au_per_day = vector3_add(sun_ssb.velocity_au_per_day, earth_sun.velocity_au_per_day);
-    out->acceleration_au_per_day2 = vector3_add(
-        sun_ssb.acceleration_au_per_day2,
-        earth_sun.acceleration_au_per_day2);
-    return TAIYIN_STATUS_OK;
+    return preferred_status;
 }
 
 bool calc_star_output_matrices(
@@ -490,6 +542,7 @@ Status build_observed_star_state_from_barycentric(
     const SplitJulianDate& jd_tt,
     const SplitJulianDate& jd_ut,
     uint64_t flags,
+    bool refresh_topocentric_observer,
     CartesianState* out_icrf,
     int* out_runtime_id,
     EphemerisEvalDiagnostic* diagnostic
@@ -497,24 +550,52 @@ Status build_observed_star_state_from_barycentric(
     if (!out_icrf || !out_runtime_id || !native_cartesian_state_is_finite(star_bary)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    if (context.observer_id != TAIYIN_BODY_EARTH) {
+        set_zero_state(out_icrf);
+        set_diagnostic(diagnostic, TAIYIN_ERROR_UNSUPPORTED, runtime_id, jd_tdb);
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
     if (!valid_deflection_model_id(context.apparent_options.deflection_model_id)) {
         set_zero_state(out_icrf);
         set_diagnostic(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, 0, jd_tdb);
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    CartesianState earth_bary;
-    Status status = eval_earth_ssb_state_for_star(jd_tdb, &earth_bary, diagnostic);
+    const bool truepos = (flags & TAIYIN_OBSERVED_TRUEPOS) != 0u;
+    const bool astrometric = (flags & TAIYIN_OBSERVED_ASTROMETRIC) != 0u;
+    const bool needs_deflection = !truepos
+        && !astrometric
+        && (flags & TAIYIN_OBSERVED_NO_GDEFL) == 0u;
+    const bool needs_aberration = !truepos
+        && !astrometric
+        && (flags & TAIYIN_OBSERVED_NO_ABERR) == 0u;
+    StarObserverFrame frame;
+    Status status = resolve_star_observer_frame(
+        context,
+        jd_tdb,
+        needs_deflection || needs_aberration,
+        &frame,
+        diagnostic);
     if (status != TAIYIN_STATUS_OK) {
         set_zero_state(out_icrf);
         set_diagnostic(diagnostic, status, runtime_id, jd_tdb);
         return status;
     }
 
-    CartesianState observer_bary = earth_bary;
+    CartesianState observer_in_catalog_frame;
+    observer_in_catalog_frame.position_au = vector3_add(
+        frame.catalog_origin_from_ssb.position_au,
+        frame.observer_from_origin.position_au);
+    observer_in_catalog_frame.velocity_au_per_day = vector3_add(
+        frame.catalog_origin_from_ssb.velocity_au_per_day,
+        frame.observer_from_origin.velocity_au_per_day);
+    observer_in_catalog_frame.acceleration_au_per_day2 = vector3_add(
+        frame.catalog_origin_from_ssb.acceleration_au_per_day2,
+        frame.observer_from_origin.acceleration_au_per_day2);
     const bool want_topocentric = (flags & TAIYIN_OBSERVED_TOPOCENTRIC) != 0u;
     if (want_topocentric) {
         NativeCalcContext topo_context = context;
-        if (topo_context.fields.has(TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION)
+        if (refresh_topocentric_observer
+            && topo_context.fields.has(TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION)
             && native_observer_location_is_finite(topo_context.observer_location)) {
             status = native_context_set_simple_topocentric_observer(
                 &topo_context,
@@ -533,34 +614,46 @@ Status build_observed_star_state_from_barycentric(
             set_diagnostic(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, runtime_id, jd_tdb);
             return TAIYIN_ERROR_INVALID_ARGUMENT;
         }
-        observer_bary.position_au = vector3_add(observer_bary.position_au, topo_context.apparent_options.observer_offset.position_au);
-        observer_bary.velocity_au_per_day = vector3_add(observer_bary.velocity_au_per_day, topo_context.apparent_options.observer_offset.velocity_au_per_day);
-        observer_bary.acceleration_au_per_day2 = vector3_add(observer_bary.acceleration_au_per_day2, topo_context.apparent_options.observer_offset.acceleration_au_per_day2);
+        observer_in_catalog_frame.position_au = vector3_add(
+            observer_in_catalog_frame.position_au,
+            topo_context.apparent_options.observer_offset.position_au);
+        observer_in_catalog_frame.velocity_au_per_day = vector3_add(
+            observer_in_catalog_frame.velocity_au_per_day,
+            topo_context.apparent_options.observer_offset.velocity_au_per_day);
+        observer_in_catalog_frame.acceleration_au_per_day2 = vector3_add(
+            observer_in_catalog_frame.acceleration_au_per_day2,
+            topo_context.apparent_options.observer_offset.acceleration_au_per_day2);
     }
 
     CartesianState observed;
-    observed.position_au = vector3_subtract(star_bary.position_au, observer_bary.position_au);
-    observed.velocity_au_per_day = vector3_subtract(star_bary.velocity_au_per_day, observer_bary.velocity_au_per_day);
-    observed.acceleration_au_per_day2 = vector3_subtract(star_bary.acceleration_au_per_day2, observer_bary.acceleration_au_per_day2);
+    observed.position_au = vector3_subtract(
+        star_bary.position_au, observer_in_catalog_frame.position_au);
+    observed.velocity_au_per_day = vector3_subtract(
+        star_bary.velocity_au_per_day,
+        observer_in_catalog_frame.velocity_au_per_day);
+    observed.acceleration_au_per_day2 = vector3_subtract(
+        star_bary.acceleration_au_per_day2,
+        observer_in_catalog_frame.acceleration_au_per_day2);
 
-    const bool truepos = (flags & TAIYIN_OBSERVED_TRUEPOS) != 0u;
-    const bool astrometric = (flags & TAIYIN_OBSERVED_ASTROMETRIC) != 0u;
-    const bool needs_deflection = !truepos && !astrometric && (flags & TAIYIN_OBSERVED_NO_GDEFL) == 0u;
-    const bool needs_aberration = !truepos && !astrometric && (flags & TAIYIN_OBSERVED_NO_ABERR) == 0u;
-    CartesianState sun_bary;
-    if (needs_deflection || needs_aberration) {
-        status = eval_ssb_state(TAIYIN_BODY_SUN, jd_tdb, &sun_bary, diagnostic);
-        if (status != TAIYIN_STATUS_OK) {
-            set_zero_state(out_icrf);
-            set_diagnostic(diagnostic, status, runtime_id, jd_tdb);
-            return status;
-        }
-    }
+    CartesianState sun_in_catalog_frame;
+    sun_in_catalog_frame.position_au = vector3_add(
+        frame.catalog_origin_from_ssb.position_au,
+        frame.sun_from_origin.position_au);
+    sun_in_catalog_frame.velocity_au_per_day = vector3_add(
+        frame.catalog_origin_from_ssb.velocity_au_per_day,
+        frame.sun_from_origin.velocity_au_per_day);
+    sun_in_catalog_frame.acceleration_au_per_day2 = vector3_add(
+        frame.catalog_origin_from_ssb.acceleration_au_per_day2,
+        frame.sun_from_origin.acceleration_au_per_day2);
 
     if (needs_deflection) {
         CartesianState deflected = observed;
-        const Vector3 observer_helio_pos = vector3_subtract(observer_bary.position_au, sun_bary.position_au);
-        const Vector3 observer_helio_vel = vector3_subtract(observer_bary.velocity_au_per_day, sun_bary.velocity_au_per_day);
+        const Vector3 observer_helio_pos = vector3_subtract(
+            observer_in_catalog_frame.position_au,
+            sun_in_catalog_frame.position_au);
+        const Vector3 observer_helio_vel = vector3_subtract(
+            observer_in_catalog_frame.velocity_au_per_day,
+            sun_in_catalog_frame.velocity_au_per_day);
         const Vector3 zero = zero_vector();
         if (!apply_gravitational_deflection_from_body_with_model(
                 observed.position_au,
@@ -586,15 +679,19 @@ Status build_observed_star_state_from_barycentric(
 
     if (needs_aberration) {
         CartesianState aberrated = observed;
-        const Vector3 observer_helio_pos = vector3_subtract(observer_bary.position_au, sun_bary.position_au);
-        const Vector3 observer_helio_vel = vector3_subtract(observer_bary.velocity_au_per_day, sun_bary.velocity_au_per_day);
+        const Vector3 observer_helio_pos = vector3_subtract(
+            observer_in_catalog_frame.position_au,
+            sun_in_catalog_frame.position_au);
+        const Vector3 observer_helio_vel = vector3_subtract(
+            observer_in_catalog_frame.velocity_au_per_day,
+            sun_in_catalog_frame.velocity_au_per_day);
         if (!apply_annual_aberration(
                 observed.position_au,
                 observed.velocity_au_per_day,
                 observer_helio_pos,
                 observer_helio_vel,
-                observer_bary.velocity_au_per_day,
-                observer_bary.acceleration_au_per_day2,
+                observer_in_catalog_frame.velocity_au_per_day,
+                observer_in_catalog_frame.acceleration_au_per_day2,
                 TAIYIN_LIGHT_TIME_DAYS_PER_AU,
                 TAIYIN_SOLAR_SCHWARZSCHILD_RADIUS_AU,
                 &aberrated.position_au,
@@ -641,7 +738,7 @@ Status build_observed_star_state(
         return TAIYIN_FILE_ERROR_NOT_FOUND;
     }
     return build_observed_star_state_from_barycentric(
-        context, star_bary, runtime_id, jd_tdb, jd_tt, jd_ut, flags,
+        context, star_bary, runtime_id, jd_tdb, jd_tt, jd_ut, flags, true,
         out_icrf, out_runtime_id, diagnostic);
 }
 
@@ -661,8 +758,11 @@ Status calc_star_position_from_barycentric_tdb(
         || !native_cartesian_state_is_finite(star_bary)) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, runtime_id, jd_tdb);
     }
-    if ((flags & ~SUPPORTED_STAR_POSITION_FLAGS) != 0u
-        || (flags & TAIYIN_NATIVE_POSITION_TOPOCENTRIC) != 0u) {
+    if (context->observer_id != TAIYIN_BODY_EARTH) {
+        return fail_position(
+            out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, runtime_id, jd_tdb);
+    }
+    if ((flags & ~SUPPORTED_STAR_POSITION_FLAGS) != 0u) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, runtime_id, jd_tdb);
     }
 
@@ -671,6 +771,7 @@ Status calc_star_position_from_barycentric_tdb(
     const uint32_t observed_flags = observed_flags_from_native_star_flags(flags);
     const Status state_status = build_observed_star_state_from_barycentric(
         *context, star_bary, runtime_id, jd_tdb, jd_tt, jd_tt, observed_flags,
+        false,
         &state, &resolved_runtime_id, diagnostic);
     if (state_status != TAIYIN_STATUS_OK) {
         return fail_position(out, diagnostic, state_status, resolved_runtime_id, jd_tdb);
@@ -883,6 +984,9 @@ Status calc_star_position_tdb(
     if (!context) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, 0, jd_tdb);
     }
+    if (context->observer_id != TAIYIN_BODY_EARTH) {
+        return fail_position(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, 0, jd_tdb);
+    }
     const SplitJulianDate resolved_jd_tt = split_julian_date_is_finite(jd_tt)
         && jd_tt != SplitJulianDate() ? jd_tt : jd_tdb;
     if (!star_key || star_key[0] == '\0' || !out
@@ -890,8 +994,7 @@ Status calc_star_position_tdb(
         || !split_julian_date_is_finite(resolved_jd_tt)) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, 0, jd_tdb);
     }
-    if ((flags & ~SUPPORTED_STAR_POSITION_FLAGS) != 0u
-        || (flags & TAIYIN_NATIVE_POSITION_TOPOCENTRIC) != 0u) {
+    if ((flags & ~SUPPORTED_STAR_POSITION_FLAGS) != 0u) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, 0, jd_tdb);
     }
 
@@ -1201,6 +1304,15 @@ Status calc_observed_stars_ut(
     }
     if ((flags & ~SUPPORTED_STAR_OBSERVED_FLAGS) != 0u) {
         return fail_observed(out, star_count, diagnostics, TAIYIN_ERROR_UNSUPPORTED, 0, jd_ut);
+    }
+    if (context->observer_id != TAIYIN_BODY_EARTH) {
+        return fail_observed(
+            out,
+            star_count,
+            diagnostics,
+            TAIYIN_ERROR_UNSUPPORTED,
+            0,
+            jd_ut);
     }
 
     const bool want_topocentric = (flags & TAIYIN_OBSERVED_TOPOCENTRIC) != 0u;

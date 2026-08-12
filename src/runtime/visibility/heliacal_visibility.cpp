@@ -37,9 +37,9 @@ constexpr double kSchaeferExtinctionWavelengthMicrometer = 0.55;
 constexpr double kStandardRelativeHumidityPercent = 40.0;
 constexpr double kAstronomicalToOpticalDepth = 0.921034037197618;
 
-uint32_t heliacal_observed_flags(uint64_t flags) noexcept {
+uint64_t heliacal_observed_flags(uint64_t flags) noexcept {
     const uint32_t position_flags = static_cast<uint32_t>(flags);
-    uint32_t observed_flags = TAIYIN_OBSERVED_TOPOCENTRIC | TAIYIN_OBSERVED_HORIZONTAL;
+    uint64_t observed_flags = TAIYIN_OBSERVED_TOPOCENTRIC | TAIYIN_OBSERVED_HORIZONTAL;
     if ((position_flags & TAIYIN_NATIVE_POSITION_TRUEPOS) != 0u) {
         observed_flags |= TAIYIN_OBSERVED_TRUEPOS;
     }

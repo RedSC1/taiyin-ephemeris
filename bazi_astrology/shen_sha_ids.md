@@ -95,17 +95,16 @@ runtime rule language. Each simple rule keeps its smallest natural table:
 - branch-to-branch rules use twelve 12-bit masks;
 - fixed Ganzhi rules use one 60-bit mask;
 - season-dependent Ganzhi rules use four 60-bit masks;
-- formula and compound rules remain explicit Pascal evaluators.
+- formula and compound rules remain explicit C++ evaluators.
 
 `data/shen_sha_simple_rules.json` stores Ganzhi values as `[stem_id, branch_id]`
 pairs. `tools/generate_shen_sha_tables.py` validates stem/branch parity and
 computes the sexagenary index; generated indices are never entered by hand.
 
 `collect_target_shen_sha()` returns an ID-indexed bitset. Storage is supplied by
-the C++ or C caller as `uint64_t* + word_capacity`; Pascal writes that storage
-directly through the runtime-sized helpers in `taiyin_dynamic_bitset.pas`.
-There is no Pascal dynamic array, object, allocator, or second result copy at
-the ABI boundary. A null output with zero capacity is a count-only query.
+the C++ or C caller as `uint64_t* + word_capacity`; the C++ evaluator writes
+that storage directly. There is no dynamic result allocation or second result
+copy at the ABI boundary. A null output with zero capacity is a count-only query.
 
 All IDs `0..65` are implemented. The original entry point intentionally remains
 gender-neutral for callers that only need rules independent of gender.
@@ -119,7 +118,7 @@ space used by the legacy project: 60 year pillars, 12 valid month pillars for
 each year stem, 60 day pillars, and 12 valid hour pillars for each day stem,
 for 518,400 charts per profile. It evaluates all four natal targets and emits
 stable FNV-1a fingerprints for the gender-neutral, male, and female profiles.
-The committed C++ test repeats the same enumeration through the Pascal
+The committed C++ test repeats the same enumeration through the native C++
 evaluator and locks the gender-neutral fingerprint to `f786d8f1fe672575`, the
 male gender-aware fingerprint to `eadbdb6530c916a5`, and the female
 gender-aware fingerprint to `15f9f46ec22459ed`.
@@ -218,7 +217,7 @@ work.
 
 ## Audit notes
 
-Before generating Pascal tables, every entry must receive:
+Before generating C++ tables, every entry must receive:
 
 1. A cited source and edition.
 2. A precise rule statement.

@@ -9,25 +9,7 @@ static int fail(const char* message) {
 
 int main(int argc, char** argv) {
     taiyin_ganzhi value = TAIYIN_GANZHI_INVALID;
-#ifndef TAIYIN_TEST_HAS_GANZHI_CALENDAR_EXTENSION
-    (void)argc;
-    (void)argv;
-    if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_GANZHI_CALENDAR) != 0u
-        || taiyin_ganzhi_make(0, 0, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_ganzhi_advance(0, 0, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_ganzhi_get_month(0, 0, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_ganzhi_get_hour(0, 0, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_ganzhi_calc_day_pillar(NULL, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_ganzhi_get_nayin_element(0, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_ganzhi_get_nayin_id(0, &value) != TAIYIN_ERROR_UNSUPPORTED
-        || taiyin_chinese_calendar_calc_four_pillars_ut(
-               NULL, NULL, NULL, 0, NULL, NULL) != TAIYIN_ERROR_UNSUPPORTED) {
-        return fail("disabled Ganzhi calendar ABI must return UNSUPPORTED");
-    }
-    return 0;
-#else
-    if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_GANZHI_CALENDAR) == 0u
-        || taiyin_ganzhi_make(4, 6, &value) != TAIYIN_STATUS_OK
+    if (taiyin_ganzhi_make(4, 6, &value) != TAIYIN_STATUS_OK
         || value != 0x46u
         || taiyin_ganzhi_advance(value, 1, &value) != TAIYIN_STATUS_OK
         || value != 0x57u
@@ -39,7 +21,7 @@ int main(int argc, char** argv) {
         || value != 0u
         || taiyin_ganzhi_get_nayin_element(0x00u, &value) != TAIYIN_STATUS_OK
         || value != TAIYIN_GANZHI_WUXING_METAL) {
-        return fail("enabled Ganzhi Pascal rules failed");
+        return fail("enabled Ganzhi rules failed");
     }
 
     {
@@ -117,5 +99,4 @@ int main(int argc, char** argv) {
         taiyin_context_destroy(astronomy);
     }
     return 0;
-#endif
 }

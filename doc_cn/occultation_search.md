@@ -98,7 +98,7 @@ Status compute_lunar_body_occultation_where_ut(
 
 `compute_lunar_*_occultation_local_visibility_ut()` 不重新搜索事件。它接收已经算出的月掩结果，在 C1/C2/最大掩/C3/C4 这些时刻采样本地地平坐标，并返回 Moon、target、Sun 的高度/方位和可见性 bit。这个入口同样要求 context 已经设置 observer。
 
-`compute_lunar_*_occultation_where_ut()` 也不重新搜索事件。它接收已经算出的月掩事件；该事件可以来自 geocentric search，也可以来自 local/topocentric search，因为 `where` 入口只使用事件类型和最大掩时刻。它用 sxwnl 风格的直线-地球几何，把 Moon-target 中心线投影到地球表面。中心线命中地球时返回中心线落点、中心线采样路径、外接触边界带和闭合 polygon；中心线没有打到地球时，返回非中心掩的第一版最佳观测点。
+`compute_lunar_*_occultation_where_ut()` 也不重新搜索事件。它接收已经算出的月掩事件；该事件可以来自 geocentric search，也可以来自 local/topocentric search，因为 `where` 入口只使用事件类型和最大掩时刻。它使用 Taiyin 的解析直线—扁地球椭球求交，把 Moon-target 中心线投影到地球表面。中心线命中地球时返回中心线落点、中心线采样路径、外接触边界带和闭合 polygon；中心线没有打到地球时，返回非中心掩的第一版最佳观测点。
 
 ## 能力边界
 

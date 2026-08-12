@@ -15,11 +15,14 @@
 #include <cstdlib>
 #include <cstdio>
 #include <atomic>
+#include <cmath>
 #include <fstream>
+#include <limits>
 #include <new>
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -459,14 +462,105 @@ void test_builtin_semi_analytic_runtime_route() {
     mars_body.center_id = taiyin::TAIYIN_BODY_SUN;
     mars_body.frame = taiyin::internal::IcrfJ2000Equatorial;
     taiyin::split_julian_date_from_double(JD0, &mars_body.jd_tdb);
+    mars_body.route_rule_id = taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC;
 
     EphemerisResult mars_body_result;
-    expect_false(
+    expect_true(
         taiyin::status_ok(taiyin::runtime::eval_global_ephemeris_state(
             mars_body,
             &mars_body_result,
             &diagnostic)),
-        "semi-analytical route does not pretend Mars body id is Mars barycenter");
+        "semi-analytical route composes Mars body from barycenter and satellite offset");
+    expect_int(
+        mars_body_result.descriptor.method_id,
+        taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Mars body composite uses semi-analytical components");
+
+    struct SatelliteFixture {
+        int satellite_id;
+        int primary_id;
+        const char* name;
+    };
+    static const SatelliteFixture satellites[] = {
+        {taiyin::TAIYIN_BODY_PHOBOS, taiyin::TAIYIN_BODY_MARS, "Phobos"},
+        {taiyin::TAIYIN_BODY_DEIMOS, taiyin::TAIYIN_BODY_MARS, "Deimos"},
+        {taiyin::TAIYIN_BODY_IO, taiyin::TAIYIN_BODY_JUPITER, "Io"},
+        {taiyin::TAIYIN_BODY_EUROPA, taiyin::TAIYIN_BODY_JUPITER, "Europa"},
+        {taiyin::TAIYIN_BODY_GANYMEDE, taiyin::TAIYIN_BODY_JUPITER, "Ganymede"},
+        {taiyin::TAIYIN_BODY_CALLISTO, taiyin::TAIYIN_BODY_JUPITER, "Callisto"},
+        {taiyin::TAIYIN_BODY_TRITON, taiyin::TAIYIN_BODY_NEPTUNE, "Triton"},
+        {taiyin::TAIYIN_BODY_CHARON, taiyin::TAIYIN_BODY_PLUTO, "Charon"},
+        {taiyin::TAIYIN_BODY_NIX, taiyin::TAIYIN_BODY_PLUTO, "Nix"},
+        {taiyin::TAIYIN_BODY_HYDRA, taiyin::TAIYIN_BODY_PLUTO, "Hydra"},
+        {taiyin::TAIYIN_BODY_KERBEROS, taiyin::TAIYIN_BODY_PLUTO, "Kerberos"},
+        {taiyin::TAIYIN_BODY_STYX, taiyin::TAIYIN_BODY_PLUTO, "Styx"},
+    };
+    const int centers[] = {
+        0, taiyin::TAIYIN_BODY_SUN, taiyin::TAIYIN_BODY_EARTH,
+    };
+    for (size_t satellite_index = 0;
+         satellite_index < sizeof(satellites) / sizeof(satellites[0]);
+         ++satellite_index) {
+        for (size_t center_index = 0;
+             center_index < sizeof(centers) / sizeof(centers[0]);
+             ++center_index) {
+            EphemerisRequest request;
+            request.target_id = satellites[satellite_index].satellite_id;
+            request.center_id = center_index == 0
+                ? satellites[satellite_index].primary_id
+                : centers[center_index];
+            request.frame = taiyin::internal::IcrfJ2000Equatorial;
+            taiyin::split_julian_date_from_double(JD0, &request.jd_tdb);
+            request.route_rule_id =
+                taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC;
+
+            EphemerisResult result;
+            char label[192];
+            std::snprintf(
+                label,
+                sizeof(label),
+                "semi-analytical route evaluates %s relative to %s",
+                satellites[satellite_index].name,
+                center_index == 0 ? "its physical primary"
+                    : (center_index == 1 ? "the Sun" : "Earth"));
+            expect_true(
+                taiyin::status_ok(taiyin::runtime::eval_global_ephemeris_state(
+                    request,
+                    &result,
+                    &diagnostic)),
+                label);
+        }
+    }
+
+    double phobos_start = 0.0;
+    double phobos_end = 0.0;
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(
+            taiyin::TAIYIN_BODY_PHOBOS,
+            taiyin::TAIYIN_BODY_MARS,
+            &phobos_start,
+            &phobos_end),
+        "read Phobos inclusive semi-analytical coverage");
+    EphemerisRequest endpoint_request;
+    endpoint_request.target_id = taiyin::TAIYIN_BODY_PHOBOS;
+    endpoint_request.center_id = taiyin::TAIYIN_BODY_MARS;
+    endpoint_request.frame = taiyin::internal::IcrfJ2000Equatorial;
+    taiyin::split_julian_date_from_double(phobos_end, &endpoint_request.jd_tdb);
+    endpoint_request.route_rule_id =
+        taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC;
+    EphemerisResult endpoint_result;
+    expect_true(
+        taiyin::status_ok(taiyin::runtime::eval_global_ephemeris_state(
+            endpoint_request, &endpoint_result, &diagnostic)),
+        "inclusive Phobos coverage endpoint remains routable");
+
+    taiyin::split_julian_date_from_double(
+        std::nextafter(phobos_end, std::numeric_limits<double>::infinity()),
+        &endpoint_request.jd_tdb);
+    expect_true(
+        !taiyin::status_ok(taiyin::runtime::eval_global_ephemeris_state(
+            endpoint_request, &endpoint_result, &diagnostic)),
+        "epoch after Phobos coverage endpoint remains rejected");
 }
 
 void test_auto_route_prefers_high_priority_composite_over_low_priority_direct() {
@@ -841,6 +935,23 @@ void test_lunar_limb_model_concurrent_load_read() {
     loader.join();
     stop.store(true);
     reader.join();
+
+    std::vector<taiyin::runtime::RegisteredDataSource> sources;
+    expect_true(
+        taiyin::runtime::get_global_registered_data_sources(&sources),
+        "list registered lunar-limb data");
+    bool found_lunar_limb = false;
+    for (size_t i = 0; i < sources.size(); ++i) {
+        if (sources[i].kind
+                == taiyin::runtime::TAIYIN_RUNTIME_DATA_SOURCE_LUNAR_LIMB
+            && sources[i].source == limb_path) {
+            found_lunar_limb = true;
+            expect_true(
+                sources[i].item_count > 0u,
+                "registered lunar-limb source reports samples");
+        }
+    }
+    expect_true(found_lunar_limb, "registered lunar-limb path is reported");
 }
 
 }  // namespace
@@ -887,6 +998,25 @@ int main() {
             &high_descriptor),
         "add high-priority descriptor");
     expect_size(taiyin::runtime::global_ephemeris_catalog_size(), 2, "two descriptors in global catalog");
+    std::vector<taiyin::runtime::RegisteredDataSource> registered_sources;
+    expect_true(
+        taiyin::runtime::get_global_registered_data_sources(
+            &registered_sources),
+        "list registered in-memory ephemeris sources");
+    expect_size(
+        registered_sources.size(), 1,
+        "two in-memory descriptors aggregate into one source");
+    expect_int(
+        static_cast<int>(registered_sources[0].format),
+        static_cast<int>(taiyin::runtime::TAIYIN_RUNTIME_DATA_FORMAT_CUSTOM),
+        "registered in-memory source format");
+    expect_true(
+        (registered_sources[0].flags
+            & taiyin::runtime::TAIYIN_RUNTIME_DATA_SOURCE_MEMORY) != 0u,
+        "registered in-memory source flag");
+    expect_size(
+        registered_sources[0].item_count, 2,
+        "registered in-memory source descriptor count");
 
     EphemerisBodyRouteEntry route_entry;
     expect_true(
@@ -938,6 +1068,24 @@ int main() {
             &file_descriptor),
         "add file-backed descriptor");
     expect_size(taiyin::runtime::global_ephemeris_catalog_size(), 3, "file descriptor added to global catalog");
+    registered_sources.clear();
+    expect_true(
+        taiyin::runtime::get_global_registered_data_sources(
+            &registered_sources),
+        "list registered file-backed source");
+    expect_size(
+        registered_sources.size(), 2,
+        "file-backed source is listed separately");
+    bool found_registered_file = false;
+    for (size_t i = 0; i < registered_sources.size(); ++i) {
+        if (registered_sources[i].source == file_path) {
+            found_registered_file = true;
+            expect_size(
+                registered_sources[i].item_count, 1,
+                "file-backed source descriptor count");
+        }
+    }
+    expect_true(found_registered_file, "registered file path is reported");
 
     EphemerisBlockDescriptor found_file;
     expect_true(

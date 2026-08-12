@@ -65,6 +65,19 @@ void copy_separation(
     out->evaluation_count = source.evaluation_count;
 }
 
+void copy_body_star_separation(
+    const taiyin::runtime::BodyStarAngularSeparationSearchResult& source,
+    taiyin_body_star_angular_separation_result* out
+) noexcept {
+    out->struct_size = sizeof(*out);
+    taiyin_c_internal::from_cpp_split_jd(source.jd, &out->jd);
+    out->separation_rad = source.separation_rad;
+    out->separation_rate_rad_per_day = source.separation_rate_rad_per_day;
+    out->body_id = source.body_id;
+    out->iteration_count = source.iteration_count;
+    out->evaluation_count = source.evaluation_count;
+}
+
 void copy_transit(
     const taiyin::runtime::SolarTransitSearchResult& source,
     taiyin_solar_transit_result* out
@@ -203,6 +216,14 @@ void TAIYIN_C_CALL taiyin_greatest_elongation_result_init(
 
 void TAIYIN_C_CALL taiyin_angular_separation_result_init(
     taiyin_angular_separation_result* value
+) {
+    if (!value) return;
+    std::memset(value, 0, sizeof(*value));
+    value->struct_size = sizeof(*value);
+}
+
+void TAIYIN_C_CALL taiyin_body_star_angular_separation_result_init(
+    taiyin_body_star_angular_separation_result* value
 ) {
     if (!value) return;
     std::memset(value, 0, sizeof(*value));
@@ -613,6 +634,72 @@ taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_tt(
             max_step_days, flags, &cpp_out,
             diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_separation(cpp_out, out);
+    taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
+    return status;
+}
+
+taiyin_status TAIYIN_C_CALL
+taiyin_search_minimum_body_star_angular_separation_ut(
+    const taiyin_context* context,
+    int32_t body_id,
+    const char* star_key,
+    const taiyin_split_julian_date* start_jd_ut,
+    const taiyin_split_julian_date* end_jd_ut,
+    double max_step_days,
+    uint64_t flags,
+    taiyin_body_star_angular_separation_result* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+) {
+    if (!context || !star_key || star_key[0] == '\0'
+        || !taiyin_c_internal::valid_split_jd(start_jd_ut)
+        || !taiyin_c_internal::valid_split_jd(end_jd_ut)
+        || !taiyin_c_internal::valid_struct(out)
+        || !valid_diagnostic(diagnostic)) {
+        return taiyin_c_internal::invalid_argument();
+    }
+    taiyin::runtime::BodyStarAngularSeparationSearchResult cpp_out;
+    taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    const taiyin::Status status =
+        taiyin::runtime::search_minimum_body_star_angular_separation_ut(
+            &context->value, body_id, star_key,
+            cpp_date(start_jd_ut), cpp_date(end_jd_ut), max_step_days, flags,
+            &cpp_out, diagnostic ? &cpp_diagnostic : 0);
+    if (status == taiyin::TAIYIN_STATUS_OK) {
+        copy_body_star_separation(cpp_out, out);
+    }
+    taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
+    return status;
+}
+
+taiyin_status TAIYIN_C_CALL
+taiyin_search_minimum_body_star_angular_separation_tt(
+    const taiyin_context* context,
+    int32_t body_id,
+    const char* star_key,
+    const taiyin_split_julian_date* start_jd_tt,
+    const taiyin_split_julian_date* end_jd_tt,
+    double max_step_days,
+    uint64_t flags,
+    taiyin_body_star_angular_separation_result* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+) {
+    if (!context || !star_key || star_key[0] == '\0'
+        || !taiyin_c_internal::valid_split_jd(start_jd_tt)
+        || !taiyin_c_internal::valid_split_jd(end_jd_tt)
+        || !taiyin_c_internal::valid_struct(out)
+        || !valid_diagnostic(diagnostic)) {
+        return taiyin_c_internal::invalid_argument();
+    }
+    taiyin::runtime::BodyStarAngularSeparationSearchResult cpp_out;
+    taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    const taiyin::Status status =
+        taiyin::runtime::search_minimum_body_star_angular_separation_tt(
+            &context->value, body_id, star_key,
+            cpp_date(start_jd_tt), cpp_date(end_jd_tt), max_step_days, flags,
+            &cpp_out, diagnostic ? &cpp_diagnostic : 0);
+    if (status == taiyin::TAIYIN_STATUS_OK) {
+        copy_body_star_separation(cpp_out, out);
+    }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
     return status;
 }

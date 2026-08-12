@@ -30,6 +30,10 @@ enum ChineseCalendarMonthName {
     TAIYIN_CHINESE_MONTH_NAME_LATER_NINE = 2,
     TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE = 3,
     TAIYIN_CHINESE_MONTH_NAME_ALT_ONE = 4,
+    // The later of two months that have the same written numeric name in one
+    // historical lunar year. Render it using `month`; this value distinguishes
+    // identity for bidirectional conversion rather than changing the label.
+    TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME = 5,
 };
 
 struct ChineseCalendarConfig {
@@ -144,7 +148,7 @@ Status calcY(
 ) noexcept;
 
 // Calculate one term directly without materializing a calendar year. The
-// term_index_from_vernal_equinox follows the established sxwnl convention:
+// term_index_from_vernal_equinox uses a spring-equinox seasonal cycle:
 // 0 is the spring equinox and 18 is the winter solstice in civil_year;
 // 19 through 23 are Xiaohan through Jingzhe earlier in the same civil year.
 // For remote proleptic years this index selects the seasonal crossing; it does

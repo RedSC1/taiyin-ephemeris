@@ -1,7 +1,7 @@
 #ifndef TAIYIN_RUNTIME_SXWNL_OCCULTATION_EXT_H
 #define TAIYIN_RUNTIME_SXWNL_OCCULTATION_EXT_H
 
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
+#include "../eclipse/solar_eclipse_sxwnl.h"
 
 namespace taiyin {
 namespace runtime {

@@ -1,7 +1,7 @@
 #include "taiyin/runtime/eclipse_search.h"
 
 #include "runtime/eclipse/eclipse_time.h"
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
+#include "runtime/eclipse/solar_route_geometry.h"
 #include "runtime/apparent/fast_apparent.h"
 
 #include "taiyin/body_id.h"
@@ -44,9 +44,9 @@ constexpr double kAuKm = 149597870.7;
 constexpr double kEarthEquatorialRadiusKm = TAIYIN_WGS84_A_KM;
 constexpr double kSunRadiusKm = 695700.0;
 constexpr double kMoonAlmanacRadiusRatio = 0.2725076;
-constexpr double kSxwnlMoonPenumbralRadiusRatio = 0.2725076;
-constexpr double kSxwnlMoonUmbralRadiusRatio = 0.2722810;
-constexpr double kSxwnlSunRadiusRatio = 109.1222;
+constexpr double kPenumbralMoonRadiusRatio = 0.2725076;
+constexpr double kUmbralMoonRadiusRatio = 0.2722810;
+constexpr double kSunEarthRadiusRatio = 109.1222;
 
 SplitJulianDate invalid_jd() noexcept {
     return SplitJulianDate(0, std::numeric_limits<double>::quiet_NaN());
@@ -76,11 +76,11 @@ uint32_t eclipse_position_flags(uint32_t base_flags, uint64_t flags) noexcept {
     return base_flags;
 }
 
-double norm3_local(const sxwnl::solar::Vec3& v) noexcept {
+double norm3_local(const Vector3& v) noexcept {
     return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
-sxwnl::solar::Vec3 xyz_to_llr_km_local(const sxwnl::solar::Vec3& v) noexcept {
+Vector3 xyz_to_llr_km_local(const Vector3& v) noexcept {
     return {std::atan2(v.y, v.x), std::atan2(v.z, std::hypot(v.x, v.y)), norm3_local(v)};
 }
 
@@ -88,7 +88,7 @@ Status body_equatorial_llr_km_local(
     const NativeCalcContext* context,
     int body_id,
     SplitJulianDate jd_tt,
-    sxwnl::solar::Vec3* out,
+    Vector3* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     const uint32_t position_flags = TAIYIN_NATIVE_POSITION_XYZ
@@ -105,22 +105,22 @@ Status body_equatorial_llr_km_local(
     return TAIYIN_STATUS_OK;
 }
 
-Status sxwnl_bse_local(
+Status compute_local_shadow_frame(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
-    sxwnl::solar::BesselianFrame* out,
+    solar_route_geometry::Frame* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    sxwnl::solar::Vec3 sun;
-    sxwnl::solar::Vec3 moon;
+    Vector3 sun;
+    Vector3 moon;
     Status st = body_equatorial_llr_km_local(context, TAIYIN_BODY_SUN, jd_tt, &sun, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     st = body_equatorial_llr_km_local(context, TAIYIN_BODY_MOON, jd_tt, &moon, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    const sxwnl::solar::Vec3 s_xyz = sxwnl::solar::llr_to_xyz(sun.x, sun.y, sun.z);
-    const sxwnl::solar::Vec3 m_xyz = sxwnl::solar::llr_to_xyz(moon.x, moon.y, moon.z);
-    const sxwnl::solar::Vec3 axis = xyz_to_llr_km_local({s_xyz.x - m_xyz.x, s_xyz.y - m_xyz.y, s_xyz.z - m_xyz.z});
+    const Vector3 s_xyz = spherical_to_cartesian(sun.x, sun.y, sun.z);
+    const Vector3 m_xyz = spherical_to_cartesian(moon.x, moon.y, moon.z);
+    const Vector3 axis = xyz_to_llr_km_local({s_xyz.x - m_xyz.x, s_xyz.y - m_xyz.y, s_xyz.z - m_xyz.z});
 
     SplitJulianDate jd_ut;
     Status time_status = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
@@ -135,28 +135,28 @@ Status sxwnl_bse_local(
         return TAIYIN_ERROR_UNSUPPORTED;
     }
 
-    out->J_rad = M_PI / 2.0 + axis.x;
-    out->W_rad = M_PI / 2.0 - axis.y;
-    out->gst_rad = gast;
+    out->right_ascension_offset_rad = M_PI / 2.0 + axis.x;
+    out->pole_rotation_rad = M_PI / 2.0 - axis.y;
+    out->gast_rad = gast;
     return TAIYIN_STATUS_OK;
 }
 
-Status sxwnl_bseM_local(
+Status compute_local_shadow_axis(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
-    sxwnl::solar::Vec3* out,
+    Vector3* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    sxwnl::solar::Vec3 moon;
-    sxwnl::solar::BesselianFrame I;
+    Vector3 moon;
+    solar_route_geometry::Frame I;
     Status st = body_equatorial_llr_km_local(context, TAIYIN_BODY_MOON, jd_tt, &moon, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    st = sxwnl_bse_local(context, jd_tt, &I, diagnostic);
+    st = compute_local_shadow_frame(context, jd_tt, &I, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    sxwnl::solar::Vec3 r = {moon.x - I.J_rad, moon.y, moon.z};
-    r = sxwnl::solar::llrConv(r, -I.W_rad);
-    *out = sxwnl::solar::llr_to_xyz(r.x, r.y, r.z);
+    Vector3 r = {moon.x - I.right_ascension_offset_rad, moon.y, moon.z};
+    r = solar_route_geometry::rotate_spherical_x(r, -I.pole_rotation_rad);
+    *out = spherical_to_cartesian(r.x, r.y, r.z);
     out->x /= TAIYIN_WGS84_A_KM;
     out->y /= TAIYIN_WGS84_A_KM;
     out->z /= TAIYIN_WGS84_A_KM;
@@ -492,7 +492,7 @@ double solar_magnitude(double separation_deg, double sun_radius_deg, double moon
     return (sun_radius_deg + moon_radius_deg - separation_deg) / (2.0 * sun_radius_deg);
 }
 
-double sxwnl_local_magnitude(double separation_deg, double sun_radius_deg, double moon_radius_deg) noexcept {
+double local_disc_overlap_magnitude(double separation_deg, double sun_radius_deg, double moon_radius_deg) noexcept {
     return (moon_radius_deg + sun_radius_deg - separation_deg) / (2.0 * sun_radius_deg);
 }
 
@@ -643,7 +643,7 @@ Status eval_local_xy_state(
         &alt, &az, &sra, &sdec, &mra, &mdec, diagnostic);
 }
 
-Status eval_local_sxwnl_magnitude_from_xy(
+Status eval_local_magnitude_from_xy(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
     uint64_t flags,
@@ -659,11 +659,11 @@ Status eval_local_sxwnl_magnitude_from_xy(
         context, jd_tt, flags, corrections, longitude_rad, latitude_rad, height_m,
         false, &separation, &sr, &mr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    *out_magnitude = sxwnl_local_magnitude(separation, sr, mr);
+    *out_magnitude = local_disc_overlap_magnitude(separation, sr, mr);
     return TAIYIN_STATUS_OK;
 }
 
-Status refine_local_sxwnl_magnitude_maximum(
+Status refine_local_magnitude_maximum(
     const NativeCalcContext* context,
     SplitJulianDate* jd_tt,
     uint64_t flags,
@@ -682,13 +682,13 @@ Status refine_local_sxwnl_magnitude_maximum(
     if (iterations <= 0) iterations = 8;
     for (int i = 0; i < iterations; ++i) {
         double fm, f0, fp;
-        Status st = eval_local_sxwnl_magnitude_from_xy(
+        Status st = eval_local_magnitude_from_xy(
             context, t - step, flags, longitude_rad, latitude_rad, height_m, corrections, &fm, diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
-        st = eval_local_sxwnl_magnitude_from_xy(
+        st = eval_local_magnitude_from_xy(
             context, t, flags, longitude_rad, latitude_rad, height_m, corrections, &f0, diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
-        st = eval_local_sxwnl_magnitude_from_xy(
+        st = eval_local_magnitude_from_xy(
             context, t + step, flags, longitude_rad, latitude_rad, height_m, corrections, &fp, diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
 
@@ -727,7 +727,7 @@ struct LocalSolarProbeTable {
 };
 
 double local_probe_sample_magnitude(const LocalSolarProbeSample& s) noexcept {
-    return sxwnl_local_magnitude(
+    return local_disc_overlap_magnitude(
         std::hypot(s.x_deg, s.y_deg),
         s.sun_radius_deg,
         s.moon_radius_deg);
@@ -1673,7 +1673,7 @@ Status solve_local_solar_eclipse_at_tt_with_besselian_seed(
     }
     if (correction_status != TAIYIN_STATUS_OK) return correction_status;
 
-    Status refine_status = refine_local_sxwnl_magnitude_maximum(
+    Status refine_status = refine_local_magnitude_maximum(
         context, &best_jd, flags, lon_rad, lat_rad, height_m,
         active_corrections, 1.0 / 96.0, 10, diagnostic);
     if (refine_status != TAIYIN_STATUS_OK) return refine_status;
@@ -1978,7 +1978,7 @@ struct LocalXYState {
     double sun_dist;
 };
 
-Status eval_local_rspl_xy(
+Status eval_local_shadow_xy(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
     double longitude_rad,
@@ -2113,20 +2113,20 @@ Status compute_local_solar_eclipse_boundary_tt(
     Status st = compute_cone_vertices(context, jd_tt, &umbra_vertex, &penumbra_vertex, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    sxwnl::solar::BesselianFrame I;
-    sxwnl::solar::Vec3 M;
-    st = sxwnl_bse_local(context, jd_tt, &I, diagnostic);
+    solar_route_geometry::Frame I;
+    Vector3 M;
+    st = compute_local_shadow_frame(context, jd_tt, &I, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    st = sxwnl_bseM_local(context, jd_tt, &M, diagnostic);
+    st = compute_local_shadow_axis(context, jd_tt, &M, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
     {
-        sxwnl::solar::GeoPoint center = sxwnl::solar::bseXY2db(M.x, M.y, I, true);
+        solar_route_geometry::SurfacePoint center = solar_route_geometry::shadow_axis_to_geodetic(M.x, M.y, I, true);
         if (center.valid) {
             out->center_longitude_deg = center.longitude_rad * 180.0 / M_PI;
             out->center_latitude_deg = center.latitude_rad * 180.0 / M_PI;
             LocalXYState ls;
-            Status s2 = eval_local_rspl_xy(context, jd_tt, lon_rad, lat_rad, &ls, diagnostic);
+            Status s2 = eval_local_shadow_xy(context, jd_tt, lon_rad, lat_rad, &ls, diagnostic);
             if (s2 == TAIYIN_STATUS_OK) {
                 if (ls.moon_radius_deg >= ls.sun_radius_deg) {
                     out->center_kind = TAIYIN_ECLIPSE_TOTAL;
@@ -2139,47 +2139,47 @@ Status compute_local_solar_eclipse_boundary_tt(
 
     const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
     const double dt_step = 0.04;
-    sxwnl::solar::Vec3 before, after;
-    st = sxwnl_bseM_local(context, jd_tt - dt_step, &before, diagnostic);
+    Vector3 before, after;
+    st = compute_local_shadow_axis(context, jd_tt - dt_step, &before, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-    st = sxwnl_bseM_local(context, jd_tt + dt_step, &after, diagnostic);
+    st = compute_local_shadow_axis(context, jd_tt + dt_step, &after, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     const double vx = (after.x - before.x) / (2.0 * dt_step);
     const double vy = (after.y - before.y) / (2.0 * dt_step);
 
-    sxwnl::solar::Vec3 sun_llr, moon_llr;
+    Vector3 sun_llr, moon_llr;
     st = body_equatorial_llr_km_local(context, TAIYIN_BODY_SUN, jd_tt, &sun_llr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     st = body_equatorial_llr_km_local(context, TAIYIN_BODY_MOON, jd_tt, &moon_llr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     const double dyj = (sun_llr.z - moon_llr.z) / (TAIYIN_WGS84_A_KM);
-    const sxwnl::solar::ShadowRadii shadow = sxwnl::solar::rSM(
+    const solar_route_geometry::ShadowRadii shadow = solar_route_geometry::shadow_radii_at_plane(
         M.z,
-        kSxwnlMoonPenumbralRadiusRatio,
-        kSxwnlMoonUmbralRadiusRatio,
-        kSxwnlSunRadiusRatio,
-        (kSxwnlSunRadiusRatio + kSxwnlMoonPenumbralRadiusRatio) / dyj,
-        (kSxwnlSunRadiusRatio - kSxwnlMoonUmbralRadiusRatio) / dyj,
+        kPenumbralMoonRadiusRatio,
+        kUmbralMoonRadiusRatio,
+        kSunEarthRadiusRatio,
+        (kSunEarthRadiusRatio + kPenumbralMoonRadiusRatio) / dyj,
+        (kSunEarthRadiusRatio - kUmbralMoonRadiusRatio) / dyj,
         dyj
     );
 
     auto fill_boundary = [&](double radius, int side, double* out_lon_deg, double* out_lat_deg) -> Status {
-        const sxwnl::solar::BoundaryPoint p = sxwnl::solar::nanbei(
+        const solar_route_geometry::LimitPoint p = solar_route_geometry::compute_shadow_limit(
             M.x, M.y, M.z, vx, vy, side, radius, I,
-            kSxwnlMoonPenumbralRadiusRatio, earth_axis_ratio);
+            kPenumbralMoonRadiusRatio, earth_axis_ratio);
         if (!p.valid) return TAIYIN_STATUS_OK;
         *out_lon_deg = p.longitude_rad * 180.0 / M_PI;
         *out_lat_deg = p.latitude_rad * 180.0 / M_PI;
         return TAIYIN_STATUS_OK;
     };
 
-    st = fill_boundary(shadow.r2, +1, &out->umbra_north_longitude_deg, &out->umbra_north_latitude_deg);
+    st = fill_boundary(shadow.core, +1, &out->umbra_north_longitude_deg, &out->umbra_north_latitude_deg);
     if (st != TAIYIN_STATUS_OK) return st;
-    st = fill_boundary(shadow.r2, -1, &out->umbra_south_longitude_deg, &out->umbra_south_latitude_deg);
+    st = fill_boundary(shadow.core, -1, &out->umbra_south_longitude_deg, &out->umbra_south_latitude_deg);
     if (st != TAIYIN_STATUS_OK) return st;
-    st = fill_boundary(shadow.r1, +1, &out->penumbra_north_longitude_deg, &out->penumbra_north_latitude_deg);
+    st = fill_boundary(shadow.penumbra, +1, &out->penumbra_north_longitude_deg, &out->penumbra_north_latitude_deg);
     if (st != TAIYIN_STATUS_OK) return st;
-    st = fill_boundary(shadow.r1, -1, &out->penumbra_south_longitude_deg, &out->penumbra_south_latitude_deg);
+    st = fill_boundary(shadow.penumbra, -1, &out->penumbra_south_longitude_deg, &out->penumbra_south_latitude_deg);
     if (st != TAIYIN_STATUS_OK) return st;
 
     if (std::isfinite(out->umbra_north_latitude_deg) && std::isfinite(out->umbra_south_latitude_deg)) {

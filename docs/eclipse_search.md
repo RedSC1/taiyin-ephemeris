@@ -1,7 +1,7 @@
 # Eclipse Search
 
 Status: Current
-Last reviewed: 2026-07-01
+Last reviewed: 2026-08-11
 Primary header: `include/taiyin/runtime/eclipse_search.h`
 
 This document describes Taiyin's eclipse search algorithms, model conventions, and public C++ APIs. The eclipse layer is a numeric runtime feature: it returns Julian dates, classifications, magnitudes, geometric quantities, paths, and local circumstances. Almanac presentation, localized labels, and application-level formatting belong above this layer.
@@ -33,9 +33,32 @@ This pre-filter only generates candidate lunations and initial times. It does no
 
 ### Lunar Eclipses
 
-The lunar-eclipse solver is a C++ port of the lunar-eclipse geometry route from `sxwnl` `eph.js` / `eph0.js`, with ephemeris inputs supplied by Taiyin runtime ephemerides.
+The lunar-eclipse runtime uses three-dimensional shadow-axis geometry. The older
+`sxwnl` angular-coordinate implementation remains only as a regression oracle
+and is not linked into the production runtime.
 
-At a candidate full moon, it computes apparent Sun/Moon longitude, latitude, distance, and speed. The Moon center is compared against Earth's umbral axis in angular coordinates. The solver refines greatest eclipse by linearizing local motion in the shadow plane and minimizing the Moon center's distance to the shadow axis.
+At a candidate full moon, let `M` and `S` be the apparent Earth-to-Moon and
+Earth-to-Sun vectors in the true ecliptic frame of date. The anti-solar shadow
+axis and the Moon's perpendicular displacement from it are:
+
+```text
+u = -S / |S|
+s = M dot u
+q = M - s * u
+```
+
+The solver defines greatest eclipse as the minimum of `q dot q`, so greatest is
+the instant when the Moon's center is physically closest to Earth's shadow axis.
+Earth's umbral and penumbral radii are recomputed at the Moon's axial distance
+`s`; the contact boundary is therefore allowed to change as the Moon moves
+through the shadow cone.
+
+Contact solving takes five full apparent-geometry samples across a twelve-hour
+window centered on greatest eclipse. It fits separate cubic least-squares
+polynomials to the three components of `q` and to each contact-boundary radius,
+then solves `q(t) dot q(t) - R(t)^2 = 0`. With the Kaguya TLL1 lunar-limb model,
+each applicable contact receives one final Newton correction evaluated against
+the exact apparent geometry.
 
 Classification uses the refined geometry:
 
@@ -97,17 +120,17 @@ Corresponding PMO-derived UT clock times:
 
 PMO values are rounded to `0.1` minute. The `TD` and Beijing-time columns can therefore only imply Delta T to about one minute precision, consistent within table precision with the expected 2025 value and the independent NASA decade-table greatest-eclipse TD value (`18:12:58 TD`).
 
-Runtime comparison, last checked 2026-06-30:
+Runtime comparison, last checked 2026-08-10:
 
 | Event | PMO JD UT | Taiyin JD UT | Taiyin - PMO |
 | --- | ---: | ---: | ---: |
-| `P1` | `2460926.143680556` | `2460926.143621061` | `-5.14s` |
-| `U1` | `2460926.185277778` | `2460926.185200211` | `-6.70s` |
-| `U2` | `2460926.229444444` | `2460926.229415872` | `-2.47s` |
-| `Greatest` | `2460926.258194444` | `2460926.258204186` | `+0.84s` |
-| `U3` | `2460926.286944444` | `2460926.286975643` | `+2.70s` |
-| `U4` | `2460926.331180556` | `2460926.331099947` | `-6.96s` |
-| `P4` | `2460926.372638889` | `2460926.372520987` | `-10.19s` |
+| `P1` | `2460926.143680556` | `2460926.143706255` | `+2.22s` |
+| `U1` | `2460926.185277778` | `2460926.185258877` | `-1.63s` |
+| `U2` | `2460926.229444444` | `2460926.229429345` | `-1.30s` |
+| `Greatest` | `2460926.258194444` | `2460926.258208147` | `+1.18s` |
+| `U3` | `2460926.286944444` | `2460926.286998820` | `+4.70s` |
+| `U4` | `2460926.331180556` | `2460926.331178352` | `-0.19s` |
+| `P4` | `2460926.372638889` | `2460926.372648492` | `+0.83s` |
 
 The Taiyin comparison uses the same model preset as the TS/sxwnl regression fixtures:
 
@@ -123,28 +146,44 @@ The Taiyin comparison uses the same model preset as the TS/sxwnl regression fixt
 | Apparent options | light-time, aberration, deflection, true ecliptic of date |
 | Runtime cache setting | `segment_cache=4096` |
 
-PMO table precision is `0.1` minute, so each PMO time has about `±3s` rounding uncertainty. With the Chauvenet/Almanac preset, Taiyin `Greatest`, `U2`, and `U3` are within that publication precision; `P1`, `U1`, `U4`, and `P4` show about `5-10s` model-level differences.
+PMO table precision is `0.1` minute, so each PMO time has about `±3s` rounding
+uncertainty. With the Chauvenet/Almanac preset, six of the seven circular-limb
+times are within that publication precision; `U3` differs by `+4.70s`. Across
+all seven times, circular-limb MAE is `1.72s`, RMSE is `2.19s`, and the maximum
+absolute difference is `4.70s`.
 
 With the bundled Kaguya TLL1 lunar-limb model enabled, the PMO errors become:
 
 | Event | Circular-limb error | TLL1-limb error |
 | --- | ---: | ---: |
-| `P1` | `-5.14s` | `+3.10s` |
-| `U1` | `-6.70s` | `-1.44s` |
-| `U2` | `-2.47s` | `-1.29s` |
-| `Greatest` | `+0.84s` | `+0.84s` |
-| `U3` | `+2.70s` | `+4.33s` |
-| `U4` | `-6.96s` | `-3.02s` |
-| `P4` | `-10.19s` | `-5.55s` |
+| `P1` | `+2.22s` | `+1.07s` |
+| `U1` | `-1.63s` | `-2.38s` |
+| `U2` | `-1.30s` | `-1.71s` |
+| `Greatest` | `+1.18s` | `+1.18s` |
+| `U3` | `+4.70s` | `+4.77s` |
+| `U4` | `-0.19s` | `-2.10s` |
+| `P4` | `+0.83s` | `-3.53s` |
 
-Across all seven times, MAE falls from `5.00s` to `2.79s` and RMSE from
-`5.83s` to `3.22s`. Not every individual contact improves: `U3` moves farther
-from the published value, and PMO's `0.1`-minute precision itself implies about
-`±3s` rounding uncertainty.
+Across all seven times, the TLL1 run has MAE `2.39s`, RMSE `2.69s`, and maximum
+absolute difference `4.77s`. TLL1 is a direction-dependent physical limb model,
+not a tuning switch for this rounded PMO table; the publication does not state
+that its contact values use Kaguya topography. The final exact Newton correction
+limits the measured TLL1 contact interpolation error to `0.021s` against direct
+runtime geometry.
 
 ### Global Solar Eclipses
 
-The global solar-eclipse solver generates candidates from the Meeus new-moon pre-filter, then computes Sun/Moon vectors through the Taiyin runtime. It constructs the lunar shadow axis and tests its relationship to the WGS84 Earth ellipsoid. Contact times begin from Besselian/root seeds and finish against apparent geometry.
+The global solar-eclipse solver generates candidates from the Meeus new-moon pre-filter, then searches directly on instantaneous Sun/Moon vectors. It does not construct a Besselian polynomial. Greatest eclipse minimizes the squared norm of the three-dimensional perpendicular from the geocenter to the Sun-Moon shadow axis. For a circular lunar limb, every cone generator is intersected analytically with the WGS84 Earth ellipsoid: substituting the generator line into the ellipsoid produces one quadratic equation. Global `P1/P4` are the times when the maximum forward-generator discriminant is zero, i.e. when the penumbral cone is tangent to Earth. Center-line begin/end similarly solve the shadow-axis/ellipsoid discriminant.
+
+Each event initializes one apparent-correction window around the new-moon seed and reuses it throughout greatest and contact refinement. Search evaluations deliberately skip UT/GAST and the Besselian `mu` angle. Earth rotation changes the geographic longitude of a shadow intersection, but it cannot change whether a circular cone intersects an axisymmetric oblate Earth. A complete Earth-fixed transform is therefore evaluated only after greatest-eclipse convergence when a geographic location is requested.
+
+Global searches also apply their requested eclipse-kind filter immediately
+after greatest and preliminary classification. A candidate that cannot match
+is returned to the search loop before geographic location, contact roots, or
+hybrid refinement are computed. Accepted events still complete all requested
+outputs. Preliminary central total/annular events are retained for a
+hybrid-only filter because the final hybrid classification is known only after
+central-kind refinement.
 
 Greatest eclipse is defined as the instant when the shadow axis is closest to Earth, i.e. when `axis_distance_km` is minimal. It is not the minimum penumbral-margin value. This matches the common NASA/PMO global greatest-eclipse definition and avoids coupling greatest time to a changing penumbral radius.
 
@@ -183,15 +222,15 @@ The same PMO row gives the greatest-eclipse location. The fixture uses these rou
 
 PMO times are rounded to whole seconds. Current Taiyin regression output uses Taiyin OPM2 major-bodies 600y files as the ephemeris data source and agrees with the rounded PMO table to about two seconds for this event. Swiss Ephemeris can be used as an independent comparison, but it is not the baseline for this fixture because its global P4/C4 conventions and model choices differ from PMO/Taiyin regression values by several seconds.
 
-Runtime comparison, last checked 2026-07-01:
+Runtime comparison, last checked 2026-08-10:
 
 | Event | PMO JD UT | Taiyin JD UT | Taiyin - PMO |
 | --- | ---: | ---: | ---: |
-| `P1` | `2460409.154317129` | `2460409.154338569` | `+1.852s` |
+| `P1` | `2460409.154317129` | `2460409.154337802` | `+1.786s` |
 | `C1` | `2460409.194432870` | `2460409.194446871` | `+1.209s` |
 | `Greatest` | `2460409.262037037` | `2460409.262039739` | `+0.233s` |
 | `C4` | `2460409.329490741` | `2460409.329500663` | `+0.858s` |
-| `P4` | `2460409.369687500` | `2460409.369681376` | `-0.529s` |
+| `P4` | `2460409.369687500` | `2460409.369682533` | `-0.429s` |
 
 With Kaguya TLL1 enabled and the WGS84 tangent point solved jointly, the
 affected `P1/P4` errors become `-0.047s` and `-0.396s`. Both are closer to this
@@ -205,20 +244,40 @@ Greatest-location comparison:
 | Greatest latitude | `25.285000°` | `25.289609°` | `+0.004609°` |
 | Greatest longitude | `-104.143333°` | `-104.147999°` | `-0.004665°` |
 
-Global `P1/P4` therefore use Besselian roots only as seeds. At each candidate
-epoch, the solver jointly minimizes the direction-dependent penumbral margin
-over the WGS84 ellipsoid and then solves for a zero minimum. Using either the
-cheap Besselian projected-ellipse scalar or a fixed radial-projection tangent
-point as the final model produces visible second-level shifts in global partial
-contacts.
+Global `P1/P4` use direct time bracketing around greatest eclipse; they do not
+depend on Besselian roots. For the circular limb, the final scalar is the maximum normalized discriminant among the
+penumbral cone generators after analytic intersection with the WGS84 ellipsoid.
+The scalar is negative before contact, zero at tangency, and positive while the
+forward cone intersects Earth. With TLL1 enabled, the final solver instead
+minimizes the direction-dependent profiled penumbral margin jointly over the
+ellipsoid. The cheap projected-ellipse scalar remains only a seed; it is not the
+final contact model.
+
+At greatest eclipse, `penumbral_margin_km` is derived from that same final
+geometry. For the circular limb it is the signed clearance in the
+WGS84 ellipsoid-normalized radial metric; with TLL1 it is the signed profiled
+surface clearance. In both cases a negative value means that the penumbra
+intersects Earth, so the diagnostic cannot contradict the event kind.
+
+After an event and its physical time bounds are known, route and map APIs may
+construct a Besselian polynomial as an event-local acceleration layer. This
+keeps repeated route-row evaluation cheap without making event discovery or
+global contact semantics depend on the polynomial fit.
+
+The direct-cone regression includes the grazing partial eclipse of
+1935-01-05. NASA lists it as the smallest partial eclipse in the 1901–2000
+catalog, with magnitude about `0.00126`. The former projected-radius rejection
+missed this event; the cone/ellipsoid discriminant retains it and reproduces
+the catalog greatest time `05:35:46 TD`:
+`https://eclipse.gsfc.nasa.gov/SEdecade/SEdecade1931.html`.
 
 #### 2026-08-12 PMO Global Solar Eclipse Oracle
 
 Purple Mountain Observatory has published public material for the `2026年8月12日日全食` total solar eclipse:
 
 - page: `https://pmo.cas.cn/xwdt2019/kpdt2019/202512/t20251231_8093683.html`
-- overview attachment: `https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020251231400816723831.txt`
-- route attachment: `https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020260624590816163664.txt`
+- route attachment: `https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020251231400816723831.txt`
+- overview attachment: `https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020260624590816163664.txt`
 
 The public page describes a totality path beginning in far northern Russia, crossing the Arctic Ocean, Greenland, Iceland, the northeastern Atlantic, and Spain, and ending in the western Mediterranean. Partial eclipse visibility covers northern North America, the Arctic Ocean, the northern Atlantic, northwestern Africa, most of Europe, and far northern Asia.
 
@@ -242,32 +301,54 @@ Greatest-eclipse location and path quantities:
 | Total duration | `2m21.2s` |
 | Path width | `300.3 km` |
 
-Runtime comparison, last checked 2026-07-06:
+Runtime comparison, last checked 2026-08-10:
 
 | Event / quantity | Taiyin - PMO |
 | --- | ---: |
-| `P1` | `+1.686s` |
+| `P1` | `+1.532s` |
 | `C1` | `+1.389s` |
 | `Greatest` | `+0.629s` |
 | `C4` | `+0.531s` |
-| `P4` | `+0.098s` |
+| `P4` | `+0.196s` |
 | Greatest latitude | `+0.001996°` |
 | Greatest longitude | `+0.012161°` |
 | Total duration | `-2.677s` |
 | Path width | `-7.555 km` |
 
 With Kaguya TLL1 enabled and the WGS84 tangent point solved jointly, `P1/P4`
-change from `+1.686s / +0.098s` to `-2.269s / -0.467s`. Both remain within the
+change from `+1.532s / +0.196s` to `-2.269s / -0.467s`. Both remain within the
 rough `±3s` publication resolution of the whole-second PMO table, but an
 individual topographic contact is not guaranteed to move closer to a rounded
 table value. Across all ten global times in the 2024 and 2026 PMO cases, MAE
-falls from `0.90s` to `0.80s` and RMSE from `1.07s` to `1.02s`.
+changes from `0.88s / 1.03s` (circular-limb MAE/RMSE) to `0.80s / 1.02s`
+(TLL1-limb MAE/RMSE).
 
-This fixture mainly covers high-latitude North Atlantic / European path geometry outside the 2024 North American total-eclipse case. The PMO overview is public almanac material: contact times are listed to whole seconds, and path quantities are rounded at about the `0.1` arcminute / kilometer level. It is therefore a second/kilometer-level sanity oracle, not a higher-precision source for internal geometric constants. `path_width_km` is the local transverse path-width estimate along the center-line normal; when available, it is computed from the intersections between that normal and the north/south limit curves, not from the ground arc distance between the same-instant north and south limits.
+This fixture mainly covers high-latitude North Atlantic / European path geometry outside the 2024 North American total-eclipse case. The PMO overview is public almanac material: contact times are listed to whole seconds, and path quantities are rounded at about the `0.1` arcminute / kilometer level. It is therefore a second/kilometer-level sanity oracle, not a higher-precision source for internal geometric constants. `path_width_km` is the local transverse path-width estimate along the center-line normal. Route-table generation intersects that normal with the closed core-path polygon, including the sunrise/sunset horizon caps; this avoids the singular extrapolation of a north/south limit near path emergence and disappearance. It is not the ground arc distance between the same-instant north and south limits.
+
+The PMO five-second [2026 route table](https://pmo.cas.cn/xwdt2019/kpdt2019/202512/P020251231400816723831.txt) is also checked as a 1,059-row differential oracle over the complete-path rows from `17:02:05` through `18:30:15` UT. Coordinate errors below are great-circle angular separations; duration and width columns use absolute error. Last checked 2026-08-11 with the OPM2 major-bodies 600y data and the smooth circular-limb route model:
+
+| Metric | Pre-refactor route | Current closed-path route |
+| --- | ---: | ---: |
+| Northern limit MAE | `0.03565°` | `0.03565°` |
+| Center line MAE | `0.01147°` | `0.01147°` |
+| Southern limit MAE | `0.01121°` | `0.01121°` |
+| Central duration MAE | `1.896s` | `1.896s` |
+| Path-width MAE | `4.00 km` | `2.74 km` |
+| Path-width p95 | `11.55 km` | `5.72 km` |
+| Path-width maximum | `82.73 km` | `6.33 km` |
+
+The geometry rewrite therefore leaves the route coordinates and duration materially unchanged while removing the endpoint-width singularity. The first/last complete current widths are `282.1 / 306.3 km`, versus PMO `280.2 / 300.1 km`. The width is measured by intersecting the center-line normal with the closed core-path polygon, including the sunrise/sunset horizon caps; it is not the ground arc between same-instant north and south limits.
+
+Limit coordinates themselves are much more ill-conditioned at a path cusp. The first northern-limit row has `0.785°` angular error even though the all-row center-line MAE is only `0.0115°`; that northern branch moves by more than a degree over the next five seconds as it emerges from the horizon cap. This value is retained as a model-sensitive diagnostic rather than corrected with an empirical time or coordinate offset.
+
+With Kaguya TLL1 enabled for the same 1,059 rows, the current north/center/south MAEs are `0.03089° / 0.01147° / 0.07192°`, duration MAE is `0.719s`, and path-width MAE/p95/maximum are `8.23 / 13.85 / 14.56 km`. This mixed comparison must not be read as a ranking of the physical limb models: the PMO publication does not identify a Kaguya topographic profile and its route widths are closer to Taiyin's smooth almanac-radius convention. TLL1 remains an explicit direction-dependent lunar-topography model, not an oracle-tuning switch.
 
 ### Local Solar Eclipses
 
-Local solar-eclipse routines are a C++ port of the solar-eclipse Besselian/local geometry from `sxwnl` `eph.js` / `eph0.js`, using Taiyin runtime positions underneath. They compute topocentric Sun/Moon circumstances for a geographic longitude, latitude, and height.
+Local solar-eclipse routines use Taiyin's Besselian seeds, topocentric apparent
+Sun/Moon geometry, and observer visibility model for a geographic longitude,
+latitude, and height. The final contact and greatest-eclipse refinements do not
+call the archived compatibility implementation.
 
 Local search scans global solar-eclipse candidates first, then uses an observer-local probe table to decide whether the observer may see the eclipse. Contact times use a Besselian local scalar as a seed and are refined with topocentric apparent geometry. This covers cases where greatest eclipse is below the horizon, but a partial eclipse is still visible at sunrise or sunset.
 
@@ -283,6 +364,22 @@ Local results include:
 - sunrise/sunset magnitudes at relevant instants.
 
 Unless the observer experiences totality or annularity, `C2` and `C3` are `NaN`.
+
+Local solar APIs use a geometric (unrefracted) sunrise/sunset visibility window
+by default. Set `TAIYIN_ECLIPSE_LOCAL_REFRACTION` to use the context's apparent,
+refracted solar rise/set window instead. This option only decides whether the
+eclipse reaches the observer's visibility window and which sunrise/sunset
+instants contribute their magnitude; it does not change the maximum-eclipse
+instant, magnitude at maximum, obscuration, or topocentric central geometry.
+
+`TAIYIN_ECLIPSE_LOCAL_STRICT_METEOROLOGY` is valid only together with
+`TAIYIN_ECLIPSE_LOCAL_REFRACTION`. It prohibits standard-atmosphere fallback,
+so the caller must supply valid atmosphere fields. A refracted local request
+without atmosphere data likewise needs the context to opt into
+`TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK`; otherwise it returns
+`TAIYIN_ERROR_INVALID_ARGUMENT`. Both local visibility options are rejected by
+global solar and lunar eclipse APIs rather than silently changing their
+semantics.
 
 ### Solar Route And Besselian Helpers
 
@@ -302,8 +399,8 @@ These functions are for map/path generation and diagnostics. A simple "is there 
 Route curves and route products are derived from Taiyin route rows. They include the geometrically applicable center line, penumbral limits, core limits, and half-magnitude limits sampled through the configured ephemeris runtime. Polygon longitudes are kept with an unwrapped longitude field so antimeridian-crossing envelopes can be rendered without tearing; callers may normalize individual points after projection. These APIs return numeric geometry products, not a finished map layer: downstream code is still responsible for map projection, thinning, segmentation, styling, and tile/viewport clipping.
 
 The default route-curve sampling density is
-`TAIYIN_SOLAR_ROUTE_DEFAULT_SAMPLE_COUNT` samples across the source route span,
-matching the sxwnl-style map workflow. The `_with_options` variants of
+`TAIYIN_SOLAR_ROUTE_DEFAULT_SAMPLE_COUNT` samples across the source route span.
+The `_with_options` variants of
 `compute_solar_eclipse_route_curves_*`,
 `compute_solar_eclipse_route_product_*`, and
 `compute_solar_eclipse_route_map_product_*` accept an explicit
@@ -311,11 +408,15 @@ matching the sxwnl-style map workflow. The `_with_options` variants of
 curve and polygon point density only; it does not change the ephemeris,
 Delta T, radius, shadow, or lunar-limb models.
 
-The default smooth route uses one parameterized `sxwnl::solar::jieX()` scan for
-the center line, north/south limits, and sunrise/sunset maximum curves. At an
-`mQie` valid/invalid transition, Taiyin bisects the adjacent samples instead of
-using the original one-step linear endpoint estimate; this prevents reversed
-endpoint order at high latitudes. Center-line and core-limit transition intervals are also
+The default smooth route retains the established parameterized topology scan
+for branch identity, horizon stitching, and valid/invalid transitions. Its
+accepted circular-cone generators intersect the WGS84 ellipsoid analytically
+by the same line-substitution quadratic verified by the native shadow-geometry
+kernel; the north/south core, penumbral, and half-magnitude boundaries are not
+intersections with a spherical Earth or a direction-dependent replacement
+radius. At a transition, Taiyin bisects adjacent samples instead of using a
+one-step linear endpoint estimate; this prevents reversed endpoint order at
+high latitudes. Center-line and core-limit transition intervals are also
 adaptively subdivided to a maximum `0.05` degree spherical segment at the
 default density, so the final point count may be slightly larger than the base
 `route_sample_count`. Central paths additionally export `core_begin_horizon`
@@ -361,6 +462,14 @@ Every eclipse API has TT and UT variants:
 - `*_tt` functions accept and return TT Julian dates;
 - `*_ut` functions accept and return UT Julian dates and report `delta_t_seconds` when the result struct has that field.
 
+For interval route-row APIs, `step_minutes` advances on the time scale named by
+the function: `_tt` samples a TT grid and `_ut` samples a UT grid. Both endpoints
+are inclusive and the exact end epoch is emitted once; when the requested span
+is not an integer number of steps, only the final interval is shorter. UT grid
+epochs are converted individually to TT for ephemeris geometry, so a small
+change in Delta T across the interval cannot create a second near-duplicate end
+row.
+
 Internal ephemeris positions are computed for TT instants by deriving TDB through the context's TDB model. UT variants use the context's Delta T policy for conversion. Use TT when comparing against ephemeris-time tables; use UT for civil-clock applications.
 
 ## Flags
@@ -379,7 +488,11 @@ Eclipse-specific options live in the high 32 bits:
 - `TAIYIN_ECLIPSE_EXCLUDE_PENUMBRAL`: ignore penumbral-only lunar eclipses;
 - `TAIYIN_ECLIPSE_BACKWARD`: search previous instead of next;
 - `TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION`: polish solar/lunar contact times
-  with the TLL1 model loaded by the global runtime.
+  with the TLL1 model loaded by the global runtime;
+- `TAIYIN_ECLIPSE_LOCAL_REFRACTION`: for local solar APIs only, use a refracted
+  sunrise/sunset visibility window instead of the default geometric one;
+- `TAIYIN_ECLIPSE_LOCAL_STRICT_METEOROLOGY`: for refracted local solar APIs
+  only, require supplied atmosphere data and forbid standard-atmosphere fallback.
 
 Lunar-limb correction is opt-in and requires a globally loaded model. See
 [`lunar_limb_model.md`](lunar_limb_model.md) for loading, lifetime, coverage,
@@ -453,7 +566,7 @@ compute_local_solar_circumstances_tt(...)
 compute_local_solar_circumstances_ut(...)
 ```
 
-These entry points are for geographic observers. They read the observer longitude, latitude, and height from `NativeCalcContext::observer_location`; if the context has no observer location, they return `TAIYIN_ERROR_INVALID_ARGUMENT`. `search_next_local_solar_eclipse_*` scans global solar-eclipse candidates first, then computes local circumstances and applies the requested kind filter to the observer-local result. For example, a global total solar eclipse that is only partial at the observer will not be returned by a `TAIYIN_ECLIPSE_TOTAL` local search.
+These entry points are for geographic observers. They read the observer longitude, latitude, and height from `NativeCalcContext::observer_location`; if the context has no observer location, they return `TAIYIN_ERROR_INVALID_ARGUMENT`. Their existing `uint64_t flags` parameter accepts the local visibility options described above. `search_next_local_solar_eclipse_*` scans global solar-eclipse candidates first, then computes local circumstances and applies the requested kind filter to the observer-local result. For example, a global total solar eclipse that is only partial at the observer will not be returned by a `TAIYIN_ECLIPSE_TOTAL` local search.
 
 ### Solar Path Products
 
@@ -479,93 +592,138 @@ compute_local_solar_eclipse_boundary_ut(...)
 
 ## Usage Examples
 
-### Lunar Eclipse Near A Date
+### Complete Runnable Example
+
+[`examples/eclipse_search.cpp`](../examples/eclipse_search.cpp) is a complete
+program rather than an isolated fragment. It initializes packaged ephemeris
+data, searches for lunar and solar eclipses, calculates local circumstances for
+Dallas, and produces the core, penumbral, and half-magnitude map polygons for
+the 2024-04-08 eclipse.
+
+Build and run it from the repository root:
+
+```sh
+cmake -S . -B build
+cmake --build build --target example_eclipse_search
+./build/example_eclipse_search /path/to/taiyin/data
+```
+
+The data-root argument is optional. The program tries the argument first, then
+`TAIYIN_DATA_ROOT`, then `./data`. A successful run with the bundled 600-year
+data prints output similar to:
+
+```text
+Next total lunar eclipse: 2025-03-14 06:58:46.7 UT, umbral magnitude=1.183066
+Next total solar eclipse: 2024-04-08 18:17:20.2 UT at 25.28961, -104.14800
+Dallas local maximum: 2024-04-08 18:42:39.0 UT, magnitude=1.057150, Sun altitude=64.617 deg
+Route map: 627 polygon points; 260 core, 184 penumbral, 183 half-magnitude
+```
+
+Exact values depend on the selected ephemeris data and context models.
+
+### Choosing An Entry Point
+
+| Task | Entry point |
+| --- | --- |
+| Evaluate the lunation near a known date | `solve_lunar_eclipse_at_ut` / `solve_solar_eclipse_at_ut` |
+| Find the next or previous matching event | `search_next_lunar_eclipse_ut` / `search_next_solar_eclipse_ut` |
+| Find all matching events in an interval | `search_lunar_eclipses_ut` / `search_solar_eclipses_ut` |
+| Calculate circumstances at the context observer | `solve_local_solar_eclipse_at_ut` / `search_next_local_lunar_eclipse_ut` |
+| Sample rows over an explicit interval | `compute_solar_eclipse_route_ut` |
+| Generate separate center/boundary curves | `compute_solar_eclipse_route_curves_ut_with_options` |
+| Generate closed map polygons | `compute_solar_eclipse_route_map_product_ut_with_options` |
+
+The `_ut` functions accept and return UT. The corresponding `_tt` functions
+use TT. Do not pass a scalar `double` to either interface: public eclipse APIs
+use `SplitJulianDate` so sub-second resolution is retained when the integer
+Julian day is large. Construct one directly from a calendar date:
 
 ```cpp
-#include "taiyin/body_id.h"
-#include "taiyin/dispatch.h"
-#include "taiyin/runtime/eclipse_search.h"
-#include "taiyin/runtime/native_context.h"
-#include "taiyin/time.h"
-
-using namespace taiyin;
-using namespace taiyin::runtime;
-
-NativeCalcContext ctx;
-native_context_set_geocentric_observer(&ctx, TAIYIN_BODY_EARTH, TAIYIN_BODY_EARTH);
-native_context_set_eclipse_shadow_model(&ctx, dispatch::ECLIPSE_SHADOW_NASA_DANJON);
-native_context_set_eclipse_moon_radius_model(&ctx, dispatch::ECLIPSE_MOON_ALMANAC);
-
-LunarEclipseResultUt eclipse;
-EphemerisEvalDiagnostic diag = {};
-const double guess_ut = julian_day({2025, 9, 7, 18, 0, 0.0});
-
-Status st = solve_lunar_eclipse_at_ut(
-    &ctx,
-    guess_ut,
-    TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
-    &eclipse,
-    &diag);
-
-if (st == TAIYIN_STATUS_OK && eclipse.kind != TAIYIN_ECLIPSE_NONE) {
-    // eclipse.maximum_jd_ut and eclipse.contact_jd_ut[] are populated.
+SplitJulianDate start_ut;
+if (!julian_day_split({2024, 1, 1, 0, 0, 0.0}, &start_ut)) {
+    // Invalid calendar input.
 }
 ```
 
-### Local Lunar Eclipse Visibility For An Observer
+For a forward search, pass a kind bit or an OR of kinds. Pass `0` to accept all
+kinds, or add `TAIYIN_ECLIPSE_BACKWARD` to `flags` for a backward search:
 
 ```cpp
-LocalLunarEclipseResultUt local;
-EphemerisEvalDiagnostic diag = {};
-native_context_set_observer_location(
-    &ctx,
-    native_observer_location_degrees(116.4074, 39.9042, 43.0));
-
-Status st = search_next_local_lunar_eclipse_ut(
-    &ctx,
-    julian_day({2025, 9, 7, 0, 0, 0.0}),
-    TAIYIN_ECLIPSE_TOTAL,
-    TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
-    &local,
-    &diag);
-
-if (st == TAIYIN_STATUS_OK
-    && (local.visibility_flags & TAIYIN_ECLIPSE_MAXIMUM_VISIBLE) != 0u) {
-    // The Moon is above the horizon at greatest eclipse.
-}
-```
-
-### Next Total Solar Eclipse
-
-```cpp
-SolarEclipseResultUt eclipse;
-EphemerisEvalDiagnostic diag = {};
-
-Status st = search_next_solar_eclipse_ut(
-    &ctx,
-    julian_day({2024, 1, 1, 0, 0, 0.0}),
-    TAIYIN_ECLIPSE_TOTAL,
+SolarEclipseResultUt eclipse = {};
+EphemerisEvalDiagnostic diagnostic = {};
+Status status = search_next_solar_eclipse_ut(
+    &context,
+    start_ut,
+    TAIYIN_ECLIPSE_TOTAL | TAIYIN_ECLIPSE_ANNULAR,
     TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
     &eclipse,
-    &diag);
+    &diagnostic);
 ```
 
-### Local Solar Eclipse For An Observer
+`TAIYIN_STATUS_OK` means a matching search result was produced. For a `solve_*`
+call, it means evaluation succeeded; check `result.kind` because the nearby
+lunation may have `TAIYIN_ECLIPSE_NONE`. On failure, `status_name(status)` and
+`EphemerisEvalDiagnostic` provide the first useful error information.
+
+### Local Circumstances
+
+Local entry points read their observer from `NativeCalcContext`. Longitude is
+east-positive, latitude is north-positive, and height is in metres:
 
 ```cpp
-LocalSolarEclipseResultUt local;
-EphemerisEvalDiagnostic diag = {};
+NativeCalcContext local_context = context;
 native_context_set_observer_location(
-    &ctx,
+    &local_context,
     native_observer_location_degrees(-96.7970, 32.7767, 131.0));
 
-Status st = solve_local_solar_eclipse_at_ut(
-    &ctx,
-    julian_day({2024, 4, 8, 18, 0, 0.0}),
+LocalSolarEclipseResultUt local = {};
+Status status = solve_local_solar_eclipse_at_ut(
+    &local_context,
+    eclipse.maximum_jd_ut,
     TAIYIN_ECLIPSE_INCLUDE_CONTACTS,
     &local,
-    &diag);
+    &diagnostic);
 ```
+
+Without an observer location, local APIs return
+`TAIYIN_ERROR_INVALID_ARGUMENT`. Local lunar results additionally expose
+`visibility_flags`; test `TAIYIN_ECLIPSE_MAXIMUM_VISIBLE` to determine whether
+the Moon is above the selected horizon at greatest eclipse.
+
+### Route Map Polygons And Buffer Sizing
+
+Variable-size route APIs use a two-call contract. First pass `nullptr` and zero
+capacity to obtain the required count, then allocate and call again:
+
+```cpp
+SolarEclipseRouteProductSummary summary = {};
+size_t point_count = 0;
+Status status = compute_solar_eclipse_route_map_product_ut_with_options(
+    &context, eclipse.maximum_jd_ut, 0, 128,
+    nullptr, 0, &point_count, &summary, &diagnostic);
+
+std::vector<SolarEclipseRouteProductPoint> points(point_count);
+if (status == TAIYIN_STATUS_OK) {
+    status = compute_solar_eclipse_route_map_product_ut_with_options(
+        &context, eclipse.maximum_jd_ut, 0, 128,
+        points.data(), points.size(), &point_count, &summary, &diagnostic);
+    points.resize(point_count);
+}
+```
+
+`route_sample_count` controls path sampling and must be between
+`TAIYIN_SOLAR_ROUTE_MIN_SAMPLE_COUNT` and
+`TAIYIN_SOLAR_ROUTE_MAX_SAMPLE_COUNT`; the overload without options uses
+`TAIYIN_SOLAR_ROUTE_DEFAULT_SAMPLE_COUNT`. If a non-null buffer is too small,
+the function returns `TAIYIN_ERROR_OUT_OF_MEMORY` and still reports the required
+count and summary.
+
+The map-product array stores the closed core polygon first, then the penumbral
+polygon, then the half-magnitude polygon. Use the three `*_polygon_point_count`
+fields in `SolarEclipseRouteProductSummary` to split the array; do not infer
+boundaries from coordinates. `longitude_deg` is normalized for ordinary map
+display, while `unwrapped_longitude_deg` preserves continuity across the
+antimeridian.
 
 ## Validation Notes
 
@@ -574,7 +732,8 @@ Public regression tests use several source types:
 - PMO public material: 2024 and 2026 global solar eclipse contacts/greatest location, 2025 total lunar eclipse contacts;
 - NASA eclipse catalogs / decade tables: greatest time, classification, magnitude, and duration;
 - NASA city-table values: minute-level local solar-eclipse sanity checks;
-- `sxwnl` `eph.js` / `eph0.js`: oracle fixtures for ported geometry functions;
+- archived `sxwnl` fixtures: migration comparisons for the superseded eclipse
+  implementations; they are test-only and are not production dependencies;
 - OPM2/SPK data comparison tests: verify ephemeris reading and route composition.
 
 PMO/NASA and similar public sources are preferred as behavior baselines. Old TypeScript fixtures are mainly migration regressions and diagnostic tables; unless a row is explicitly tied to a public source such as PMO/NASA, it is not treated as an authoritative eclipse oracle.

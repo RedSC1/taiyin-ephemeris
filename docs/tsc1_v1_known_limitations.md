@@ -1,7 +1,7 @@
 # TSC1 v1 Known Limits
 
 Status: Current limitation note
-Last reviewed: 2026-07-01
+Last reviewed: 2026-08-12
 Primary headers: `include/taiyin/star_catalog_tsc1.h`, `include/taiyin/star_provider_tsf1.h`
 
 This document describes the capability boundaries, data assumptions, and design trade-offs of the first TSC1 precision-star catalog. It is for users who need to load star catalogs, call star-position APIs, or evaluate historical-sky precision boundaries.
@@ -13,6 +13,7 @@ TSC1 v1 is a local precision-star catalog format. It currently mainly covers:
 1. `stars-fixed-traditional`
 2. `stars-bright-gaia-bsc`
 3. `stars-hipparcos-gaia`
+4. `lite/stars-bright-v5`
 
 It is not a deep render-star catalog and not a complete stellar dynamics model. TSC1 is intended to provide a local data format for named stars, bright stars, and Hipparcos/Gaia-scale stars that can be queried, propagated, and used with Taiyin apparent/observed flags.
 
@@ -287,21 +288,41 @@ view-dependent tile loading
 
 ## Packaging Limits
 
-Generated catalog files are currently local artifacts:
+The repository retains the complete generated catalogs under:
 
 ```text
 data/stars/catalogs/
 ```
 
-These catalog files are not submitted as part of the core source tree.
-
-Public distribution can use:
+The magnitude-limited distribution option is kept separately at:
 
 ```text
-separate data repository
-release artifacts
-downloader/discovery mechanism
+data/stars/catalogs/lite/stars-bright-v5.tsc1
 ```
+
+It is mechanically derived from `stars-bright-gaia-bsc.tsc1`: it retains
+catalogue records with `V <= 5.0`, the two manual special-direction records,
+and the explicit requirements in `lite/required_stars.json`. The requirements
+guarantee all 28 Chinese mansion determinative stars (距星), with Chinese and
+pinyin aliases, as well as one representative bright star in every western
+zodiac constellation. Its current size is intended to remain appropriate as a
+default for language bindings. The parent directory
+still contains the 9,098-star bright catalog (about 1.9 MB) and the
+118,058-star Hipparcos/Gaia catalog (about 21 MB), for applications that want
+broader coverage.
+
+The 28-star list is a named Taiyin v1 reference profile. It deliberately does
+not claim that Song, Chen Zhuo, Qing, and other historical reconstructions use
+identical member stars. A full historical star-official map needs a separately
+versioned sky-culture overlay containing asterism membership, line geometry,
+epoch, sources, and provenance; TSC1 remains the astrometric star layer.
+
+The runtime does not require one fixed packaging choice. A distribution can
+ship the lite table by default, offer larger catalog files as optional data, or
+load a user-provided TSC1/TSF1 catalog. The checked-in lite file is
+mechanically produced from the bright catalog using the requirements described
+above; that maintainer-only generation tool is intentionally not in the public
+source snapshot.
 
 ## v1 Intent Summary
 

@@ -35,22 +35,36 @@ include(GNUInstallDirs)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 
 option(
-    TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION
-    "Build the optional Pascal Ganzhi calendar extension (required by BaZi)"
+    TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS
+    "Enable optional Chinese metaphysics extensions such as BaZi"
     OFF
 )
 option(
     TAIYIN_BUILD_BAZI_EXTENSION
-    "Build the optional Pascal BaZi rule extension"
+    "Build the optional BaZi rule extension"
     OFF
 )
-if(TAIYIN_BUILD_BAZI_EXTENSION)
-    set(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION ON)
+option(
+    TAIYIN_BUILD_MODULAR_C_API
+    "Build the aggregate base C API library and optional shared extensions"
+    OFF
+)
+option(
+    TAIYIN_BUILD_MAINTAINER_TOOLS
+    "Build private catalog generators, exporters, benchmarks, and fit experiments"
+    OFF
+)
+if(TAIYIN_BUILD_MAINTAINER_TOOLS
+    AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools")
+    message(FATAL_ERROR
+        "TAIYIN_BUILD_MAINTAINER_TOOLS=ON requires the private tools directory")
 endif()
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    include(cmake/TaiyinPascal.cmake)
+if(TAIYIN_BUILD_BAZI_EXTENSION
+    AND NOT TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS)
+    message(FATAL_ERROR
+        "TAIYIN_BUILD_BAZI_EXTENSION requires "
+        "TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON")
 endif()
-
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -59,7 +73,13 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-add_library(taiyin_ephemeris STATIC
+# MSVC exposes the non-standard M_PI family only when this is defined before
+# <cmath>. Existing numerical kernels use those constants extensively.
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES)
+endif()
+
+set(TAIYIN_NATIVE_CORE_SOURCES
     src/angle.cpp
     src/apparent_position.cpp
     src/builtin_loader.cpp
@@ -89,6 +109,8 @@ add_library(taiyin_ephemeris STATIC
     src/ephemeris_file_loader.cpp
     src/ephemeris_route_rule.cpp
     src/ephemeris_segment_cache.cpp
+    src/ephemeris_source_identity.cpp
+    src/ephemeris_source_priority.cpp
     src/field_set.cpp
     src/geometry.cpp
     src/internal/base64.cpp
@@ -130,14 +152,15 @@ add_library(taiyin_ephemeris STATIC
     src/runtime/eclipse/local_lunar_eclipse.cpp
     src/runtime/eclipse/local_solar_eclipse.cpp
     src/runtime/eclipse/lunar_eclipse_search.cpp
-    src/runtime/eclipse/lunar_eclipse_sxwnl.cpp
+    src/runtime/eclipse/lunar_shadow_geometry.cpp
     src/runtime/eclipse/lunar_limb.cpp
     src/runtime/eclipse/solar_besselian.cpp
     src/runtime/eclipse/solar_eclipse_besselian_solver.cpp
     src/runtime/eclipse/solar_eclipse_search.cpp
-    src/runtime/eclipse/solar_eclipse_sxwnl.cpp
+    src/runtime/eclipse/solar_route_geometry.cpp
+    src/runtime/eclipse/solar_shadow_geometry.cpp
     src/runtime/occultation/occultation_search.cpp
-    src/runtime/occultation/sxwnl_occultation_ext.cpp
+    src/runtime/occultation/occultation_geometry.cpp
     src/math_solvers.cpp
     src/interpolation.cpp
     src/kepler.cpp
@@ -165,6 +188,8 @@ add_library(taiyin_ephemeris STATIC
     src/vector3.cpp
 )
 
+add_library(taiyin_ephemeris STATIC ${TAIYIN_NATIVE_CORE_SOURCES})
+
 target_include_directories(taiyin_ephemeris
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -179,7 +204,26 @@ set_target_properties(taiyin_ephemeris PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
 )
 
-add_library(taiyin_astrology_extension STATIC
+if(TAIYIN_BUILD_MODULAR_C_API)
+    function(taiyin_configure_modular_shared_target target)
+        set_target_properties(${target} PROPERTIES
+            BUILD_RPATH_USE_ORIGIN ON
+        )
+        if(APPLE)
+            set_target_properties(${target} PROPERTIES
+                INSTALL_NAME_DIR "@rpath"
+                INSTALL_RPATH "@loader_path"
+            )
+        elseif(UNIX)
+            set_target_properties(${target} PROPERTIES
+                INSTALL_RPATH "$ORIGIN"
+            )
+        endif()
+    endfunction()
+
+endif()
+
+set(TAIYIN_ASTROLOGY_NATIVE_SOURCES
     src/astrology/ayanamsha_models.cpp
     src/astrology/houses.cpp
     src/astrology/house_systems.cpp
@@ -187,6 +231,7 @@ add_library(taiyin_astrology_extension STATIC
     src/astrology/sidereal.cpp
     src/astrology/targets.cpp
 )
+add_library(taiyin_astrology_extension STATIC ${TAIYIN_ASTROLOGY_NATIVE_SOURCES})
 target_link_libraries(taiyin_astrology_extension PUBLIC taiyin_ephemeris)
 target_include_directories(taiyin_astrology_extension
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -198,9 +243,9 @@ set_target_properties(taiyin_astrology_extension PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
 )
 
+set(TAIYIN_CHINESE_CALENDAR_NATIVE_SOURCES src/chinese_calendar/calendar.cpp)
 add_library(taiyin_chinese_calendar_extension STATIC
-    src/chinese_calendar/calendar.cpp
-)
+    ${TAIYIN_CHINESE_CALENDAR_NATIVE_SOURCES})
 target_link_libraries(taiyin_chinese_calendar_extension PUBLIC taiyin_ephemeris)
 target_include_directories(taiyin_chinese_calendar_extension
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -212,36 +257,25 @@ set_target_properties(taiyin_chinese_calendar_extension PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
 )
 
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    taiyin_add_pascal_archive(
-        taiyin_ganzhi_pascal_rules_archive
-        "${CMAKE_CURRENT_SOURCE_DIR}/chinese_calendar/pascal/taiyin_ganzhi_rules.pas"
-        taiyin_ganzhi_rules
-    )
-    add_library(taiyin_chinese_calendar_ganzhi_extension STATIC
-        src/chinese_calendar/ganzhi.cpp
-    )
-    target_link_libraries(taiyin_chinese_calendar_ganzhi_extension
-        PUBLIC
-            taiyin_ganzhi_pascal_rules_archive
-            taiyin_chinese_calendar_extension
-    )
-    target_include_directories(taiyin_chinese_calendar_ganzhi_extension
-        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-    set_target_properties(taiyin_chinese_calendar_ganzhi_extension PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        CXX_VISIBILITY_PRESET hidden
-        VISIBILITY_INLINES_HIDDEN YES
-    )
-endif()
+add_library(taiyin_chinese_calendar_ganzhi_extension STATIC
+    src/chinese_calendar/ganzhi.cpp
+    src/chinese_calendar/ganzhi_rules.cpp
+)
+target_link_libraries(taiyin_chinese_calendar_ganzhi_extension
+    PUBLIC taiyin_chinese_calendar_extension
+)
+target_include_directories(taiyin_chinese_calendar_ganzhi_extension
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+set_target_properties(taiyin_chinese_calendar_ganzhi_extension PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+)
 
-set(TAIYIN_C_API_SOURCES
-    src/c_api/astrology.cpp
+set(TAIYIN_C_CORE_API_SOURCES
     src/c_api/base.cpp
-    src/c_api/chinese_calendar.cpp
-    src/c_api/chinese_calendar_ganzhi.cpp
     src/c_api/context.cpp
     src/c_api/eclipse.cpp
     src/c_api/events.cpp
@@ -257,77 +291,95 @@ set(TAIYIN_C_API_SOURCES
     src/c_api/time.cpp
     src/c_api/visibility.cpp
 )
+set(TAIYIN_C_ASTROLOGY_API_SOURCES
+    src/c_api/astrology.cpp
+)
+set(TAIYIN_C_CHINESE_CALENDAR_API_SOURCES
+    src/c_api/chinese_calendar.cpp
+)
+set(TAIYIN_C_GANZHI_API_SOURCES
+    src/c_api/chinese_calendar_ganzhi.cpp
+)
+set(TAIYIN_C_API_SOURCES
+    ${TAIYIN_C_ASTROLOGY_API_SOURCES}
+    ${TAIYIN_C_CORE_API_SOURCES}
+    ${TAIYIN_C_CHINESE_CALENDAR_API_SOURCES}
+    ${TAIYIN_C_GANZHI_API_SOURCES}
+)
 
-add_library(taiyin_c SHARED ${TAIYIN_C_API_SOURCES})
-target_link_libraries(taiyin_c
-    PRIVATE
-        taiyin_astrology_extension
-)
-if(NOT TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    target_link_libraries(taiyin_c PRIVATE taiyin_chinese_calendar_extension)
-endif()
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    if(NOT TAIYIN_BUILD_BAZI_EXTENSION)
-        target_link_libraries(
-            taiyin_c PRIVATE taiyin_chinese_calendar_ganzhi_extension)
+if(TAIYIN_BUILD_MODULAR_C_API)
+    # Ganzhi is calendrical infrastructure, so it belongs in the base DLL.
+    # BaZi remains the only optional shared extension.
+    add_library(taiyin SHARED
+        ${TAIYIN_NATIVE_CORE_SOURCES}
+        ${TAIYIN_ASTROLOGY_NATIVE_SOURCES}
+        ${TAIYIN_CHINESE_CALENDAR_NATIVE_SOURCES}
+        src/chinese_calendar/ganzhi.cpp
+        src/chinese_calendar/ganzhi_rules.cpp
+        ${TAIYIN_C_CORE_API_SOURCES}
+        ${TAIYIN_C_ASTROLOGY_API_SOURCES}
+        ${TAIYIN_C_CHINESE_CALENDAR_API_SOURCES}
+        ${TAIYIN_C_GANZHI_API_SOURCES}
+    )
+    target_include_directories(taiyin
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/c_api
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/third_party/miniz
+    )
+    target_compile_definitions(taiyin PRIVATE
+        TAIYIN_C_BUILD
+        TAIYIN_GANZHI_SHARED_BUILD
+    )
+    taiyin_configure_modular_shared_target(taiyin)
+    set_target_properties(taiyin PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        C_VISIBILITY_PRESET default
+        # Ganzhi and BaZi use the native calendar/runtime API internally.
+        CXX_VISIBILITY_PRESET default
+        VISIBILITY_INLINES_HIDDEN YES
+        VERSION ${TAIYIN_C_ABI_VERSION}.0.0
+        SOVERSION ${TAIYIN_C_ABI_VERSION}
+    )
+    if(WIN32)
+        set_target_properties(taiyin PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
     endif()
-    target_compile_definitions(
-        taiyin_c PRIVATE TAIYIN_C_HAS_GANZHI_CALENDAR_EXTENSION)
-endif()
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    if(APPLE)
-        set(TAIYIN_PASCAL_HIDDEN_SYMBOLS_FILE
-            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/TaiyinPascalHiddenSymbolsDarwin.txt")
-        target_link_options(taiyin_c PRIVATE
-            "LINKER:-unexported_symbols_list,${TAIYIN_PASCAL_HIDDEN_SYMBOLS_FILE}")
-        set_property(TARGET taiyin_c APPEND PROPERTY
-            LINK_DEPENDS ${TAIYIN_PASCAL_HIDDEN_SYMBOLS_FILE})
-    elseif(UNIX)
-        set(TAIYIN_PASCAL_HIDDEN_SYMBOLS_FILE
-            "${CMAKE_CURRENT_SOURCE_DIR}/cmake/TaiyinPascalHiddenSymbolsElf.map")
-        target_link_options(taiyin_c PRIVATE
-            "LINKER:--version-script=${TAIYIN_PASCAL_HIDDEN_SYMBOLS_FILE}")
-        set_property(TARGET taiyin_c APPEND PROPERTY
-            LINK_DEPENDS ${TAIYIN_PASCAL_HIDDEN_SYMBOLS_FILE})
-    endif()
-endif()
-target_include_directories(taiyin_c
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/c_api
-)
-target_compile_definitions(taiyin_c PRIVATE TAIYIN_C_BUILD)
-if(WIN32)
-    set(TAIYIN_C_SHARED_OUTPUT_NAME "taiyin-${TAIYIN_C_ABI_VERSION}")
+
 else()
-    set(TAIYIN_C_SHARED_OUTPUT_NAME taiyin)
+    add_library(taiyin_c SHARED ${TAIYIN_C_API_SOURCES})
+    target_link_libraries(taiyin_c
+        PRIVATE
+            taiyin_astrology_extension
+    )
+    target_link_libraries(
+        taiyin_c PRIVATE taiyin_chinese_calendar_ganzhi_extension)
+    target_include_directories(taiyin_c
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/c_api
+    )
+    target_compile_definitions(taiyin_c PRIVATE TAIYIN_C_BUILD)
+    if(WIN32)
+        set(TAIYIN_C_SHARED_OUTPUT_NAME "taiyin-${TAIYIN_C_ABI_VERSION}")
+    else()
+        set(TAIYIN_C_SHARED_OUTPUT_NAME taiyin)
+    endif()
+    set_target_properties(taiyin_c PROPERTIES
+        OUTPUT_NAME ${TAIYIN_C_SHARED_OUTPUT_NAME}
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN YES
+        VERSION ${TAIYIN_C_ABI_VERSION}.0.0
+        SOVERSION ${TAIYIN_C_ABI_VERSION}
+    )
 endif()
-set_target_properties(taiyin_c PROPERTIES
-    OUTPUT_NAME ${TAIYIN_C_SHARED_OUTPUT_NAME}
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN YES
-    # Keep each ABI generation in a distinct physical file. The package
-    # semantic version remains PROJECT_VERSION and is reported by the C API.
-    VERSION ${TAIYIN_C_ABI_VERSION}.0.0
-    SOVERSION ${TAIYIN_C_ABI_VERSION}
-)
 
 add_library(taiyin_c_static STATIC ${TAIYIN_C_API_SOURCES})
 target_link_libraries(taiyin_c_static
     PRIVATE
         taiyin_astrology_extension
 )
-if(NOT TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    target_link_libraries(
-        taiyin_c_static PRIVATE taiyin_chinese_calendar_extension)
-endif()
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    if(NOT TAIYIN_BUILD_BAZI_EXTENSION)
-        target_link_libraries(
-            taiyin_c_static PRIVATE taiyin_chinese_calendar_ganzhi_extension)
-    endif()
-    target_compile_definitions(
-        taiyin_c_static PRIVATE TAIYIN_C_HAS_GANZHI_CALENDAR_EXTENSION)
-endif()
+target_link_libraries(
+    taiyin_c_static PRIVATE taiyin_chinese_calendar_ganzhi_extension)
 target_include_directories(taiyin_c_static
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/c_api
@@ -345,12 +397,30 @@ if(TAIYIN_BUILD_BAZI_EXTENSION)
     add_subdirectory(bazi_astrology)
 endif()
 
-install(
-    TARGETS taiyin_c
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
+if(TAIYIN_BUILD_MODULAR_C_API)
+    install(
+        TARGETS
+            taiyin
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+    if(TAIYIN_BUILD_BAZI_EXTENSION)
+        install(
+            TARGETS taiyin_bazi
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )
+    endif()
+else()
+    install(
+        TARGETS taiyin_c
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endif()
 install(
     DIRECTORY include/taiyin/c
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/taiyin
@@ -383,7 +453,11 @@ target_link_libraries(test_math_primitives PRIVATE taiyin_ephemeris)
 add_executable(test_c_api
     tests/test_c_api.c
 )
-target_link_libraries(test_c_api PRIVATE taiyin_c)
+if(TAIYIN_BUILD_MODULAR_C_API)
+    target_link_libraries(test_c_api PRIVATE taiyin)
+else()
+    target_link_libraries(test_c_api PRIVATE taiyin_c)
+endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(test_c_api PRIVATE m)
 endif()
@@ -398,7 +472,11 @@ add_executable(test_c_api_static
 )
 target_link_libraries(test_c_api_static PRIVATE taiyin_c_static)
 if(TAIYIN_BUILD_BAZI_EXTENSION)
-    target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_BAZI=1)
+    if(TAIYIN_BUILD_MODULAR_C_API)
+        target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_BAZI=0)
+    else()
+        target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_BAZI=1)
+    endif()
     target_compile_definitions(test_c_api_static PRIVATE TAIYIN_TEST_EXPECT_BAZI=1)
 else()
     target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_BAZI=0)
@@ -427,6 +505,16 @@ add_executable(test_ephemeris_route_rule
     tests/test_ephemeris_route_rule.cpp
 )
 target_link_libraries(test_ephemeris_route_rule PRIVATE taiyin_ephemeris)
+
+add_executable(test_ephemeris_source_identity
+    tests/test_ephemeris_source_identity.cpp
+)
+target_link_libraries(test_ephemeris_source_identity PRIVATE taiyin_ephemeris)
+
+add_executable(test_ephemeris_routing_matrix
+    tests/test_ephemeris_routing_matrix.cpp
+)
+target_link_libraries(test_ephemeris_routing_matrix PRIVATE taiyin_ephemeris)
 
 add_executable(test_semi_analytic
     tests/test_semi_analytic.cpp
@@ -518,17 +606,15 @@ add_executable(test_chinese_calendar
     tests/test_chinese_calendar.cpp
 )
 
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    add_executable(test_ganzhi_calendar tests/test_ganzhi_calendar.cpp)
-    target_link_libraries(
-        test_ganzhi_calendar PRIVATE taiyin_chinese_calendar_ganzhi_extension)
-endif()
+add_executable(test_ganzhi_calendar tests/test_ganzhi_calendar.cpp)
+target_link_libraries(
+    test_ganzhi_calendar PRIVATE taiyin_chinese_calendar_ganzhi_extension)
 
 add_executable(test_ganzhi_calendar_c_api tests/test_ganzhi_calendar_c_api.c)
-target_link_libraries(test_ganzhi_calendar_c_api PRIVATE taiyin_c)
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    target_compile_definitions(
-        test_ganzhi_calendar_c_api PRIVATE TAIYIN_TEST_HAS_GANZHI_CALENDAR_EXTENSION)
+if(TAIYIN_BUILD_MODULAR_C_API)
+    target_link_libraries(test_ganzhi_calendar_c_api PRIVATE taiyin)
+else()
+    target_link_libraries(test_ganzhi_calendar_c_api PRIVATE taiyin_c)
 endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(test_ganzhi_calendar_c_api PRIVATE m)
@@ -536,11 +622,6 @@ endif()
 
 add_executable(test_ganzhi_calendar_c_api_static tests/test_ganzhi_calendar_c_api.c)
 target_link_libraries(test_ganzhi_calendar_c_api_static PRIVATE taiyin_c_static)
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    target_compile_definitions(
-        test_ganzhi_calendar_c_api_static
-        PRIVATE TAIYIN_TEST_HAS_GANZHI_CALENDAR_EXTENSION)
-endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(test_ganzhi_calendar_c_api_static PRIVATE m)
 endif()
@@ -748,19 +829,63 @@ target_link_libraries(test_eclipse_ts_regression PRIVATE taiyin_ephemeris)
 
 add_executable(test_sxwnl_solar_oracles
     tests/test_sxwnl_solar_oracles.cpp
+    legacy/sxwnl/eclipse/solar_eclipse_sxwnl.cpp
 )
 target_include_directories(test_sxwnl_solar_oracles PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/legacy/sxwnl/eclipse
 )
 target_link_libraries(test_sxwnl_solar_oracles PRIVATE taiyin_ephemeris)
 
 add_executable(test_sxwnl_lunar_oracles
     tests/test_sxwnl_lunar_oracles.cpp
+    legacy/sxwnl/eclipse/lunar_eclipse_sxwnl.cpp
 )
 target_include_directories(test_sxwnl_lunar_oracles PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/legacy/sxwnl/eclipse
 )
 target_link_libraries(test_sxwnl_lunar_oracles PRIVATE taiyin_ephemeris)
+
+add_executable(test_lunar_shadow_geometry
+    tests/test_lunar_shadow_geometry.cpp
+)
+target_include_directories(test_lunar_shadow_geometry PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_lunar_shadow_geometry PRIVATE taiyin_ephemeris)
+
+add_executable(test_solar_shadow_geometry
+    tests/test_solar_shadow_geometry.cpp
+    legacy/sxwnl/eclipse/solar_eclipse_sxwnl.cpp
+)
+target_include_directories(test_solar_shadow_geometry PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/legacy/sxwnl/eclipse
+)
+target_link_libraries(test_solar_shadow_geometry PRIVATE taiyin_ephemeris)
+
+add_executable(test_solar_direct_solver
+    tests/test_solar_direct_solver.cpp
+)
+target_include_directories(test_solar_direct_solver PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(test_solar_direct_solver PRIVATE taiyin_ephemeris)
+
+add_executable(test_lunar_eclipse_model_comparison
+    tests/test_lunar_eclipse_model_comparison.cpp
+    legacy/sxwnl/eclipse/lunar_eclipse_sxwnl.cpp
+)
+target_include_directories(test_lunar_eclipse_model_comparison PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/legacy/sxwnl/eclipse
+)
+target_link_libraries(test_lunar_eclipse_model_comparison PRIVATE taiyin_ephemeris)
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/private/tests/test_event_search_swiss.cpp)
     add_executable(test_event_search_swiss
@@ -857,35 +982,81 @@ add_executable(example_apparent_ut_chart_table
 )
 target_link_libraries(example_apparent_ut_chart_table PRIVATE taiyin_ephemeris)
 
-add_executable(generate_ephemeris_catalog
-    tools/generate_ephemeris_catalog.cpp
+add_executable(example_eclipse_search
+    examples/eclipse_search.cpp
 )
-target_link_libraries(generate_ephemeris_catalog PRIVATE taiyin_ephemeris)
+target_link_libraries(example_eclipse_search PRIVATE taiyin_ephemeris)
 
-add_executable(taiyin_solar_eclipse_export
-    tools/taiyin_solar_eclipse_export.cpp
+add_executable(example_chinese_calendar_han
+    examples/chinese_calendar_han.cpp
 )
-target_link_libraries(taiyin_solar_eclipse_export PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+target_link_libraries(example_chinese_calendar_han
+    PRIVATE taiyin_chinese_calendar_extension)
 
-add_executable(taiyin_opm2_loader_bench
-    tools/taiyin_opm2_loader_bench.cpp
+add_executable(example_ganzhi_bce
+    examples/ganzhi_bce.cpp
 )
-target_link_libraries(taiyin_opm2_loader_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+target_link_libraries(example_ganzhi_bce
+    PRIVATE taiyin_chinese_calendar_ganzhi_extension)
 
-add_executable(taiyin_chart_random_bench
-    tools/taiyin_chart_random_bench.cpp
+add_executable(example_muye_jupiter
+    examples/muye_jupiter.cpp
 )
-target_link_libraries(taiyin_chart_random_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+target_link_libraries(example_muye_jupiter PRIVATE taiyin_ephemeris)
 
-add_executable(taiyin_single_body_trace_bench
-    tools/taiyin_single_body_trace_bench.cpp
+add_executable(example_tang_833_antares
+    examples/tang_833_antares.cpp
 )
-target_link_libraries(taiyin_single_body_trace_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+target_link_libraries(example_tang_833_antares
+    PRIVATE taiyin_chinese_calendar_ganzhi_extension)
 
-add_executable(taiyin_eclipse_bench
-    benchmark/taiyin_eclipse_bench.cpp
-)
-target_link_libraries(taiyin_eclipse_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+if(TAIYIN_BUILD_MAINTAINER_TOOLS)
+    add_executable(generate_ephemeris_catalog
+        tools/generate_ephemeris_catalog.cpp
+    )
+    target_link_libraries(generate_ephemeris_catalog PRIVATE taiyin_ephemeris)
+
+    add_executable(taiyin_solar_eclipse_export
+        tools/taiyin_solar_eclipse_export.cpp
+    )
+    target_link_libraries(taiyin_solar_eclipse_export PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+
+    add_executable(taiyin_opm2_loader_bench
+        tools/taiyin_opm2_loader_bench.cpp
+    )
+    target_link_libraries(taiyin_opm2_loader_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+
+    add_executable(taiyin_chart_random_bench
+        tools/taiyin_chart_random_bench.cpp
+    )
+    target_link_libraries(taiyin_chart_random_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+
+    add_executable(taiyin_single_body_trace_bench
+        tools/taiyin_single_body_trace_bench.cpp
+    )
+    target_link_libraries(taiyin_single_body_trace_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+
+    add_executable(taiyin_eclipse_bench
+        benchmark/taiyin_eclipse_bench.cpp
+    )
+    target_link_libraries(taiyin_eclipse_bench PRIVATE taiyin_ephemeris ${CMAKE_DL_LIBS})
+
+    add_executable(lunar_shadow_fit_experiment
+        tools/lunar_shadow_fit_experiment.cpp
+    )
+    target_include_directories(lunar_shadow_fit_experiment PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(lunar_shadow_fit_experiment PRIVATE taiyin_ephemeris)
+
+    add_executable(lunar_apparent_window_bench
+        tools/lunar_apparent_window_bench.cpp
+    )
+    target_include_directories(lunar_apparent_window_bench PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(lunar_apparent_window_bench PRIVATE taiyin_ephemeris)
+endif()
 
 
 
@@ -897,7 +1068,12 @@ add_test(NAME field_set COMMAND test_field_set)
 add_test(NAME ephemeris_catalog COMMAND test_ephemeris_catalog)
 add_test(NAME ephemeris_segment_cache COMMAND test_ephemeris_segment_cache)
 add_test(NAME ephemeris_route_rule COMMAND test_ephemeris_route_rule)
+add_test(NAME ephemeris_source_identity COMMAND test_ephemeris_source_identity)
+add_test(NAME ephemeris_routing_matrix COMMAND test_ephemeris_routing_matrix)
 add_test(NAME semi_analytic COMMAND test_semi_analytic)
+set_tests_properties(semi_analytic PROPERTIES
+    ENVIRONMENT "TAIYIN_DATA_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+)
 add_test(NAME custom_ephemeris_method COMMAND test_custom_ephemeris_method)
 add_test(NAME global_ephemeris_runtime COMMAND test_global_ephemeris_runtime)
 set_tests_properties(global_ephemeris_runtime PROPERTIES
@@ -906,12 +1082,26 @@ set_tests_properties(global_ephemeris_runtime PROPERTIES
 add_test(NAME discovery_descriptors COMMAND test_discovery_descriptors)
 add_test(NAME spk COMMAND test_spk)
 if(Python3_Interpreter_FOUND)
+    if(TAIYIN_BUILD_MAINTAINER_TOOLS)
+        add_test(
+            NAME tsc1_lite_catalog
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tsc1_lite_catalog.py
+        )
+    endif()
     add_test(
         NAME spk_opm2_jplephem_oracles
         COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_spk_opm2_jplephem_oracles.py
             $<TARGET_FILE:oracle_state_driver>
     )
+    if(TAIYIN_BUILD_MAINTAINER_TOOLS)
+        add_test(
+            NAME satellite_fit_tool_contracts
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_satellite_fit_tool_contracts.py
+        )
+    endif()
 endif()
 add_test(NAME kepler COMMAND test_kepler)
 add_test(NAME kepler_file COMMAND test_kepler_file)
@@ -924,12 +1114,10 @@ add_test(NAME sidereal_astrology COMMAND test_sidereal_astrology)
 add_test(NAME houses_astrology COMMAND test_houses_astrology)
 add_test(NAME lunar_points_astrology COMMAND test_lunar_points_astrology)
 add_test(NAME chinese_calendar COMMAND test_chinese_calendar)
-if(TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION)
-    add_test(NAME ganzhi_calendar COMMAND test_ganzhi_calendar)
-    set_tests_properties(ganzhi_calendar PROPERTIES
-        ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
-    )
-endif()
+add_test(NAME ganzhi_calendar COMMAND test_ganzhi_calendar)
+set_tests_properties(ganzhi_calendar PROPERTIES
+    ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+)
 add_test(
     NAME ganzhi_calendar_c_api
     COMMAND test_ganzhi_calendar_c_api ${CMAKE_CURRENT_SOURCE_DIR}/data)
@@ -946,15 +1134,50 @@ set_tests_properties(chinese_calendar PROPERTIES
     ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
 )
 if(UNIX)
-    add_test(
-        NAME c_api_export_symbols
-        COMMAND ${CMAKE_COMMAND}
-            -DTAIYIN_NM=${CMAKE_NM}
-            -DTAIYIN_LIBRARY=$<TARGET_FILE:taiyin_c>
-            -DTAIYIN_PLATFORM=${CMAKE_SYSTEM_NAME}
-            -DTAIYIN_EXPECT_BAZI=${TAIYIN_BUILD_BAZI_EXTENSION}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckTaiyinCExports.cmake
-    )
+    if(TAIYIN_BUILD_MODULAR_C_API)
+        add_test(
+            NAME c_api_export_symbols_base
+            COMMAND ${CMAKE_COMMAND}
+                -DTAIYIN_NM=${CMAKE_NM}
+                -DTAIYIN_LIBRARY=$<TARGET_FILE:taiyin>
+                -DTAIYIN_PLATFORM=${CMAKE_SYSTEM_NAME}
+                -DTAIYIN_EXPECT_BAZI=OFF
+                -DTAIYIN_ALLOW_CPP_SYMBOLS=ON
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckTaiyinCExports.cmake
+        )
+        add_test(
+            NAME c_api_export_symbols_base_internal
+            COMMAND ${CMAKE_COMMAND}
+                -DTAIYIN_NM=${CMAKE_NM}
+                -DTAIYIN_PLATFORM=${CMAKE_SYSTEM_NAME}
+                -DTAIYIN_RUNTIME_LIBRARY=$<TARGET_FILE:taiyin>
+                "-DTAIYIN_RUNTIME_FORBIDDEN_REGEX=(^|\\n)[^\\n]*[_]*ZN6taiyin16chinese_calendar5rules"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckTaiyinCExports.cmake
+        )
+        if(TAIYIN_BUILD_BAZI_EXTENSION)
+            add_test(
+                NAME c_api_export_symbols_bazi
+                COMMAND ${CMAKE_COMMAND}
+                    -DTAIYIN_NM=${CMAKE_NM}
+                    -DTAIYIN_PLATFORM=${CMAKE_SYSTEM_NAME}
+                    -DTAIYIN_MODULE_LIBRARIES=$<TARGET_FILE:taiyin_bazi>
+                    -DTAIYIN_MODULE_LABELS=bazi
+                    "-DTAIYIN_MODULE_EXPECTED_REGEXES=^_?taiyin_bazi_"
+                    "-DTAIYIN_MODULE_FORBIDDEN_REGEXES=^_?taiyin_(astrology|chinese_calendar|ganzhi)_"
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckTaiyinCExports.cmake
+            )
+        endif()
+    else()
+        add_test(
+            NAME c_api_export_symbols
+            COMMAND ${CMAKE_COMMAND}
+                -DTAIYIN_NM=${CMAKE_NM}
+                -DTAIYIN_LIBRARY=$<TARGET_FILE:taiyin_c>
+                -DTAIYIN_PLATFORM=${CMAKE_SYSTEM_NAME}
+                -DTAIYIN_EXPECT_BAZI=${TAIYIN_BUILD_BAZI_EXTENSION}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckTaiyinCExports.cmake
+        )
+    endif()
 endif()
 add_test(NAME low_level_oracles COMMAND test_low_level_oracles)
 add_test(NAME pure_functions_full COMMAND test_pure_functions_full)
@@ -1006,18 +1229,12 @@ add_test(NAME planet_visibility COMMAND test_planet_visibility)
 add_test(NAME planet_visibility_spk_oracles COMMAND test_planet_visibility_spk_oracles)
 add_test(NAME planet_visibility_public COMMAND test_planet_visibility_public)
 add_test(NAME eclipse_search_smoke COMMAND test_eclipse_search_smoke)
+set_tests_properties(eclipse_search_smoke PROPERTIES
+    ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+)
 add_test(NAME eclipse_search_spk_oracles COMMAND test_eclipse_search_spk_oracles)
 add_test(NAME sxwnl_solar_oracles COMMAND test_sxwnl_solar_oracles)
-if(Python3_Interpreter_FOUND)
-    add_test(
-        NAME sxwnl_route_oracle
-        COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_sxwnl_route_oracle.py
-            $<TARGET_FILE:taiyin_solar_eclipse_export>
-            ${CMAKE_CURRENT_SOURCE_DIR}/data
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/oracles/sxwnl_route_2026_02_17.json
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/oracles/generate_sxwnl_route_oracle.js
-    )
+if(Python3_Interpreter_FOUND AND TAIYIN_BUILD_MAINTAINER_TOOLS)
     add_test(
         NAME eclipse_forecast_json
         COMMAND ${Python3_EXECUTABLE}
@@ -1047,9 +1264,57 @@ set_tests_properties(lunar_limb_eclipse PROPERTIES
     ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
 )
 add_test(NAME sxwnl_lunar_oracles COMMAND test_sxwnl_lunar_oracles)
+add_test(NAME lunar_shadow_geometry COMMAND test_lunar_shadow_geometry)
+set_tests_properties(lunar_shadow_geometry PROPERTIES
+    ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+)
+add_test(NAME solar_shadow_geometry COMMAND test_solar_shadow_geometry)
+add_test(NAME solar_direct_solver COMMAND test_solar_direct_solver)
+set_tests_properties(solar_direct_solver PROPERTIES
+    ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+)
+add_test(NAME lunar_eclipse_model_comparison COMMAND test_lunar_eclipse_model_comparison)
+set_tests_properties(lunar_eclipse_model_comparison PROPERTIES
+    ENVIRONMENT "TAIYIN_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+)
 add_test(NAME event_frame COMMAND test_event_frame)
 add_test(NAME apparent_position COMMAND test_apparent_position)
 add_test(NAME apparent_position_oracles COMMAND test_apparent_position_oracles)
+
+add_test(
+    NAME example_observed_ut_bare_chart_run
+    COMMAND example_observed_ut_bare_chart ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_observed_utc_eop_bare_chart_run
+    COMMAND example_observed_utc_eop_bare_chart ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_apparent_ut_chart_table_run
+    COMMAND example_apparent_ut_chart_table ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_eclipse_search_run
+    COMMAND example_eclipse_search ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_chinese_calendar_han_run
+    COMMAND example_chinese_calendar_han ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_ganzhi_bce_run
+    COMMAND example_ganzhi_bce ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_muye_jupiter_run
+    COMMAND example_muye_jupiter ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
+    NAME example_tang_833_antares_run
+    COMMAND example_tang_833_antares ${CMAKE_CURRENT_SOURCE_DIR}/data)
+set_tests_properties(
+    example_observed_ut_bare_chart_run
+    example_observed_utc_eop_bare_chart_run
+    example_apparent_ut_chart_table_run
+    example_eclipse_search_run
+    example_chinese_calendar_han_run
+    example_ganzhi_bce_run
+    example_muye_jupiter_run
+    example_tang_833_antares_run
+    PROPERTIES LABELS examples)
 
 
 add_executable(test_apparent_self_skip

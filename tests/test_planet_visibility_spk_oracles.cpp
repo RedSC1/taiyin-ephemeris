@@ -191,6 +191,7 @@ EventResult search_event(int body_id, int event_kind, double start, double end) 
             split_start,
             split_end,
             event_kind,
+            0u,
             &result,
             &diagnostic);
     }

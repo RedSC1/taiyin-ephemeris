@@ -64,6 +64,20 @@ struct AngularSeparationSearchResult {
     AngularSeparationSearchResult() noexcept;
 };
 
+struct BodyStarAngularSeparationSearchResult {
+    // Time scale follows the entry point: UT for
+    // search_minimum_body_star_angular_separation_ut(), TT for
+    // search_minimum_body_star_angular_separation_tt().
+    SplitJulianDate jd;
+    double separation_rad;
+    double separation_rate_rad_per_day;
+    int body_id;
+    int iteration_count;
+    int evaluation_count;
+
+    BodyStarAngularSeparationSearchResult() noexcept;
+};
+
 struct SolarTransitSearchResult {
     int body_id;
     uint32_t kind;
@@ -395,6 +409,33 @@ Status search_minimum_angular_separation_tt(
     double max_step_days,
     uint64_t flags,
     AngularSeparationSearchResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+// Search the minimum apparent angular separation between one solar-system
+// body and a named star from the loaded TSC1/TSF1 catalog. Position flags use
+// the same policy as the body-body minimum-separation entry points.
+Status search_minimum_body_star_angular_separation_ut(
+    const NativeCalcContext* context,
+    int body_id,
+    const char* star_key,
+    SplitJulianDate start_jd_ut,
+    SplitJulianDate end_jd_ut,
+    double max_step_days,
+    uint64_t flags,
+    BodyStarAngularSeparationSearchResult* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+Status search_minimum_body_star_angular_separation_tt(
+    const NativeCalcContext* context,
+    int body_id,
+    const char* star_key,
+    SplitJulianDate start_jd_tt,
+    SplitJulianDate end_jd_tt,
+    double max_step_days,
+    uint64_t flags,
+    BodyStarAngularSeparationSearchResult* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept;
 

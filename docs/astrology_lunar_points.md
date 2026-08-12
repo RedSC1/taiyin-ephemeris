@@ -136,13 +136,9 @@ interval the closest boundary piece is deliberately extrapolated and
 workflows evaluable without hiding that the result is outside the source
 ephemeris interval.
 
-Regenerate the coefficient header with:
-
-```sh
-python3 tools/fit_lunar_apogee_de441.py \
-  --de441 /path/to/de441.bsp \
-  --output src/astrology/generated/lunar_apogee_de441_fit.h
-```
+The DE441 fitting workflow that produced the checked-in coefficient header is
+maintained privately; it is not required by normal builds or included in the
+public source snapshot.
 
 ## Reference And Flag Contract
 

@@ -1,5 +1,6 @@
 #include "taiyin/internal/ephemeris_block.h"
 #include "taiyin/internal/semi_analytic.h"
+#include "taiyin/physical_constants.h"
 #include "taiyin/runtime/ephemeris_route.h"
 #include "taiyin/runtime/runtime.h"
 
@@ -80,11 +81,11 @@ void test_python_position_oracles() {
         {4, 10, 2000000.25, {-0.74175245146111757, -1.2046755625578387, -0.5295804600880083}},
         {9, 10, 2750000.75, {43.977240932359457, 8.5112705566859717, -10.597727104737656}},
         {3, 10, 625400.0, {-0.5621882770636577, -0.77256208705910523, -0.34479448831055276}},
-        {399, 10, 2451545.0, {-0.17712989144400712, 0.88742994510573259, 0.38474349080558146}},
-        {399, 10, 2816700.0, {1.004422337927845, -0.019527185130096034, -0.0087388645115314065}},
-        {301, 399, 2451545.0, {-0.0019492790327158378, -0.0017828964171667768, -0.00050871268262010977}},
-        {301, 399, 700000.0, {-0.00068271518204465558, 0.0020519650721599028, 0.0010627941775929164}},
-        {301, 399, 2816700.0, {-0.001641039820451488, -0.0019949685922289032, -0.00077264285123617577}},
+        {399, 10, 2451545.0, {-0.1771298914135801, 0.88742994506633999, 0.38474349080421483}},
+        {399, 10, 2816700.0, {1.0044223378677171, -0.019527185094630098, -0.0087388645273331518}},
+        {301, 399, 2451545.0, {-0.0019492815368800627, -0.0017828931751430715, -0.00050871257014439451}},
+        {301, 399, 700000.0, {-0.00068273572820657443, 0.0020519544880880742, 0.0010627972998754826}},
+        {301, 399, 2816700.0, {-0.0016410348718894716, -0.0019949715110956531, -0.00077264155074353402}},
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
@@ -114,6 +115,218 @@ void test_python_position_oracles() {
 
 double component(const Vector3& vector, size_t axis) {
     return axis == 0 ? vector.x : (axis == 1 ? vector.y : vector.z);
+}
+
+void test_charon_and_pluto_cob_routes() {
+    struct Case {
+        int target_id;
+        int center_id;
+        double jd;
+        double expected_km[3];
+        double tolerance_km;
+        const char* label;
+    };
+    // PLU060 and NEP098 direct barycenter-to-target vectors, sampled
+    // independently with jplephem. The Mars and Pluto physical-center routes
+    // sum every mass-bearing satellite modeled by their source kernels;
+    // Neptune remains deliberately Triton-dominant.
+    const Case cases[] = {
+        {401, 499, 2451545.0,
+            {-1988.977928515696, -8743.1602252503581, -3182.2616495026705},
+            200.0, "Phobos MAR099 residual state"},
+        {402, 499, 2500000.0,
+            {10324.336540234461, -16001.192049068239, -13705.453497488968},
+            30.0, "Deimos MAR099 residual state"},
+        {499, 4, 2451545.0,
+            {0.000009640920933, 0.000180043780302, 0.000083971596235},
+            0.001, "Mars complete-system COB state"},
+        {499, 4, 2500000.0,
+            {-0.000110302048081, -0.000092876351896, 0.000009921356384},
+            0.001, "Mars complete-system COB state 2132"},
+        {901, 999, 2451545.0,
+            {-6837.721052183022, -8791.382868678273, -16126.27409447914},
+            0.030, "Charon relative state"},
+        {901, 999, 2469807.5,
+            {-13616.805487051643, -11478.774833547746, 8178.907704696217},
+            0.030, "Charon relative state 2050"},
+        {901, 999, 2506332.5,
+            {14399.858588399833, 13115.496184777934, -2125.0170357130087},
+            0.030, "Charon relative state 2150"},
+        {902, 999, 2451545.0,
+            {-3191.6373911550245, 3994.5785556577875, 46539.632693610045},
+            300.0, "Nix two-angle relative state"},
+        {903, 999, 2469807.5,
+            {18206.961189308357, 7838.1714036404464, -60408.82486525178},
+            1000.0, "Hydra two-angle relative state"},
+        {904, 999, 2506332.5,
+            {-32137.988108465808, -34857.536814958395, -30092.000343465213},
+            1000.0, "Kerberos two-angle relative state"},
+        {905, 999, 2451545.0,
+            {30203.420371973123, 26698.009339959724, -9675.0164273554838},
+            1000.0, "Styx two-angle relative state"},
+        {999, 9, 2451545.0,
+            {743.7022701247653, 956.2186368660449, 1754.1542239321088},
+            0.005, "Pluto complete-system COB state"},
+        {999, 9, 2469807.5,
+            {1481.1659591758366, 1248.619970807618, -889.5406273663918},
+            0.005, "Pluto complete-system COB state 2050"},
+        {999, 9, 2506332.5,
+            {-1566.3584333779022, -1426.6283413074102, 231.30599816907932},
+            0.005, "Pluto complete-system COB state 2150"},
+        {801, 899, 2451545.0,
+            {-205696.47446793687, 10004.077126660104, 288812.3684286066},
+            60.0, "Triton relative state"},
+        {801, 899, 2469807.5,
+            {143434.22786050473, -48487.20380808989, -320869.9828722861},
+            60.0, "Triton relative state 2050"},
+        {801, 899, 2506332.5,
+            {89850.25117098121, -206680.48400603488, -274017.72332165355},
+            60.0, "Triton relative state 2150"},
+        {899, 8, 2451545.0,
+            {42.96082365738436, -2.064742769082248, -60.312506339096764},
+            0.100, "Neptune Triton-dominant COB state"},
+        {899, 8, 2469807.5,
+            {-30.01626368170534, 10.120030803635498, 67.05990633161736},
+            0.100, "Neptune Triton-dominant COB state 2050"},
+        {899, 8, 2506332.5,
+            {-18.7539495747309, 43.162907800094324, 57.22385526353068},
+            0.100, "Neptune Triton-dominant COB state 2150"},
+    };
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        StorageEphemerisBlock storage;
+        CompiledEphemerisBlock block;
+        expect_true(
+            compile_route(
+                cases[index].target_id, cases[index].center_id, cases[index].jd,
+                &storage, &block),
+            cases[index].label);
+        CartesianState state;
+        if (block.data) {
+            expect_true(
+                taiyin::internal::eval_compiled_ephemeris_block(
+                    split_jd(cases[index].jd), &block, &state),
+                "evaluate Pluto-system semi-analytic route");
+            const double actual_km[3] = {
+                state.position_au.x * taiyin::TAIYIN_AU_KM,
+                state.position_au.y * taiyin::TAIYIN_AU_KM,
+                state.position_au.z * taiyin::TAIYIN_AU_KM,
+            };
+            for (size_t axis = 0; axis < 3; ++axis) {
+                expect_near(
+                    actual_km[axis], cases[index].expected_km[axis],
+                    cases[index].tolerance_km, cases[index].label);
+            }
+        }
+        taiyin::internal::destroy_storage_ephemeris_block(&storage);
+    }
+}
+
+void test_galilean_l1_routes() {
+    struct SourceCase {
+        int target_id;
+        double expected_au[3];
+    };
+    // Direct values emitted by Astronomy Engine's retained compact L1.2
+    // implementation at TT J2000.0. This catches element-conversion or frame
+    // regressions independently of the deliberately loose JUP365 accuracy
+    // contract below.
+    const SourceCase source_cases[] = {
+        {501, {0.0026721026466794222, 0.00076430589263707944,
+            0.00040882062939067907}},
+        {502, {-0.0037512422429412857, -0.0021357390400536334,
+            -0.0010567698616581480}},
+        {503, {-0.0054895158200833514, -0.0041119014515566092,
+            -0.0020338789777956802}},
+        {504, {0.0021725808729460287, 0.011187996083737949,
+            0.005323161129880986}},
+    };
+    for (size_t index = 0;
+         index < sizeof(source_cases) / sizeof(source_cases[0]); ++index) {
+        StorageEphemerisBlock storage;
+        CompiledEphemerisBlock block;
+        expect_true(
+            compile_route(
+                source_cases[index].target_id, 599, 2451545.0,
+                &storage, &block),
+            "compile compact L1.2 source regression route");
+        CartesianState state;
+        if (block.data) {
+            expect_true(
+                taiyin::internal::eval_compiled_ephemeris_block(
+                    split_jd(2451545.0), &block, &state),
+                "evaluate compact L1.2 source regression route");
+            expect_near(
+                state.position_au.x, source_cases[index].expected_au[0],
+                6.0e-14, "compact L1.2 source regression x");
+            expect_near(
+                state.position_au.y, source_cases[index].expected_au[1],
+                6.0e-14, "compact L1.2 source regression y");
+            expect_near(
+                state.position_au.z, source_cases[index].expected_au[2],
+                6.0e-14, "compact L1.2 source regression z");
+        }
+        taiyin::internal::destroy_storage_ephemeris_block(&storage);
+    }
+
+    struct Case {
+        int target_id;
+        int center_id;
+        double jd;
+        double expected_km[3];
+        double tolerance_km;
+        const char* label;
+    };
+    // Independent JUP365 vectors from jplephem.  The compact L1.2 model is
+    // deliberately kilometre-to-thousand-kilometre class for individual
+    // moons; the physical Jupiter correction is far better after mass
+    // weighting the four Galileans.
+    const Case cases[] = {
+        {501, 599, 2451545.0,
+            {399714.236329573, 114358.233793476, 61202.666940873},
+            2000.0, "Io compact L1.2 state"},
+        {502, 599, 2469807.5,
+            {5912.318807196, 600294.278726695, 289815.201072822},
+            1200.0, "Europa compact L1.2 state"},
+        {503, 599, 2506332.5,
+            {-467797.056907286, 872015.542149202, 410741.880700012},
+            1200.0, "Ganymede compact L1.2 state"},
+        {504, 599, 2451545.0,
+            {325079.730633136, 1673657.388398113, 796198.064855955},
+            1200.0, "Callisto compact L1.2 state"},
+        {599, 5, 2451545.0,
+            {41.059135538, -44.132392576, -20.245438341},
+            0.300, "Jupiter Galilean-dominant COB state"},
+        {599, 5, 2506332.5,
+            {-25.484595441, -97.981200444, -46.608615492},
+            0.300, "Jupiter Galilean-dominant COB state 2150"},
+    };
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        StorageEphemerisBlock storage;
+        CompiledEphemerisBlock block;
+        expect_true(
+            compile_route(
+                cases[index].target_id, cases[index].center_id, cases[index].jd,
+                &storage, &block),
+            cases[index].label);
+        CartesianState state;
+        if (block.data) {
+            expect_true(
+                taiyin::internal::eval_compiled_ephemeris_block(
+                    split_jd(cases[index].jd), &block, &state),
+                "evaluate Galilean compact L1.2 route");
+            const double actual_km[3] = {
+                state.position_au.x * taiyin::TAIYIN_AU_KM,
+                state.position_au.y * taiyin::TAIYIN_AU_KM,
+                state.position_au.z * taiyin::TAIYIN_AU_KM,
+            };
+            for (size_t axis = 0; axis < 3; ++axis) {
+                expect_near(
+                    actual_km[axis], cases[index].expected_km[axis],
+                    cases[index].tolerance_km, cases[index].label);
+            }
+        }
+        taiyin::internal::destroy_storage_ephemeris_block(&storage);
+    }
 }
 
 void test_analytic_derivatives(int target_id, int center_id, double jd, double step) {
@@ -184,12 +397,71 @@ void test_coverage_contract() {
             && start == 625295.0 && end == 2816795.0,
         "planet coverage");
     expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(10, 0, &start, &end)
+            && start == 625295.0 && end == 2816795.0,
+        "synthesized Sun-to-SSB coverage");
+    expect_true(
         taiyin::internal::get_builtin_semi_analytic_coverage(301, 399, &start, &end)
             && start > 625300.0 && end < 2816800.0,
         "lunar coverage");
     expect_true(
         !taiyin::internal::get_builtin_semi_analytic_coverage(301, 10, &start, &end),
         "unsupported heliocentric Moon route is not advertised");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(401, 499, &start, &end)
+            && start == 2305447.5 && end == 2670691.5,
+        "Phobos MAR099 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(402, 499, &start, &end)
+            && start == 2305447.5 && end == 2670691.5,
+        "Deimos MAR099 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(499, 4, &start, &end)
+            && start == 2305447.5 && end == 2670691.5,
+        "Mars COB correction coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(501, 599, &start, &end)
+            && start == 2305456.5 && end == 2524602.5,
+        "Io compact L1.2 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(599, 5, &start, &end)
+            && start == 2305456.5 && end == 2524602.5,
+        "Jupiter Galilean-dominant COB coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(901, 999, &start, &end)
+            && start == 2378497.5 && end == 2524591.5,
+        "Charon PLU060 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(902, 999, &start, &end)
+            && start == 2378497.5 && end == 2524591.5,
+        "Nix PLU060 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(903, 999, &start, &end)
+            && start == 2378497.5 && end == 2524591.5,
+        "Hydra PLU060 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(904, 999, &start, &end)
+            && start == 2378497.5 && end == 2524591.5,
+        "Kerberos PLU060 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(905, 999, &start, &end)
+            && start == 2378497.5 && end == 2524591.5,
+        "Styx PLU060 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(999, 9, &start, &end)
+            && start == 2378497.5 && end == 2524591.5,
+        "Pluto COB correction coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(801, 899, &start, &end)
+            && start == 2378496.5 && end == 2524592.5,
+        "Triton NEP098 coverage is explicit");
+    expect_true(
+        taiyin::internal::get_builtin_semi_analytic_coverage(899, 8, &start, &end)
+            && start == 2378496.5 && end == 2524592.5,
+        "Neptune COB correction coverage is explicit");
+    expect_true(
+        !taiyin::internal::get_builtin_semi_analytic_coverage(999, 10, &start, &end),
+        "Pluto-to-Sun is composed through the barycenter, not registered directly");
 }
 
 void test_runtime_routes() {
@@ -222,6 +494,109 @@ void test_runtime_routes() {
         taiyin::status_ok(runtime.eval_ephemeris_state(request, &result, &diagnostic))
             && result.descriptor.method_id == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
         "explicit semi-analytical route is registered");
+
+    request.target_id = 901;
+    request.center_id = 999;
+    request.jd_tdb = split_jd(2451545.0);
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(request, &result, &diagnostic))
+            && result.descriptor.method_id == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Charon PLU060 residual route is registered");
+
+    request.target_id = 501;
+    request.center_id = 599;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &result, &diagnostic))
+            && result.descriptor.method_id == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Io compact L1.2 route is registered");
+
+    request.target_id = 599;
+    request.center_id = 5;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &result, &diagnostic))
+            && result.descriptor.method_id == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Jupiter Galilean-dominant COB route is registered");
+
+    request.target_id = 999;
+    request.center_id = 10;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(request, &result, &diagnostic))
+            && result.descriptor.method_id == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Pluto COB-corrected semi-analytical route is registered");
+    const CartesianState pluto_from_sun = result.state;
+
+    request.target_id = 9;
+    request.center_id = 10;
+    taiyin::runtime::EphemerisResult pluto_barycenter_from_sun;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &pluto_barycenter_from_sun, &diagnostic)),
+        "Pluto barycenter-to-Sun component evaluates");
+
+    request.target_id = 999;
+    request.center_id = 9;
+    taiyin::runtime::EphemerisResult pluto_from_barycenter;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &pluto_from_barycenter, &diagnostic)),
+        "Pluto center-to-barycenter component evaluates");
+    for (size_t axis = 0; axis < 3; ++axis) {
+        expect_near(
+            component(pluto_from_sun.position_au, axis),
+            component(pluto_barycenter_from_sun.state.position_au, axis)
+                + component(pluto_from_barycenter.state.position_au, axis),
+            2.0e-15,
+            "Pluto-to-Sun route composes barycenter and COB components");
+    }
+
+    request.target_id = 801;
+    request.center_id = 899;
+    taiyin::runtime::EphemerisResult triton_from_neptune;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &triton_from_neptune, &diagnostic))
+            && triton_from_neptune.descriptor.method_id
+                == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Triton NEP098 residual route is registered");
+
+    request.target_id = 899;
+    request.center_id = 10;
+    taiyin::runtime::EphemerisResult neptune_from_sun;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &neptune_from_sun, &diagnostic))
+            && neptune_from_sun.descriptor.method_id
+                == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "Neptune Triton-dominant semi-analytical route is registered");
+
+    request.target_id = 10;
+    request.center_id = 0;
+    taiyin::runtime::EphemerisResult semi_sun;
+    expect_true(
+        taiyin::status_ok(runtime.eval_ephemeris_state(
+            request, &semi_sun, &diagnostic))
+            && semi_sun.descriptor.method_id
+                == taiyin::internal::SEMI_ANALYTIC_METHOD_ID,
+        "semi-analytical Sun-to-SSB route is registered");
+
+    request.route_rule_id = taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_OPM2;
+    taiyin::runtime::EphemerisResult opm_sun;
+    const bool opm_ok = taiyin::status_ok(runtime.eval_ephemeris_state(
+        request, &opm_sun, &diagnostic));
+    expect_true(opm_ok, "packaged Sun-to-SSB oracle evaluates");
+    if (opm_ok) {
+        const double dx = semi_sun.state.position_au.x
+            - opm_sun.state.position_au.x;
+        const double dy = semi_sun.state.position_au.y
+            - opm_sun.state.position_au.y;
+        const double dz = semi_sun.state.position_au.z
+            - opm_sun.state.position_au.z;
+        expect_true(
+            std::sqrt(dx * dx + dy * dy + dz * dz) < 5.0e-5,
+            "synthesized Sun-to-SSB state tracks packaged ephemeris");
+    }
 }
 
 }  // namespace
@@ -230,18 +605,27 @@ int main() {
     expect_true(
         std::strcmp(
             taiyin::internal::builtin_semi_analytic_source_revision(),
-            "27d33df2089ee1213a13a68782d5eff4ca2b2681") == 0,
+            "a5bdf675f921804874dc4e0a0838beebfbcf2b32") == 0,
         "semi-analytical source revision is recorded");
     expect_true(
         std::strcmp(
             taiyin::internal::builtin_semi_analytic_coefficients_sha256(),
-            "67beddfed388e5a8b934b8834a0f011dd69fa9888c6373a7a6becbd39eb01516") == 0,
+            "728d60ee0f5cb0a99b016608a33df9ba16d48f59053f19384922d6d7fc0f1270") == 0,
         "semi-analytical coefficient hash is recorded");
     test_python_position_oracles();
     test_analytic_derivatives(1, 10, 2451545.0, 1.0 / 64.0);
     test_analytic_derivatives(6, 10, 2300000.25, 1.0 / 16.0);
     test_analytic_derivatives(399, 10, 2451545.0, 1.0 / 64.0);
     test_analytic_derivatives(301, 399, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(10, 0, 2451545.0, 1.0 / 64.0);
+    test_analytic_derivatives(901, 999, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(999, 9, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(801, 899, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(899, 8, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(501, 599, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(599, 5, 2451545.0, 1.0 / 512.0);
+    test_charon_and_pluto_cob_routes();
+    test_galilean_l1_routes();
     test_coverage_contract();
     test_runtime_routes();
     if (failures != 0) {

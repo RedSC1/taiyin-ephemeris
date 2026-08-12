@@ -1,7 +1,7 @@
 # Current Capabilities And Known Limits
 
 Status: Current
-Last reviewed: 2026-07-18
+Last reviewed: 2026-08-07
 
 This document summarizes what Taiyin can currently do, what limits remain, and which work areas are suitable for future versions. Specific API details are documented in the corresponding topic documents and headers:
 
@@ -45,7 +45,7 @@ calc_observed_ut
 calc_observed_utc
 ```
 
-The current apparent/observed chain supports combinations of light-time, annual aberration, solar/multi-body gravitational deflection, topocentric observer, horizontal az/alt, refraction, frame selection, UTC/EOP/UT1/polar motion/CPO, and related options. The global runtime owns EOP, leap-second, and lunar-limb data. User location, atmosphere, time policy, model IDs, and route rule live on `NativeCalcContext`; flags control switches.
+The current apparent/observed chain supports combinations of light-time, annual aberration, solar/multi-body gravitational deflection, topocentric observer, horizontal az/alt, refraction, frame selection, UTC/EOP/UT1/polar motion/CPO, and related options. The global runtime owns EOP, leap-second, and lunar-limb data. User location, atmosphere, time policy, model IDs, and route rule live on `NativeCalcContext`; flags control switches. Observed APIs use a `uint64_t` layering convention: their low 32 bits accept only calculation semantics (`SPEED`, `TRUEPOS`, `NO_ABERR`, `NO_GDEFL`, `ASTROMETRIC`, `TOPOCENTRIC`, and `ALLOW_BARYCENTER_APPROX`), while horizontal/refraction/meteorology options occupy the high 32 bits. Output-shape and frame-selector flags (`XYZ`, `EQUATORIAL`, `RADIANS`, and `NONUT`) return `TAIYIN_ERROR_UNSUPPORTED`, rather than being silently ignored.
 
 ### Composite Bodies And Data Fallback
 
@@ -57,6 +57,18 @@ or semi-analytical is selected, only that route rule is tried, which avoids
 silent method mixing during searches or composite calculations.
 
 Major-planet body IDs remain strict by default when only barycenter data is available. `TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` is an explicit native-position opt-in for using the matching barycenter as an approximation for Mars through Pluto; diagnostics keep the requested body as `target_id` and report the barycenter in `component_target_id`.
+
+### Data-Free Satellite Fallback Boundary
+
+The built-in semi-analytical route includes Phobos/Deimos, the Galilean moons,
+the Pluto system, and Triton over their separately documented intervals. These
+are compact fallback states rather than precision satellite ephemerides:
+individual relative-state errors range from metres or kilometres to hundreds of
+kilometres, while the mass-weighted physical-planet center correction may be
+far smaller. Precise satellite astrometry and satellite phenomena require a
+matching SPK or OPM2 source. No Saturnian or Uranian satellite theory is built
+in for 1.0; a physical Saturn/Uranus request therefore needs direct data unless
+the caller explicitly permits the ordinary barycenter approximation.
 
 ### Stars
 
@@ -72,6 +84,20 @@ calc_observed_star_ut / calc_observed_stars_ut
 TSC1/TSF1 providers are wrapped by the global star store, so application code usually does not need to pass `Tsc1StarProvider*` directly. Stars support alias lookup, linear space motion, proper-motion propagation, spherical/XYZ output, velocity output, and observed flags aligned with ordinary main bodies.
 
 `calc_star_position_*` returns observer-relative fixed-star positions and applies the same fixed-star apparent corrections used by the observed-star path: annual aberration and solar gravitational deflection are enabled by default, while `TRUEPOS`, `ASTROMETRIC`, `NO_ABERR`, and `NO_GDEFL` select the corresponding reduced models.
+
+For the 1.0 API, fixed-star position and observed-star calls require
+`NativeCalcContext::observer_id == TAIYIN_BODY_EARTH`. A non-Earth observer
+returns `TAIYIN_ERROR_UNSUPPORTED`. Historical semi-analytical routes are still
+supported for an Earth observer: the built-in model synthesizes Sun-to-SSB from
+its nine heliocentric planetary-barycenter states, so the Earth, Sun, and
+stellar catalog remain in one barycentric frame.
+
+Topocentric observation is likewise Earth-only in 1.0. Topocentric context
+setters and native/observed topocentric requests return
+`TAIYIN_ERROR_UNSUPPORTED` for a non-Earth observer. Supporting another body's
+surface would require that body's reference ellipsoid, rotation/orientation,
+and (where relevant) atmospheric model; those models are intentionally outside
+the 1.0 scope.
 
 ### Event Search
 
@@ -125,7 +151,7 @@ search_planet_rise_set_ut
 search_planet_transit_ut
 ```
 
-Solar and lunar searches support limb selection, refraction, fixed disc size, and custom horizon. Planet searches support rise/set/transit, refraction, limb selection, and custom horizon. Public rise/set entry points default to refracted apparent altitude when the context has atmosphere data; use the `*_VISIBILITY_FLAG_NO_REFRACTION` flags for true-altitude searches. A caller may explicitly opt into the documented ISA-style standard-atmosphere fallback with `native_context_set_atmosphere_policy_flags(..., TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK)`. The corresponding high-word `*_VISIBILITY_STRICT_METEOROLOGY` flags disable that fallback for one call and require supplied atmosphere fields. Public regression/oracle tests already cover examples such as Denver and Longyearbyen.
+Solar and lunar searches support limb selection, refraction, fixed disc size, and custom horizon. Planet searches support rise/set/transit, refraction, limb selection, and custom horizon. `search_planet_transit_ut()` accepts `uint64_t flags`; its low 32-bit native-position word is forwarded unchanged, and its high word is reserved for future transit options. This lets a physical Jupiter request use `TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` on historical semi-analytic data without teaching the transit solver about barycenters; strict-first fallback remains in the position/apparent route and diagnostics retain the requested target. Ordinary public rise/set entry points default to refracted apparent altitude; use the `*_VISIBILITY_FLAG_NO_REFRACTION` flags for true-altitude searches. A refracted request needs real atmosphere data unless the context explicitly opts into the documented ISA-style standard-atmosphere fallback with `native_context_set_atmosphere_policy_flags(..., TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK)`. The corresponding high-word `*_VISIBILITY_STRICT_METEOROLOGY` flags disable that fallback for one call and require supplied atmosphere fields. Local solar-eclipse APIs deliberately differ: their visibility window is geometric by default, and only `TAIYIN_ECLIPSE_LOCAL_REFRACTION` requests the refracted window; `TAIYIN_ECLIPSE_LOCAL_STRICT_METEOROLOGY` requires that option and prohibits fallback. Public regression/oracle tests already cover examples such as Denver and Longyearbyen.
 
 ### Body Phenomena
 
@@ -137,7 +163,7 @@ Solar and lunar searches support limb selection, refraction, fixed disc size, an
 
 The versioned C99 ABI is the binding and application compatibility boundary
 from library version `1.0.0` onward. Existing C symbols and structure contracts
-must remain source- and binary-compatible within ABI major 5. New fields use
+must remain source- and binary-compatible within ABI major 7. New fields use
 the documented `struct_size` convention.
 
 The C++ headers remain implementation-facing. They may evolve between minor
@@ -265,8 +291,8 @@ Future versions can expand around these areas. Which version gets which item dep
 ```text
 more complete observed UTC/EOP/CPO external verification
 clearer horizontal/refraction convention documentation and comparisons
-documentation for Sun, Moon, and planet visibility APIs
-Phenomena API, such as phase angle, elongation, illuminated fraction
+broader external tables for solar, lunar, and planetary visibility
+higher-fidelity photometry and sky-brightness models
 house cusp/angle speeds, fractional house-position queries, and remaining house variants
 Engine / Store facade for multi-instance and long-running services
 ```

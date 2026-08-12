@@ -1,8 +1,7 @@
 #include "taiyin/runtime/occultation_search.h"
 
 #include "runtime/eclipse/eclipse_time.h"
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
-#include "runtime/occultation/sxwnl_occultation_ext.h"
+#include "runtime/occultation/occultation_geometry.h"
 
 #include "taiyin/angle.h"
 #include "taiyin/apparent_position.h"
@@ -305,8 +304,8 @@ uint32_t native_flags_from_occultation_flags(uint64_t flags, bool topocentric) n
     return native_flags;
 }
 
-uint32_t observed_flags_from_occultation_flags(uint64_t flags, bool topocentric) noexcept {
-    uint32_t observed_flags = 0u;
+uint64_t observed_flags_from_occultation_flags(uint64_t flags, bool topocentric) noexcept {
+    uint64_t observed_flags = 0u;
     const uint32_t position_flags = occultation_position_flags(flags);
     if ((position_flags & TAIYIN_NATIVE_POSITION_TRUEPOS) != 0u) {
         observed_flags |= TAIYIN_OBSERVED_TRUEPOS;
@@ -326,8 +325,8 @@ uint32_t observed_flags_from_occultation_flags(uint64_t flags, bool topocentric)
     return observed_flags;
 }
 
-uint32_t observed_horizontal_flags_from_visibility_flags(uint64_t flags) noexcept {
-    uint32_t observed_flags = TAIYIN_OBSERVED_TOPOCENTRIC | TAIYIN_OBSERVED_HORIZONTAL;
+uint64_t observed_horizontal_flags_from_visibility_flags(uint64_t flags) noexcept {
+    uint64_t observed_flags = TAIYIN_OBSERVED_TOPOCENTRIC | TAIYIN_OBSERVED_HORIZONTAL;
     if ((flags & TAIYIN_OCCULTATION_VISIBILITY_REFRACTION) != 0u) {
         observed_flags |= TAIYIN_OBSERVED_REFRACTION;
     }
@@ -453,7 +452,7 @@ double angular_separation_rad(
     return std::acos(clamp_unit(dot));
 }
 
-sxwnl::solar::Vec3 equatorial_llr_km_from_spherical(const double position[6]) noexcept {
+Vector3 equatorial_llr_km_from_spherical(const double position[6]) noexcept {
     return {
         position[0],
         position[1],
@@ -466,7 +465,7 @@ Status eval_body_equatorial_llr_km_ut(
     int body_id,
     SplitJulianDate jd_ut,
     uint64_t flags,
-    sxwnl::solar::Vec3* out,
+    Vector3* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (!context || !out || !split_julian_date_is_finite(jd_ut)) {
@@ -499,7 +498,7 @@ Status eval_star_equatorial_llr_km_ut(
     const char* star_key,
     SplitJulianDate jd_ut,
     uint64_t flags,
-    sxwnl::solar::Vec3* out,
+    Vector3* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (!context || !star_key || star_key[0] == '\0' || !out || !split_julian_date_is_finite(jd_ut)) {
@@ -741,7 +740,7 @@ Status eval_lunar_star_occultation_sample(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
-    const uint32_t observed_flags = observed_flags_from_occultation_flags(flags, topocentric);
+    const uint64_t observed_flags = observed_flags_from_occultation_flags(flags, topocentric);
     const int moon_id = TAIYIN_BODY_MOON;
     ObservedPosition moon;
     Status status = calc_observed_ut(
@@ -815,7 +814,7 @@ Status eval_lunar_body_occultation_sample(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
-    const uint32_t observed_flags = observed_flags_from_occultation_flags(flags, topocentric);
+    const uint64_t observed_flags = observed_flags_from_occultation_flags(flags, topocentric);
     const int body_ids[2] = { TAIYIN_BODY_MOON, body_id };
     ObservedPosition observed[2];
     EphemerisEvalDiagnostic diagnostics[2];
@@ -1010,7 +1009,7 @@ struct StarOccultationTarget {
         const NativeCalcContext* context,
         SplitJulianDate jd_ut,
         uint64_t flags,
-        sxwnl::solar::Vec3* out,
+        Vector3* out,
         EphemerisEvalDiagnostic* diagnostic
     ) const noexcept {
         return eval_star_equatorial_llr_km_ut(context, star_key, jd_ut, flags, out, diagnostic);
@@ -1070,7 +1069,7 @@ struct BodyOccultationTarget {
         const NativeCalcContext* context,
         SplitJulianDate jd_ut,
         uint64_t flags,
-        sxwnl::solar::Vec3* out,
+        Vector3* out,
         EphemerisEvalDiagnostic* diagnostic
     ) const noexcept {
         return eval_body_equatorial_llr_km_ut(
@@ -1715,7 +1714,7 @@ Status fill_lunar_occultation_body_visibility_sample(
         return TAIYIN_STATUS_OK;
     }
 
-    const uint32_t observed_flags = observed_horizontal_flags_from_visibility_flags(visibility_flags);
+    const uint64_t observed_flags = observed_horizontal_flags_from_visibility_flags(visibility_flags);
     const int body_ids[3] = { TAIYIN_BODY_MOON, body_id, TAIYIN_BODY_SUN };
     ObservedPosition observed[3];
     EphemerisEvalDiagnostic diagnostics[3];
@@ -1775,7 +1774,7 @@ Status fill_lunar_occultation_star_visibility_sample(
         return TAIYIN_STATUS_OK;
     }
 
-    const uint32_t observed_flags = observed_horizontal_flags_from_visibility_flags(visibility_flags);
+    const uint64_t observed_flags = observed_horizontal_flags_from_visibility_flags(visibility_flags);
     const int body_ids[2] = { TAIYIN_BODY_MOON, TAIYIN_BODY_SUN };
     ObservedPosition bodies[2];
     EphemerisEvalDiagnostic body_diagnostics[2];
@@ -2166,15 +2165,15 @@ Status eval_occultation_center_line(
     SplitJulianDate jd_ut,
     uint64_t flags,
     EvalTargetLlrFn eval_target_llr,
-    sxwnl_ext::occultation::Boundary* out,
+    occultation_geometry::GeodeticPoint* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (!context || !out || !split_julian_date_is_finite(jd_ut)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    *out = sxwnl_ext::occultation::Boundary();
+    *out = occultation_geometry::GeodeticPoint();
 
-    sxwnl::solar::Vec3 moon;
+    Vector3 moon;
     Status status = eval_body_equatorial_llr_km_ut(
         context,
         TAIYIN_BODY_MOON,
@@ -2184,7 +2183,7 @@ Status eval_occultation_center_line(
         diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    sxwnl::solar::Vec3 target;
+    Vector3 target;
     status = eval_target_llr(jd_ut, &target, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
@@ -2192,7 +2191,7 @@ Status eval_occultation_center_line(
     status = gast_for_occultation_where(*context, jd_ut, &gast, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    *out = sxwnl_ext::occultation::lineEar_llr(moon, target, gast);
+    *out = occultation_geometry::intersect_axis_with_earth(moon, target, gast);
     return TAIYIN_STATUS_OK;
 }
 
@@ -2202,15 +2201,15 @@ Status eval_occultation_nbj(
     SplitJulianDate jd_ut,
     uint64_t flags,
     EvalTargetLlrFn eval_target_llr,
-    sxwnl_ext::occultation::NbjResult* out,
+    occultation_geometry::AxisProjection* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (!context || !out || !split_julian_date_is_finite(jd_ut)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    *out = sxwnl_ext::occultation::NbjResult();
+    *out = occultation_geometry::AxisProjection();
 
-    sxwnl::solar::Vec3 moon;
+    Vector3 moon;
     Status status = eval_body_equatorial_llr_km_ut(
         context,
         TAIYIN_BODY_MOON,
@@ -2220,7 +2219,7 @@ Status eval_occultation_nbj(
         diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    sxwnl::solar::Vec3 target;
+    Vector3 target;
     status = eval_target_llr(jd_ut, &target, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
@@ -2228,9 +2227,9 @@ Status eval_occultation_nbj(
     status = gast_for_occultation_where(*context, jd_ut, &gast, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    sxwnl_ext::occultation::ZbState state;
-    sxwnl_ext::occultation::zb0(moon, target, gast, &state);
-    *out = sxwnl_ext::occultation::nbj(state);
+    occultation_geometry::AxisState state;
+    occultation_geometry::initialize_axis(moon, target, gast, &state);
+    *out = occultation_geometry::project_axis_to_earth(state);
     return TAIYIN_STATUS_OK;
 }
 
@@ -2256,7 +2255,7 @@ Status find_occultation_center_line_edge(
     // from contact times so real search results do not truncate central paths.
     const double span_days = OCCULTATION_SEED_WINDOW_DAYS;
 
-    sxwnl_ext::occultation::Boundary inside;
+    occultation_geometry::GeodeticPoint inside;
     Status status = eval_occultation_center_line(
         context,
         occultation->jd_ut,
@@ -2271,7 +2270,7 @@ Status find_occultation_center_line_edge(
     constexpr double kScanStepDays = 5.0 / 1440.0;
     for (double offset = kScanStepDays; offset <= span_days + 1.0e-12; offset += kScanStepDays) {
         const SplitJulianDate candidate_t = occultation->jd_ut + direction * offset;
-        sxwnl_ext::occultation::Boundary sample;
+        occultation_geometry::GeodeticPoint sample;
         EphemerisEvalDiagnostic scratch;
         status = eval_occultation_center_line(
             context,
@@ -2296,7 +2295,7 @@ Status find_occultation_center_line_edge(
          iter < 48 && std::fabs(outside_t - inside_t) > kEdgeTimeToleranceDays;
          ++iter) {
         const SplitJulianDate mid = inside_t + 0.5 * (outside_t - inside_t);
-        sxwnl_ext::occultation::Boundary sample;
+        occultation_geometry::GeodeticPoint sample;
         EphemerisEvalDiagnostic scratch;
         status = eval_occultation_center_line(
             context,
@@ -2348,7 +2347,7 @@ Status fill_occultation_center_line_path(
             ? 0.0
             : static_cast<double>(i) / static_cast<double>(TAIYIN_OCCULTATION_WHERE_MAX_PATH_POINTS - 1);
         const SplitJulianDate jd_ut = begin_jd_ut + fraction * (end_jd_ut - begin_jd_ut);
-        sxwnl_ext::occultation::Boundary point;
+        occultation_geometry::GeodeticPoint point;
         EphemerisEvalDiagnostic scratch;
         const Status status = eval_occultation_center_line(
             context,
@@ -2381,7 +2380,7 @@ Status fill_occultation_center_line_path(
             out->center_line_max_latitude_deg = std::max(out->center_line_max_latitude_deg, slot.latitude_deg);
         }
         if (std::isfinite(previous_lon_rad) && std::isfinite(previous_lat_rad)) {
-            const double step_km = sxwnl_ext::occultation::surface_distance_km(
+            const double step_km = occultation_geometry::surface_distance_km(
                 previous_lon_rad,
                 previous_lat_rad,
                 point.longitude_rad,
@@ -2698,7 +2697,7 @@ Status fill_occultation_outer_limit_path(
         out->outer_south_path[out_i] = south_point;
         ++out->outer_limit_path_count;
 
-        const double width_km = sxwnl_ext::occultation::surface_distance_km(
+        const double width_km = occultation_geometry::surface_distance_km(
             north_point.longitude_deg * TAIYIN_DEG_TO_RAD,
             north_point.latitude_deg * TAIYIN_DEG_TO_RAD,
             south_point.longitude_deg * TAIYIN_DEG_TO_RAD,
@@ -2739,7 +2738,7 @@ Status compute_lunar_occultation_where_impl(
     out->jd_ut = occultation->jd_ut;
     out->height_m = 0.0;
 
-    sxwnl_ext::occultation::NbjResult where_geometry;
+    occultation_geometry::AxisProjection where_geometry;
     Status status = eval_occultation_nbj(
         context,
         occultation->jd_ut,
@@ -2749,9 +2748,9 @@ Status compute_lunar_occultation_where_impl(
         diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    const sxwnl_ext::occultation::Boundary best = where_geometry.center_line_hits_earth != 0
-        ? where_geometry.pp0
-        : where_geometry.pp1;
+    const occultation_geometry::GeodeticPoint best = where_geometry.center_line_hits_earth != 0
+        ? where_geometry.center_intersection
+        : where_geometry.nearest_observer;
     if (!best.valid
         || !std::isfinite(best.longitude_rad)
         || !std::isfinite(best.latitude_rad)) {
@@ -2842,7 +2841,7 @@ Status occultation_centrality_type_flags(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
-    sxwnl::solar::Vec3 moon;
+    Vector3 moon;
     Status status = eval_body_equatorial_llr_km_ut(
         context,
         TAIYIN_BODY_MOON,
@@ -2852,7 +2851,7 @@ Status occultation_centrality_type_flags(
         diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    sxwnl::solar::Vec3 target_llr;
+    Vector3 target_llr;
     status = target.eval_equatorial_llr_km(
         context,
         jd_ut,
@@ -2865,8 +2864,8 @@ Status occultation_centrality_type_flags(
     status = gast_for_occultation_where(*context, jd_ut, &gast, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    const sxwnl_ext::occultation::Boundary center =
-        sxwnl_ext::occultation::lineEar_llr(moon, target_llr, gast);
+    const occultation_geometry::GeodeticPoint center =
+        occultation_geometry::intersect_axis_with_earth(moon, target_llr, gast);
     *out_flags = center.valid
         && std::isfinite(center.longitude_rad)
         && std::isfinite(center.latitude_rad)
@@ -3461,7 +3460,7 @@ Status compute_lunar_star_occultation_where_ut(
     if (!star_key || star_key[0] == '\0') {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    auto eval_target_llr = [&](SplitJulianDate jd_ut, sxwnl::solar::Vec3* target, EphemerisEvalDiagnostic* diag) noexcept -> Status {
+    auto eval_target_llr = [&](SplitJulianDate jd_ut, Vector3* target, EphemerisEvalDiagnostic* diag) noexcept -> Status {
         return eval_star_equatorial_llr_km_ut(
             context,
             star_key,
@@ -3534,7 +3533,7 @@ Status compute_lunar_body_occultation_where_ut(
     if (!valid_lunar_body_occultation_target(body_id, target_radius_km)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    auto eval_target_llr = [&](SplitJulianDate jd_ut, sxwnl::solar::Vec3* target, EphemerisEvalDiagnostic* diag) noexcept -> Status {
+    auto eval_target_llr = [&](SplitJulianDate jd_ut, Vector3* target, EphemerisEvalDiagnostic* diag) noexcept -> Status {
         return eval_body_equatorial_llr_km_ut(
             context,
             body_id,

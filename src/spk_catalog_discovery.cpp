@@ -36,6 +36,7 @@ bool make_spk_descriptor(
     int frame_id,
     double start_et_seconds,
     double end_et_seconds,
+    uint64_t source_id,
     uint64_t route_block_id,
     uint64_t source_block_id,
     EphemerisBlockDescriptor* out
@@ -57,7 +58,7 @@ bool make_spk_descriptor(
 
     EphemerisBlockDescriptor descriptor;
     descriptor.route_key = EphemerisRouteKey(target_id, center_id, SPK_METHOD_ID, static_cast<int>(route_block_id));
-    descriptor.source_key = EphemerisBlockKey(SPK_SOURCE_ID, source_block_id, 1, 0);
+    descriptor.source_key = EphemerisBlockKey(source_id, source_block_id, 1, 0);
     descriptor.target_id = target_id;
     descriptor.center_id = center_id;
     descriptor.method_id = SPK_METHOD_ID;
@@ -85,6 +86,7 @@ bool append_spk_descriptor(
     int frame_id,
     double start_et_seconds,
     double end_et_seconds,
+    uint64_t source_id,
     uint64_t source_block_id,
     std::vector<EphemerisBlockDescriptor>* out
 ) {
@@ -96,6 +98,7 @@ bool append_spk_descriptor(
             frame_id,
             start_et_seconds,
             end_et_seconds,
+            source_id,
             static_cast<uint64_t>(out->size() + 1),
             source_block_id,
             &descriptor)) {
@@ -113,14 +116,15 @@ bool segment_less(const SpkSegment& lhs, const SpkSegment& rhs) noexcept {
     return lhs.summary_index < rhs.summary_index;
 }
 
-int preferred_relative_center_for_shared_spk_center(int center_id) noexcept {
+}  // namespace
+
+int spk_physical_primary_for_shared_center(int center_id) noexcept {
     if (center_id == 0) return 10;
     if (center_id == 3) return 399;
+    if (center_id == 4) return 499;
     if (center_id >= 5 && center_id <= 9) return center_id * 100 + 99;
     return 0;
 }
-
-}  // namespace
 
 EphemerisDiscoveryStatus discover_spk_file(
     const std::string& path,
@@ -154,6 +158,7 @@ EphemerisDiscoveryStatus discover_spk_file(
         std::sort(segments.begin(), segments.end(), segment_less);
 
         const size_t before = out->size();
+        const uint64_t source_id = classify_spk_source_id_from_path(path);
         const uint64_t source_block_id = static_cast<uint64_t>(before + 1);
         for (size_t i = 0; i < segments.size(); ++i) {
             const SpkSegment& segment = segments[i];
@@ -164,6 +169,7 @@ EphemerisDiscoveryStatus discover_spk_file(
                     segment.frame_id,
                     segment.start_et_seconds,
                     segment.end_et_seconds,
+                    source_id,
                     source_block_id,
                     out)) {
                 out->resize(before);
@@ -178,7 +184,8 @@ EphemerisDiscoveryStatus discover_spk_file(
                     continue;
                 }
                 const SpkSegment& rhs = segments[j];
-                const int preferred_center = preferred_relative_center_for_shared_spk_center(lhs.center_id);
+                const int preferred_center =
+                    spk_physical_primary_for_shared_center(lhs.center_id);
                 if (lhs.center_id != rhs.center_id
                     || lhs.frame_id != rhs.frame_id
                     || lhs.target_id == rhs.target_id
@@ -198,6 +205,7 @@ EphemerisDiscoveryStatus discover_spk_file(
                         lhs.frame_id,
                         start_et,
                         end_et,
+                        source_id,
                         source_block_id,
                         out)) {
                     out->resize(before);

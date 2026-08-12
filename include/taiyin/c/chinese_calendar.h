@@ -28,7 +28,8 @@ enum taiyin_chinese_calendar_month_name {
     TAIYIN_C_CHINESE_MONTH_NAME_THIRTEEN = 1,
     TAIYIN_C_CHINESE_MONTH_NAME_LATER_NINE = 2,
     TAIYIN_C_CHINESE_MONTH_NAME_ALT_TWELVE = 3,
-    TAIYIN_C_CHINESE_MONTH_NAME_ALT_ONE = 4
+    TAIYIN_C_CHINESE_MONTH_NAME_ALT_ONE = 4,
+    TAIYIN_C_CHINESE_MONTH_NAME_LATER_SAME_NAME = 5
 };
 
 typedef struct taiyin_chinese_calendar_config {
@@ -107,55 +108,55 @@ typedef struct taiyin_chinese_calendar_year {
     int64_t second_winter_solstice_day_number;
 } taiyin_chinese_calendar_year;
 
-TAIYIN_C_API void TAIYIN_C_CALL taiyin_chinese_calendar_config_init(
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_chinese_calendar_config_init(
     taiyin_chinese_calendar_config* config
 );
-TAIYIN_C_API void TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
 taiyin_chinese_calendar_config_init_utc_offset(
     taiyin_chinese_calendar_config* config,
     int32_t utc_offset_minutes
 );
-TAIYIN_C_API void TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
 taiyin_chinese_calendar_config_init_meridian(
     taiyin_chinese_calendar_config* config,
     double longitude_deg
 );
-TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_date_init(
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_solar_date_init(
     taiyin_solar_date* value
 );
-TAIYIN_C_API void TAIYIN_C_CALL taiyin_lunar_date_init(
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_lunar_date_init(
     taiyin_lunar_date* value
 );
-TAIYIN_C_API void TAIYIN_C_CALL taiyin_chinese_solar_term_event_init(
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_chinese_solar_term_event_init(
     taiyin_chinese_solar_term_event* value
 );
-TAIYIN_C_API void TAIYIN_C_CALL taiyin_chinese_calendar_year_init(
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_chinese_calendar_year_init(
     taiyin_chinese_calendar_year* value
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_context_create(
     const taiyin_context* astronomy,
     const taiyin_chinese_calendar_config* config,
     taiyin_chinese_calendar_context** out_context
 );
-TAIYIN_C_API void TAIYIN_C_CALL taiyin_chinese_calendar_context_destroy(
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_chinese_calendar_context_destroy(
     taiyin_chinese_calendar_context* context
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_calc_year_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_calendar_year* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-// term_index_from_vernal_equinox follows the sxwnl convention: 0 is the
+// term_index_from_vernal_equinox uses a spring-equinox seasonal cycle: 0 is the
 // spring equinox and 18 is the winter solstice in civil_year; 19 through 23
 // are Xiaohan through Jingzhe earlier in the same civil year.
 // For remote proleptic years this selects a seasonal crossing, not a guarantee
 // that its rendered Gregorian date remains within civil_year.
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_specific_jie_qi_ut(
     const taiyin_chinese_calendar_context* context,
     int32_t civil_year,
@@ -164,63 +165,63 @@ taiyin_chinese_calendar_get_specific_jie_qi_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 // Prev includes a term exactly at jd_ut; Next advances to the subsequent term.
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_prev_jie_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_next_jie_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_prev_jie_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_next_jie_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_prev_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_next_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_from_solar(
     const taiyin_chinese_calendar_context* context,
     const taiyin_solar_date* solar,
     taiyin_lunar_date* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_from_lunar(
     const taiyin_chinese_calendar_context* context,
     const taiyin_lunar_date* lunar,
     taiyin_solar_date* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_get_month_days(
     const taiyin_chinese_calendar_context* context,
     int32_t lunar_year,

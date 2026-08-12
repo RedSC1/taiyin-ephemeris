@@ -1,6 +1,7 @@
 #include "taiyin/runtime/native_position.h"
 
 #include "runtime/core/native_context_checks.h"
+#include "runtime/core/native_position_policy.h"
 #include "runtime/core/runtime_state_block_adapter.h"
 
 #include "taiyin/angle.h"
@@ -408,38 +409,6 @@ Status fail_state(
     return fail_state(out, diagnostic, status, target_id, center_id, split_jd);
 }
 
-bool status_allows_barycenter_approx(Status status) noexcept {
-    return status == TAIYIN_EPHEMERIS_ERROR_NO_ROUTE
-        || status == TAIYIN_EPHEMERIS_ERROR_COVERAGE_GAP
-        || status == TAIYIN_EPHEMERIS_ERROR_COMPOSITE_MISSING_COMPONENT
-        || status == TAIYIN_EPHEMERIS_ERROR_COMPOSITE_COVERAGE_GAP;
-}
-
-int barycenter_approx_target(int target_id) noexcept {
-    switch (target_id) {
-    case TAIYIN_BODY_MARS:
-        return TAIYIN_BODY_MARS_BARYCENTER;
-    case TAIYIN_BODY_JUPITER:
-        return TAIYIN_BODY_JUPITER_BARYCENTER;
-    case TAIYIN_BODY_SATURN:
-        return TAIYIN_BODY_SATURN_BARYCENTER;
-    case TAIYIN_BODY_URANUS:
-        return TAIYIN_BODY_URANUS_BARYCENTER;
-    case TAIYIN_BODY_NEPTUNE:
-        return TAIYIN_BODY_NEPTUNE_BARYCENTER;
-    case TAIYIN_BODY_PLUTO:
-        return TAIYIN_BODY_PLUTO_BARYCENTER;
-    default:
-        return 0;
-    }
-}
-
-bool should_try_barycenter_approx(int target_id, uint32_t flags, Status status) noexcept {
-    return (flags & TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX) != 0u
-        && status_allows_barycenter_approx(status)
-        && barycenter_approx_target(target_id) != 0;
-}
-
 Status resolve_tt_to_tdb(
     const NativeCalcContext& context,
     const SplitJulianDate& jd_tt,
@@ -486,6 +455,17 @@ Status calc_position_tdb_once(
     }
     if ((flags & ~SUPPORTED_NATIVE_POSITION_FLAGS) != 0u) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, target_id, ctx.observer_id, jd_tdb);
+    }
+    if (ctx.observer_id != TAIYIN_BODY_EARTH
+        && ((flags & TAIYIN_NATIVE_POSITION_TOPOCENTRIC) != 0u
+            || (ctx.apparent_options.flags & TAIYIN_APPARENT_TOPOCENTRIC) != 0u)) {
+        return fail_position(
+            out,
+            diagnostic,
+            TAIYIN_ERROR_UNSUPPORTED,
+            target_id,
+            ctx.observer_id,
+            jd_tdb);
     }
 
     ResolvedNativeCalcContext resolved;
@@ -794,11 +774,11 @@ Status calc_position_tdb(
     }
     const Status status = calc_position_tdb_once(
         context, target_id, jd_tdb, resolved_jd_tt, flags, out, diagnostic);
-    if (!should_try_barycenter_approx(target_id, flags, status)) {
+    if (!native_position_should_try_barycenter_approx(target_id, flags, status)) {
         return status;
     }
 
-    const int approx_target_id = barycenter_approx_target(target_id);
+    const int approx_target_id = native_position_barycenter_approx_target(target_id);
     EphemerisEvalDiagnostic approx_diagnostic;
     const uint32_t approx_flags = flags & ~TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX;
     const Status approx_status = calc_position_tdb_once(
@@ -1372,11 +1352,11 @@ Status calc_state_tdb(
     const uint32_t state_flags = flags | TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED;
     const Status status = calc_position_tdb_once(
         context, target_id, jd_tdb, resolved_jd_tt, state_flags, ignored_position, diagnostic, out);
-    if (!should_try_barycenter_approx(target_id, flags, status)) {
+    if (!native_position_should_try_barycenter_approx(target_id, flags, status)) {
         return status;
     }
 
-    const int approx_target_id = barycenter_approx_target(target_id);
+    const int approx_target_id = native_position_barycenter_approx_target(target_id);
     EphemerisEvalDiagnostic approx_diagnostic;
     CartesianState approx_state;
     const uint32_t approx_flags = flags & ~TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX;

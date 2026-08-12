@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
     }
 
     const CalendarDateTime datetime_utc = { 2024, 1, 1, 12, 0, 0.0 };
-    const uint32_t flags =
+    const uint64_t flags =
         TAIYIN_OBSERVED_SPEED
         | TAIYIN_OBSERVED_TOPOCENTRIC
         | TAIYIN_OBSERVED_HORIZONTAL

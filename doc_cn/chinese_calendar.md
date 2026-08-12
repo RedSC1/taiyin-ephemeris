@@ -13,6 +13,53 @@
 `ChineseCalendarContext`；C ABI 使用对应的不透明
 `taiyin_chinese_calendar_context`。
 
+## 可运行示例
+
+两个独立 C++ 程序覆盖历法层，而且不需要启用八字扩展：
+
+- [`examples/chinese_calendar_han.cpp`](../examples/chinese_calendar_han.cpp)
+  使用中国历史历法 profile 跨越太初改历窗口，将公元前 104 年 1 月 20 日
+  转换为农历，再反向转回同一个公历日，并查询前后节气；
+- [`examples/ganzhi_bce.cpp`](../examples/ganzhi_bce.cpp) 计算公元前 1046 年
+  1 月 20 日 06:30（UTC+08）的年月日时四柱与纳音，结果为
+  `甲午、丁丑、甲子、丁卯`。
+
+在仓库根目录构建并运行：
+
+```sh
+cmake -S . -B build
+cmake --build build --target example_chinese_calendar_han example_ganzhi_bce
+./build/example_chinese_calendar_han /path/to/taiyin/data
+./build/example_ganzhi_bce /path/to/taiyin/data
+```
+
+数据目录参数可以省略；两个程序都会依次尝试 `TAIYIN_DATA_ROOT` 和
+`./data`。Taiyin API 内部使用天文年编号，因此公元前 1046 年传入 `-1045`，
+公元前 104 年传入 `-103`。
+
+两个示例有意使用不同年代。商末样例的干支结果来自节令边界和六十甲子循环；
+阴阳历转换则放在历史历法 profile 已覆盖的汉代，避免把外推农历月名描述成
+有史料依据的商末历日。
+
+[`examples/muye_jupiter.cpp`](../examples/muye_jupiter.cpp) 复用公元前
+1046 年日期，在牧野候选点（`35.50 N, 114.10 E`）演示观测天象。使用内置
+半解析 route 时，木星午夜高度约 `78.19°`，约在 `00:13:44 UTC+08` 以
+`78.57°` 高度南中；程序计算的日出为 `07:41:36 UTC+08`，此时木星已经在
+地平线下。示例请求物理木星，并在历史半解析 route 没有单独木星本体状态时
+显式允许退回木星系质心；它只陈述计算位置，不附加历史解释。
+
+[`examples/tang_833_antares.cpp`](../examples/tang_833_antares.cpp) 把历史
+历法、干支、命名恒星星表、body-star 最小角距搜索和黄经留点搜索串在一起。
+程序先把《新唐书·天文志》“太和七年五月甲辰，荧惑守心中星”的历日按当前
+Julian/UTC+08 历史民用日模型定位到 `833-06-09`，再用内置半解析 route
+复算几何：前后 60 日内火星与心宿二约在 `833-06-30` 达到 `0.8694°` 的
+最小角距，最近的火星留点约早六日。构建和运行：
+
+```sh
+cmake --build build --target example_tang_833_antares
+./build/example_tang_833_antares /path/to/taiyin/data
+```
+
 ## 时间与民用日边界
 
 `SolarTermEvent::jd_ut` 和 `NewMoonEvent::jd_ut` 是 split-JD 表示的天文
@@ -50,6 +97,11 @@ UT 儒略日；`calcY()` 及其 C ABI 入口也接收 split-JD UT。它们不随
 早于 profile 起点或晚于 profile 终点时，事件时刻和民用日都会使用 Taiyin 的
 天文定气、定朔结果。即使历史 profile 提供 `civil_day_number`，事件 API 的
 `jd_ut` 字段仍给出精确的天文事件时刻。
+
+在早期历史 profile 内，`LunarDate::year` 跟随 profile 的历法年首。颛顼历及
+秦汉冬月建正分支按该冬年开始所在的民用年标记，不再根据当前 `calcY()` 冬至岁
+窗口的中点临时推导。这样在新旧年首相接的太初改历窗口，`fromSolar()` 与
+`fromLunar()` 仍保持一一对应。
 
 C ABI 分别使用 `taiyin_chinese_calendar_config_init()` 和
 `taiyin_chinese_calendar_config_init_utc_offset()`、
@@ -176,7 +228,7 @@ DE441 长年代压力测试抽查 `-12999` 至 `16999` 的 12 个代表年份，
 ## 单点节气查询
 
 `getSpecificJieQi(context, civil_year, term_index_from_vernal_equinox, ...)`
-可直接计算一个指定节气。序号沿用 sxwnl 的“春分年度”约定：`0` 是
+可直接计算一个指定节气。序号采用“春分年度”的季节循环约定：`0` 是
 `civil_year` 内的春分，`18` 是同年的冬至，`19` 到 `23` 则是同一公历年较早的
 小寒至惊蛰。C ABI 名称为
 `taiyin_chinese_calendar_get_specific_jie_qi_ut`。
@@ -208,42 +260,59 @@ fromLunar(context, lunar, solar, diagnostic);
 getLunarMonthNum(context, year, month, is_leap, days, diagnostic);
 ```
 
+`LunarDate` 有意采用结构化字段：`year`、数值 `month`、`day`、`is_leap`
+以及特殊 `month_name` ID。普通 `month_name` 由历法 profile 解析常规月名；
+`十三月`、`后九月`、特殊十二月和特殊一月则可用对应枚举精确指定。
+`fromLunar()` 会验证该农历年是否真的存在所选月份，并按该月实际 29/30 日
+检查日期。
+
+`later same name`（后同名月）用于区分复旧边界中同一农历年内书写名称相同
+的后一个月份，目前对应农历 700 年的第二个“十二月”和农历 762 年的第二个
+“五月”。该标记不改变中文显示，也不设置 `is_leap`；显示层仍按数值
+`month` 输出普通月名。只要保留 `fromSolar()` 返回的 `month_name`，这些
+日期就可以通过 `fromLunar()` 无歧义地转换回来。
+
+C++ 与 C API 不解析 `"九月"`、`"闰五月"`、`"后九月"` 之类本地化 UTF-8
+字符串。此类用户输入归一化属于语言 binding 或应用层：上层先把文本映射为
+上述结构化字段，再调用 `fromLunar()`。这样中文别名、字形和空白处理策略不会
+进入稳定 C ABI，数值历法层也不承担 UI 字符串规则。
+
 公开结果都是固定宽度 POD。原生 C++ 结构与 C ABI 结构是有意分开的两套
 表示；C ABI 使用带 `struct_size` 的版本化结构，方便 Dart、Python 和
 JavaScript FFI。不要在两套布局之间直接 `memcpy` 或强制转换，应使用 C
 ABI 入口及其逐字段转换层。
 
-回归测试覆盖 2033 闰十一月、公元前年号、新莽/景初/武周改历窗口、现代
+回归测试覆盖 2033 闰十一月、公元前年号、太初/新莽/景初/武周改历窗口、现代
 双向转换，以及真实的 UTC+8/UTC+7 跨日边界；后者还会与数学上等价的
 105°E 地方平太阳时日界交叉验证。
 紫金山天文台《二○二六年日历资料》作为独立的分钟级 oracle，覆盖全年
 24 节气、50 个朔望两弦、月序/月大小和印刷月界。入梅、出梅、三伏、数九
 等民俗派生不属于本模块，测试不会把它们带进来。
 
-## 可选干支历法层
+## 干支历法层
 
-启用 `TAIYIN_BUILD_GANZHI_CALENDAR_EXTENSION=ON` 后，会增加干支历法层。
-四柱的年、月、日、时干支不仅用于八字，也会被奇门、六壬和普通干支纪日
-复用，因此它属于 Chinese Calendar，而不是八字命理模块。
+干支历法层固定属于 Chinese Calendar。四柱的年、月、日、时干支不仅用于八字，
+也会被奇门、六壬和普通干支纪日复用，因此它不是八字命理模块。
 
 这里不会再创建一个 context。`calculate_four_pillars()` 直接接收已有的
 `ChineseCalendarContext`、绝对 split-JD UTC 时刻、由上层解析好的民用时或
 太阳时 `virtual_time`，以及显式的子时换日规则。五虎遁、五鼠遁、六十甲子
-构造和推进，以及纳音 ID/五行查询仍由 Free Pascal 规则单元实现；纳音是附着在
-干支上的历法数据，即使没有编译八字也可通过 `taiyin_ganzhi_*` 查询。C++ 只负责
+构造和推进，以及纳音 ID/五行查询均由原生 C++ 规则单元实现；纳音是附着在
+干支上的历法数据，即使没有编译八字也可通过 `taiyin_ganzhi_*` 查询。C++ 同时负责
 split-JD 节令边界和历法编排。C ABI 对应 `taiyin_ganzhi_*` 与
 `taiyin_chinese_calendar_calc_four_pillars_ut()`。
 
-八字是独立的可选解释层。它只接收已经算好的
+八字是独立的可选中国术数解释层。构建它时必须同时设置
+`TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 与
+`TAIYIN_BUILD_BAZI_EXTENSION=ON`；policy gate 本身不会启用八字或任何未来术数模块。
+Ganzhi 历法层始终内置在 Chinese Calendar 中，也可服务于不使用术数解释模块的普通干支纪日应用。
+
+八字只接收已经算好的
 `taiyin_ganzhi_four_pillars`，附带历法层给出的纳音 ID，再补藏干、十神、
 十二长生、命宫、身宫、胎元和胎息。`taiyin_bazi_collect_chart_relations()`
 会返回合并后的天干地支关系图，覆盖合、冲、克、害、破、刑、暗合、绝、三合、
 三会、半合和拱合；默认只分析年、月、日、时，命宫、身宫、胎元、胎息需通过柱位
 mask 显式加入。八字 context 不再持有天文或中国历 context。
 
-Pascal 目标平台由 CMake toolchain 推导。交叉编译可覆盖
-`TAIYIN_FPC_EXECUTABLE`、`TAIYIN_FPC_TARGET_OS`、
-`TAIYIN_FPC_TARGET_CPU` 和 `TAIYIN_FPC_EXTRA_FLAGS`。Apple 通用包需要按架构
-分别构建，再合并 library/XCFramework；单次 FPC 调用不直接生成多架构对象。
-启用该扩展时，多架构 `CMAKE_OSX_ARCHITECTURES` 会在 configure 阶段明确拒绝；
-应按单架构分别配置，再生成 XCFramework。
+Ganzhi 和 BaZi 使用项目统一的 C++ toolchain，常规 CMake 交叉编译和 Apple
+通用包配置均可直接使用，不需要语言专用参数或后处理归档合并。

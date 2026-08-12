@@ -18,6 +18,8 @@ void clear_global_star_catalogs() noexcept;
 size_t global_star_catalog_count() noexcept;
 Status find_global_star_magnitude(const char* star_key, double* out_magnitude) noexcept;
 
+// Fixed-star position and observation are Earth-observer-only in the 1.0 API.
+// Calls return TAIYIN_ERROR_UNSUPPORTED for a non-Earth context observer.
 Status calc_star_position_tdb(
     const NativeCalcContext* context,
     const char* star_key,

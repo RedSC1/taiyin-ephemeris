@@ -55,6 +55,16 @@ typedef struct taiyin_angular_separation_result {
     int32_t evaluation_count;
 } taiyin_angular_separation_result;
 
+typedef struct taiyin_body_star_angular_separation_result {
+    uint32_t struct_size;
+    taiyin_split_julian_date jd;
+    double separation_rad;
+    double separation_rate_rad_per_day;
+    int32_t body_id;
+    int32_t iteration_count;
+    int32_t evaluation_count;
+} taiyin_body_star_angular_separation_result;
+
 typedef struct taiyin_solar_transit_result {
     uint32_t struct_size;
     int32_t body_id;
@@ -87,6 +97,9 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_greatest_elongation_result_init(
 );
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_angular_separation_result_init(
     taiyin_angular_separation_result* value
+);
+TAIYIN_C_API void TAIYIN_C_CALL taiyin_body_star_angular_separation_result_init(
+    taiyin_body_star_angular_separation_result* value
 );
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_transit_result_init(
     taiyin_solar_transit_result* value
@@ -278,6 +291,30 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separatio
     double max_step_days,
     uint64_t flags,
     taiyin_angular_separation_result* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+);
+TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+taiyin_search_minimum_body_star_angular_separation_ut(
+    const taiyin_context* context,
+    int32_t body_id,
+    const char* star_key,
+    const taiyin_split_julian_date* start_jd_ut,
+    const taiyin_split_julian_date* end_jd_ut,
+    double max_step_days,
+    uint64_t flags,
+    taiyin_body_star_angular_separation_result* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+);
+TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+taiyin_search_minimum_body_star_angular_separation_tt(
+    const taiyin_context* context,
+    int32_t body_id,
+    const char* star_key,
+    const taiyin_split_julian_date* start_jd_tt,
+    const taiyin_split_julian_date* end_jd_tt,
+    double max_step_days,
+    uint64_t flags,
+    taiyin_body_star_angular_separation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(

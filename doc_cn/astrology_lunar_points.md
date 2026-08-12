@@ -106,13 +106,8 @@ Delaunay 周期项；训练时两侧扩展 100 年，运行时在分段边界两
 边界段，同时把 `LunarApsisPosition::extrapolated` 设为 `true`，避免把区间外结果
 伪装成 DE441 覆盖内精度。
 
-重新生成系数表：
-
-```sh
-python3 tools/fit_lunar_apogee_de441.py \
-  --de441 /path/to/de441.bsp \
-  --output src/astrology/generated/lunar_apogee_de441_fit.h
-```
+生成当前系数表的 DE441 拟合流程由私有维护工具承担；普通构建不需要，公开源码快照也
+不包含该工具。
 
 ## 参考面与 flag 约定
 

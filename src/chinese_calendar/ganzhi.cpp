@@ -1,6 +1,6 @@
 #include "taiyin/chinese_calendar/ganzhi.h"
 
-#include "chinese_calendar/ganzhi_rules_ffi.h"
+#include "chinese_calendar/ganzhi_rules_internal.h"
 #include "chinese_calendar/solar_term_internal.h"
 
 #include <cmath>
@@ -72,7 +72,7 @@ Status calculate_month_pillar(
 
     const uint8_t index = previous_jie.index_from_winter_solstice;
     if ((index & 1u) == 0u) return TAIYIN_ERROR_INTERNAL;
-    // The Pascal rule uses 0=Yin, ..., 11=Chou.
+    // The rule uses 0=Yin, ..., 11=Chou.
     const uint8_t month_index = static_cast<uint8_t>(((index + 21u) / 2u) % 12u);
     return get_month_ganzhi(static_cast<uint8_t>(year_pillar >> 4), month_index, out);
 }
@@ -125,11 +125,11 @@ GanzhiFourPillars::GanzhiFourPillars() noexcept
       hour(kInvalidGanzhi) {}
 
 Status make_ganzhi(uint8_t stem_id, uint8_t branch_id, uint8_t* out) noexcept {
-    return status_from_rule_result(taiyin_ganzhi_rules_make(stem_id, branch_id, out));
+    return status_from_rule_result(rules::make(stem_id, branch_id, out));
 }
 
 Status advance_ganzhi(uint8_t value, int32_t delta, uint8_t* out) noexcept {
-    return status_from_rule_result(taiyin_ganzhi_rules_advance(value, delta, out));
+    return status_from_rule_result(rules::advance(value, delta, out));
 }
 
 Status get_month_ganzhi(
@@ -138,7 +138,7 @@ Status get_month_ganzhi(
     uint8_t* out
 ) noexcept {
     return status_from_rule_result(
-        taiyin_ganzhi_rules_month(year_stem_id, month_index, out));
+        rules::month(year_stem_id, month_index, out));
 }
 
 Status get_hour_ganzhi(
@@ -147,7 +147,7 @@ Status get_hour_ganzhi(
     uint8_t* out
 ) noexcept {
     return status_from_rule_result(
-        taiyin_ganzhi_rules_hour(day_stem_id, hour_index, out));
+        rules::hour(day_stem_id, hour_index, out));
 }
 
 Status calculate_day_pillar(
@@ -181,11 +181,11 @@ Status calculate_day_pillar(
 
 Status get_nayin_element(uint8_t ganzhi, uint8_t* out_element_id) noexcept {
     return status_from_rule_result(
-        taiyin_ganzhi_rules_nayin_element(ganzhi, out_element_id));
+        rules::nayin_element(ganzhi, out_element_id));
 }
 
 Status get_nayin_id(uint8_t ganzhi, uint8_t* out_nayin_id) noexcept {
-    return status_from_rule_result(taiyin_ganzhi_rules_nayin_id(ganzhi, out_nayin_id));
+    return status_from_rule_result(rules::nayin_id(ganzhi, out_nayin_id));
 }
 
 Status calculate_four_pillars(

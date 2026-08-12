@@ -1,10 +1,12 @@
 # OPC1 Catalog 格式
 
 文档状态：当前说明
-最后审阅：2026-07-01
+最后审阅：2026-08-07
 主要头文件：`include/taiyin/internal/opc_catalog_persistent.h`
 
-`OPC1` 是 Taiyin 的持久化星历源索引格式。它的文件 magic 是 `OPC1`，当前 schema version 是 `OPC_VERSION = 2`。
+`OPC1` 是 Taiyin 的持久化星历源索引格式。它的文件 magic 是 `OPC1`，
+当前二进制 schema version 是 `OPC_VERSION = 3`，descriptor discovery generation
+是 `OPC_DISCOVERY_VERSION = 4`。
 
 OPC catalog 的作用是在启动或添加数据目录时加速 discovery。真实星历数据仍然保存在源文件里，例如：
 
@@ -66,13 +68,13 @@ reserved
 
 ```text
 source_id = 0
-source_version = OPC_VERSION
-generation = OPC_VERSION
+source_version = OPC_DISCOVERY_VERSION
+generation = OPC_DISCOVERY_VERSION
 ```
 
 ## Descriptor Record
 
-`OpcDescriptorRecord` 当前固定 128 bytes。每条 record 对应一个 runtime ephemeris descriptor。一个源文件可以贡献多条 record；例如 `TKC1` catalog 会为多个小天体对象生成多个 descriptor，SPK kernel 也可能暴露多个 target/center route。
+`OpcDescriptorRecord` 当前固定 136 bytes。每条 record 对应一个 runtime ephemeris descriptor。一个源文件可以贡献多条 record；例如 `TKC1` catalog 会为多个小天体对象生成多个 descriptor，SPK kernel 也可能暴露多个 target/center route。
 
 字段：
 
@@ -98,17 +100,23 @@ cache_origin_jd
 cache_span_days
 cache_first_index
 cache_count
+object_index
 ```
 
 其中 `source_id/block_id/generation/purpose` 恢复为 `EphemerisBlockKey`，用于定位源文件 payload；`target_id/center_id/method_id/bucket_id` 恢复为 `EphemerisRouteKey`，用于 route lookup 和 segment cache key。
 
-`cache_policy_*` 是 v2 记录的关键字段。它描述 source descriptor 如何切成可加载 bucket：
+`cache_policy_*` 描述 source descriptor 如何切成可加载 bucket：
 
 ```text
 CacheWholeEntry      整个 descriptor 作为一个 cache entry
 CacheFixedSpan       按固定时间跨度切 bucket
 CacheNaturalSegment  按源格式自然 segment 切 bucket
 ```
+
+`object_index` 在 v3 中加入。对于多对象 `TKC1` 文件，它记录该物理文件内从零开始的
+对象位置。Runtime 合并多个 root 时，可能重新分配 `source_key.block_id`，以避免两个
+逻辑 source key 相同的文件发生碰撞；独立的 `object_index` 可让 loader 在 rekey 后仍定位
+到正确的 `TKC1` 对象。非 `TKC1` format 中该字段为零且未使用。
 
 OPM2 通常使用 natural Chebyshev segment grid。SPK、TKC1 和 custom Kepler file 由各自 discoverer 写入合适的 cache policy。
 
@@ -156,6 +164,7 @@ file size
 
 - magic 是 `OPC1`；
 - version 等于当前 `OPC_VERSION`；
+- source version 和 generation 等于当前 `OPC_DISCOVERY_VERSION`；
 - header offset/range 合法；
 - descriptor count 非零；
 - fingerprint 匹配当前 root 下的 indexed source files；
@@ -195,6 +204,11 @@ collect_ephemeris_descriptors_from_catalog_or_directory(
 2. 如果 OPC 缺失、过期或无效，则调用 directory discovery。
 3. 如果 directory discovery 成功，并且提供了 `catalog_path`，则尝试重写 OPC。
 
+OPC 恢复的是单个 root 所记录的逻辑 descriptor key。之后 runtime 初始化若把该 root 与
+另一个 root 的 descriptors 合并，会在插入 catalog 前执行普通的内存物理 source identity
+rekey。尤其是 `TKC1`：v3 record 的 `object_index`，而不是可能被重新分配的
+`source_key.block_id`，用于选择源文件内的对象。
+
 重写 OPC 失败不会改变 discovery 结果；它只影响下一次加载速度。
 
 ## 打包数据中的 OPC
@@ -214,23 +228,12 @@ Runtime 会对 final path component 为 `data`、`opm2` 或 `sbdb` 的 root 尝�
 
 ## 生成工具
 
-生成命令：
-
-```text
-generate_ephemeris_catalog <ephemeris-root> [catalog-path]
-```
-
-如果省略 `catalog-path`，工具会写入：
-
-```text
-<ephemeris-root>/index.opc
-```
-
-工具会先做目录 discovery，写 OPC，然后重新 load 一次验证 descriptor 数量。
+Taiyin 使用私有维护生成器创建并验证 OPC catalog；该工具有意不包含在公开源码快照中。
+公开 runtime 使用者可直接省略 `index.opc`：找不到有效的持久 catalog 时，runtime 会
+回退扫描数据目录。
 
 ## 相关文件
 
 - `include/taiyin/internal/opc_catalog_persistent.h`
 - `src/opc_catalog_persistent.cpp`
 - `tests/test_opc_catalog_persistent.cpp`
-- `tools/generate_ephemeris_catalog.cpp`

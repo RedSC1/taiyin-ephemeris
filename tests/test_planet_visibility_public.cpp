@@ -1,6 +1,7 @@
 #include "taiyin/runtime/planet_visibility.h"
 
 #include "taiyin/body_id.h"
+#include "taiyin/runtime/ephemeris_route.h"
 #include "taiyin/runtime/native_context.h"
 #include "taiyin/runtime/runtime.h"
 #include "taiyin/status.h"
@@ -100,7 +101,10 @@ bool initialize_runtime(int* failures) {
     const char* source_paths[] = { major_root.c_str(), cob_root.c_str() };
     config.source_paths = source_paths;
     config.source_path_count = 2;
-    config.load_packaged_data = false;
+    // Keep the explicit 600-year OPM2 roots for modern oracle coverage and
+    // register the built-in semi-analytic descriptors for the historical
+    // position-flag passthrough regression below.
+    config.load_packaged_data = true;
     config.segment_cache_max_entries = 256;
     const bool ok = taiyin::runtime::initialize_global_ephemeris_runtime(config);
     expect_true(ok, "initialize OPM2 runtime", failures);
@@ -220,6 +224,7 @@ void test_public_denver_oracles(int* failures) {
             start,
             start + 1.0,
             TAIYIN_PLANET_VISIBILITY_EVENT_UPPER_TRANSIT,
+            0u,
             &result),
         taiyin::TAIYIN_STATUS_OK,
         "public Denver Venus upper transit",
@@ -267,6 +272,7 @@ void test_public_denver_oracles(int* failures) {
             start,
             start + 1.0,
             TAIYIN_PLANET_VISIBILITY_EVENT_UPPER_TRANSIT,
+            0u,
             &result),
         taiyin::TAIYIN_STATUS_OK,
         "public Denver Jupiter physical upper transit smoke",
@@ -540,6 +546,82 @@ void test_public_rejects_barycenter_id(int* failures) {
         failures);
 }
 
+void test_public_historical_transit_position_flag_passthrough(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_context(114.10, 35.50, 80.0);
+    expect_status(
+        native_context_set_route_rule(
+            &context, TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC),
+        TAIYIN_STATUS_OK,
+        "historical transit selects semi-analytic route",
+        failures);
+
+    const SplitJulianDate local_midnight = jd_ut(-1045, 1, 20, 0.0);
+    const SplitJulianDate start = local_midnight - 8.0 / 24.0;
+    PlanetVisibilityEventResult strict_result;
+    EphemerisEvalDiagnostic strict_diagnostic;
+    expect_not_status(
+        search_planet_transit_ut(
+            &context,
+            TAIYIN_BODY_JUPITER,
+            start,
+            start + 1.0,
+            TAIYIN_PLANET_VISIBILITY_EVENT_UPPER_TRANSIT,
+            0u,
+            &strict_result,
+            &strict_diagnostic),
+        TAIYIN_STATUS_OK,
+        "historical transit keeps physical Jupiter strict by default",
+        failures);
+
+    PlanetVisibilityEventResult approx_result;
+    EphemerisEvalDiagnostic approx_diagnostic;
+    expect_status(
+        search_planet_transit_ut(
+            &context,
+            TAIYIN_BODY_JUPITER,
+            start,
+            start + 1.0,
+            TAIYIN_PLANET_VISIBILITY_EVENT_UPPER_TRANSIT,
+            TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX,
+            &approx_result,
+            &approx_diagnostic),
+        TAIYIN_STATUS_OK,
+        "historical transit forwards barycenter approximation policy",
+        failures);
+    expect_near(
+        approx_result.jd_ut,
+        split_julian_date_to_double(start) + (13.0 * 60.0 + 44.0) / 86400.0,
+        5.0 / 86400.0,
+        "historical Jupiter upper transit",
+        failures);
+    expect_equal(
+        approx_diagnostic.target_id,
+        TAIYIN_BODY_JUPITER,
+        "historical transit diagnostic requested target",
+        failures);
+    expect_equal(
+        approx_diagnostic.component_target_id,
+        TAIYIN_BODY_JUPITER_BARYCENTER,
+        "historical transit diagnostic approximate component",
+        failures);
+
+    expect_status(
+        search_planet_transit_ut(
+            &context,
+            TAIYIN_BODY_JUPITER,
+            start,
+            start + 1.0,
+            TAIYIN_PLANET_VISIBILITY_EVENT_UPPER_TRANSIT,
+            UINT64_C(1) << 32,
+            &approx_result),
+        TAIYIN_ERROR_INVALID_ARGUMENT,
+        "historical transit reserves the high flag word",
+        failures);
+}
+
 }  // namespace
 
 int main() {
@@ -550,6 +632,7 @@ int main() {
         test_public_flag_validation(&failures);
         test_public_high_latitude_no_event_oracles(&failures);
         test_public_rejects_barycenter_id(&failures);
+        test_public_historical_transit_position_flag_passthrough(&failures);
     }
     if (failures != 0) {
         std::cerr << failures << " public planet visibility checks failed\n";

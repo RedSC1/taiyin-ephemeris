@@ -3,22 +3,34 @@
 
 #include "taiyin/c/base.h"
 #include "taiyin/c/context.h"
+#include "taiyin/c/position.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 enum taiyin_observed_flags {
-    TAIYIN_OBSERVED_SPEED = 1u << 0,
-    TAIYIN_OBSERVED_TOPOCENTRIC = 1u << 1,
-    TAIYIN_OBSERVED_HORIZONTAL = 1u << 2,
-    TAIYIN_OBSERVED_REFRACTION = 1u << 3,
-    TAIYIN_OBSERVED_TRUEPOS = 1u << 4,
-    TAIYIN_OBSERVED_ASTROMETRIC = 1u << 5,
-    TAIYIN_OBSERVED_NO_ABERR = 1u << 6,
-    TAIYIN_OBSERVED_NO_GDEFL = 1u << 7
+    TAIYIN_OBSERVED_SPEED = TAIYIN_POSITION_SPEED,
+    TAIYIN_OBSERVED_TRUEPOS = TAIYIN_POSITION_TRUEPOS,
+    TAIYIN_OBSERVED_NO_ABERR = TAIYIN_POSITION_NO_ABERR,
+    TAIYIN_OBSERVED_NO_GDEFL = TAIYIN_POSITION_NO_GDEFL,
+    TAIYIN_OBSERVED_ASTROMETRIC = TAIYIN_POSITION_ASTROMETRIC,
+    TAIYIN_OBSERVED_TOPOCENTRIC = TAIYIN_POSITION_TOPOCENTRIC,
+    TAIYIN_OBSERVED_ALLOW_BARYCENTER_APPROX = TAIYIN_POSITION_ALLOW_BARYCENTER_APPROX
 };
-#define TAIYIN_OBSERVED_OPTION_STRICT_METEOROLOGY (UINT64_C(1) << 32)
+/*
+ * Observed calls accept only the position flags named above. XYZ,
+ * EQUATORIAL, RADIANS, and NONUT are representation selectors for
+ * taiyin_calc_position_*() and return TAIYIN_ERROR_UNSUPPORTED here.
+ */
+#ifdef __cplusplus
+static constexpr uint64_t TAIYIN_OBSERVED_HORIZONTAL = UINT64_C(1) << 32;
+static constexpr uint64_t TAIYIN_OBSERVED_REFRACTION = UINT64_C(1) << 33;
+#else
+#define TAIYIN_OBSERVED_HORIZONTAL (UINT64_C(1) << 32)
+#define TAIYIN_OBSERVED_REFRACTION (UINT64_C(1) << 33)
+#endif
+#define TAIYIN_OBSERVED_OPTION_STRICT_METEOROLOGY (UINT64_C(1) << 34)
 
 typedef struct taiyin_horizontal_coordinates {
     double azimuth_rad;

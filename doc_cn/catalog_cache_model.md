@@ -1,7 +1,7 @@
 # Catalog 和 Segment Cache 模型
 
 文档状态：当前说明
-最后审阅：2026-07-01
+最后审阅：2026-08-12
 主要头文件：
 `include/taiyin/internal/ephemeris_catalog.h`,
 `include/taiyin/internal/ephemeris_segment_cache.h`,
@@ -66,6 +66,22 @@ source_indexes_:
 
 `find_method_candidates()` 先用 method page 缩小候选范围，再按 JD 覆盖范围过滤，并返回 descriptor copy。调用方不会持有 catalog 内部 vector 的裸指针，因此 catalog 写入导致 vector 扩容时，不会让已经开始 eval 的 reader 读到悬空地址。
 
+### 合并多个 Root 时的 Source Identity
+
+`source_key` 标识 descriptor 背后的物理 source，`route_key` 则标识 route lookup 和
+cache key 使用的 target/center/method bucket。文件格式给出的逻辑 source key 不被假定为
+全局唯一：两个独立 discovery 的文件可能暴露相同逻辑 key，尤其是多对象 `TKC1` 文件，
+其中 object index 都从零开始。
+
+Runtime 从另一个 root 或 source path 加入 descriptors 时，会记录轻量 source-index entry；
+已有 key 若仍指向同一路径则保留。若该 key 已被另一物理文件占用，runtime 会在插入前分配
+不同的 `source_key.block_id`。对于 `TKC1`，它按文件分配连续且不重叠的 key 范围，而不是
+逐对象独立 rekey。`EphemerisBlockDescriptor::object_index` 始终保留 `TKC1` 文件内稳定的
+零基对象位置，因此 loader 不会把 runtime 分配的 `block_id` 误当成 object index。
+
+这种 rekey 是 setup-time catalog bookkeeping，不是 route policy，也不是额外 cache layer。
+它避免多个 root 存在碰撞逻辑 source ID 时 source-index 和 segment-cache 发生 alias。
+
 Catalog 顺序不是方法策略。当前拆分是：
 
 ```text
@@ -75,8 +91,6 @@ Catalog                  -> 本机数据清单
 SegmentCache             -> 已加载 runtime segments
 ```
 
-设计背景可参考维护者文档 `runtime_cache_redesign.md`。
-
 ## Route Rule 和 Context
 
 `NativeCalcContext` 保存 `route_rule_id` 和已经解析好的 `route_rules` 指针。Route-rule table 在 runtime 初始化或注册时建立，计算期间按不可变表使用。
@@ -84,11 +98,17 @@ SegmentCache             -> 已加载 runtime segments
 内置 route 规则包括：
 
 ```text
-AUTO     SPK -> OPM2 -> 内置半解析 -> TKC1 Kepler -> Taiyin Kepler file
+AUTO     命名 JPL SPK / 已分配来源的 OPM2 -> 其他 SPK/OPM2 -> 内置半解析 -> TKC1 -> Kepler file
 OPM2     只尝试 OPM2
 SPK      只尝试 SPK
 SEMI     只尝试内置半解析模型
 ```
+
+已识别 JPL source product 在 AUTO 中有 source-specific rule，因此组合状态会先在同一
+产品家族内完成，再尝试较低优先级数据。显式 `OPM2`、`SPK` route 使用 wildcard source
+id，仍可加载文件名不声明已知 JPL product 的任意用户文件。命名 DE SPK 只可把非 DE SPK
+用作卫星 auxiliary，且成功组合必须实际使用该命名 DE source；因此不会把卫星 kernel 当作
+缺失 DE，也不会把 DE441 与 DE442 混合。
 
 如果 context 没有指定 route rule，`EphemerisEngine` 使用 runtime 的默认 route-rule table。指定非 AUTO 规则时，只尝试该规则表里的 method，不做跨 method fallback。
 

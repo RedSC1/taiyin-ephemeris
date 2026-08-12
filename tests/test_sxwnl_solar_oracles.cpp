@@ -1,4 +1,4 @@
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
+#include "legacy/sxwnl/eclipse/solar_eclipse_sxwnl.h"
 
 #include <cmath>
 #include <cstdio>

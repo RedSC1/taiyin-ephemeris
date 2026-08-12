@@ -13,9 +13,10 @@ namespace taiyin_c_internal {
 std::mutex& astrology_model_lifecycle_mutex() noexcept;
 
 // The caller must hold astrology_model_lifecycle_mutex(). These functions
-// clear only callbacks registered through the corresponding C API.
+// clear only callbacks registered through the corresponding C API. House cleanup
+// returns false when a native model still references a C-owned fallback bridge.
 void clear_c_ayanamsha_models_locked() noexcept;
-void clear_c_house_system_models_locked() noexcept;
+bool clear_c_house_system_models_locked() noexcept;
 
 }  // namespace taiyin_c_internal
 

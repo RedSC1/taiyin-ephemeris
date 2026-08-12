@@ -1,7 +1,7 @@
 # 当前能力与已知限制
 
 文档状态：当前说明
-最后审阅：2026-07-18
+最后审阅：2026-08-12
 
 本文概述 Taiyin 当前已经可用的能力、仍然存在的限制，以及比较适合下一步推进的工作。具体 API 说明以对应主题文档和头文件为准：
 
@@ -27,9 +27,11 @@ RouteInflightMap
 ```
 
 支持的数据来源包括 OPM2、SPK、TKC1/Kepler、Taiyin Kepler file、内置半解析模型，
-以及自定义 ephemeris method/file method。Catalog 负责发现和描述本机数据，
-route rule 决定 method 优先级，segment cache 缓存已加载数据段；没有共享的
-exact-JD 数值结果 cache。
+以及自定义 ephemeris method/file method。Catalog 负责发现和描述本机数据，route rule
+决定 method 与 source-product 优先级，segment cache 缓存已加载数据段；没有共享的
+exact-JD 数值结果 cache。AUTO 会优先保持同一命名 DE 产品内的组合，卫星 SPK 只作为
+该 DE 的辅助路线；文件级 source-priority overlay 可在同一 provider 内提升或降级明确的
+SPK/OPM2 文件。
 
 ### 主星位置和 apparent/observed 链路
 
@@ -44,7 +46,7 @@ calc_observed_ut
 calc_observed_utc
 ```
 
-当前 apparent/observed 链路支持 light-time、annual aberration、solar/multi-body gravitational deflection、topocentric observer、horizontal az/alt、refraction、frame selection、UTC/EOP/UT1/polar motion/CPO 等组合。EOP、leap-second 与月缘数据由全局 runtime 持有；用户位置、气象参数、时间策略、模型 ID 和 route rule 放在 `NativeCalcContext` 上，开关通过 flags 控制。
+当前 apparent/observed 链路支持 light-time、annual aberration、solar/multi-body gravitational deflection、topocentric observer、horizontal az/alt、refraction、frame selection、UTC/EOP/UT1/polar motion/CPO 等组合。EOP、leap-second 与月缘数据由全局 runtime 持有；用户位置、气象参数、时间策略、模型 ID 和 route rule 放在 `NativeCalcContext` 上，开关通过 flags 控制。Observed API 统一使用 `uint64_t` 分层：低 32 位仅接受真正实现的计算语义（`SPEED`、`TRUEPOS`、`NO_ABERR`、`NO_GDEFL`、`ASTROMETRIC`、`TOPOCENTRIC`、`ALLOW_BARYCENTER_APPROX`），高 32 位用于 horizontal、refraction、meteorology 等 observed 自身选项。输出形状或 frame selector（`XYZ`、`EQUATORIAL`、`RADIANS`、`NONUT`）会返回 `TAIYIN_ERROR_UNSUPPORTED`，不会被静默忽略。
 
 ### 组合星体和数据 fallback
 
@@ -55,6 +57,14 @@ fallback；指定 OPM2、SPK 或半解析等单一路线时，只尝试对应 ro
 或组合计算中静默混用不同 method。
 
 当数据只提供 barycenter 时，major-planet body ID 默认仍保持严格语义。`TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` 是 native position 的显式 opt-in：调用方接受后，Mars 到 Pluto 可以用对应 barycenter 作为近似；diagnostic 里 `target_id` 保留请求的本体 ID，`component_target_id` 记录实际使用的 barycenter。
+
+### 无数据文件卫星 fallback 的边界
+
+内置半解析路线在各自声明区间内提供 Phobos/Deimos、木星四大卫星、冥王星系统和
+Triton。这些是紧凑 fallback 状态，不是精密卫星星历：单颗卫星的相对状态误差可从米、
+数公里到数百公里，而质量加权后的物理行星中心修正可能小得多。精确卫星测量或卫星现象
+需要使用对应 SPK 或 OPM2 source。1.0 没有内置土星或天王星卫星理论；物理
+Saturn/Uranus 请求需要直接数据，除非调用者显式允许普通的 barycenter 近似。
 
 ### 恒星
 
@@ -70,6 +80,17 @@ calc_observed_star_ut / calc_observed_stars_ut
 TSC1/TSF1 provider 被全局 star store 封装，应用层通常不需要直接传 `Tsc1StarProvider*`。恒星支持 alias 查询、线性空间运动、自行传播、球坐标/XYZ 输出、速度输出，以及和普通主星对齐的 observed flags。
 
 `calc_star_position_*` 返回 observer-relative 固定星位置，并使用 observed-star 路线里的固定星 apparent 修正：默认启用 annual aberration 和 solar gravitational deflection；`TRUEPOS`、`ASTROMETRIC`、`NO_ABERR`、`NO_GDEFL` 用来选择对应的简化口径。
+
+1.0 API 中，固定星位置与固定星观测要求
+`NativeCalcContext::observer_id == TAIYIN_BODY_EARTH`；非地球 observer 会返回
+`TAIYIN_ERROR_UNSUPPORTED`。地球 observer 仍可使用历史半解析路线：内置模型会由
+九个行星质心的日心状态质量加权重建 `Sun/SSB`，让 Earth、Sun 与恒星方向进入同一
+个重心 frame，而不需要额外星历文件。
+
+1.0 的站心观测同样只支持地球。非地球 observer 调用 topocentric context
+setter，或请求 native/observed topocentric 结果，都会返回
+`TAIYIN_ERROR_UNSUPPORTED`。要支持其他天体表面，还需要对应天体的参考椭球、
+自转/定向模型以及（如适用）大气模型；这些能力明确不属于 1.0 范围。
 
 ### 事件搜索
 
@@ -123,7 +144,7 @@ search_planet_rise_set_ut
 search_planet_transit_ut
 ```
 
-太阳/月亮支持 limb 选择、refraction、fixed disc size 和自定义 horizon；行星支持 rise/set/transit、refraction、limb 选择和自定义 horizon。公共 rise/set 入口默认使用带折射的 apparent altitude，前提是 context 已设置 atmosphere；需要 true-altitude 搜索时使用 `*_VISIBILITY_FLAG_NO_REFRACTION`。调用方也可通过 `native_context_set_atmosphere_policy_flags(..., TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK)` 显式允许文档所述的 ISA 风格标准大气回退。相应的高 32 位 `*_VISIBILITY_STRICT_METEOROLOGY` flag 会对单次调用关闭该回退，并要求调用方提供 atmosphere fields。当前已有公开 regression/oracle 测试覆盖 Denver、Longyearbyen 等样例。
+太阳/月亮支持 limb 选择、refraction、fixed disc size 和自定义 horizon；行星支持 rise/set/transit、refraction、limb 选择和自定义 horizon。`search_planet_transit_ut()` 的 `uint64_t flags` 会把低 32 位 native-position word 原样向下透传，高 32 位保留给将来的 transit 选项。因此历史半解析数据可以继续请求物理 Jupiter，同时传 `TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX`；transit solver 不需要知道 barycenter，strict-first fallback 仍由 position/apparent route 完成，diagnostic 也保留请求的本体 ID。普通公共 rise/set 入口默认使用带折射的 apparent altitude；需要 true-altitude 搜索时使用 `*_VISIBILITY_FLAG_NO_REFRACTION`。带折射请求需要真实 atmosphere 数据，除非 context 通过 `native_context_set_atmosphere_policy_flags(..., TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK)` 显式允许文档所述的 ISA 风格标准大气回退。相应的高 32 位 `*_VISIBILITY_STRICT_METEOROLOGY` flag 会对单次调用关闭该回退，并要求调用方提供 atmosphere fields。地方日食 API 有意不同：其可见窗口默认是几何窗口，只有 `TAIYIN_ECLIPSE_LOCAL_REFRACTION` 才请求带折射窗口；`TAIYIN_ECLIPSE_LOCAL_STRICT_METEOROLOGY` 必须与该选项一起设置，并禁止回退。当前已有公开 regression/oracle 测试覆盖 Denver、Longyearbyen 等样例。
 
 ### 天体现象量
 
@@ -134,7 +155,7 @@ search_planet_transit_ut
 ### C ABI 已冻结，C++ ABI 未冻结
 
 从库版本 `1.0.0` 开始，带版本号的 C99 ABI 是绑定层和应用程序的兼容边界。
-ABI major 5 内已有 C symbol 和 struct contract 必须保持源码与二进制兼容；
+ABI major 7 内已有 C symbol 和 struct contract 必须保持源码与二进制兼容；
 新增字段使用文档约定的 `struct_size` 机制。
 
 C++ 头文件仍属于实现层接口，minor 版本之间可以演进，不承诺稳定二进制 ABI。
@@ -257,8 +278,8 @@ Swiss-compatible refraction、太阳盘内光线偏折、半径常数和经验�
 ```text
 更完整的 observed UTC/EOP/CPO 外部验证
 更清晰的 horizontal/refraction convention 文档和对照
-太阳、月亮和行星 visibility API 的文档整理
-Phenomena API，例如 phase angle、elongation、illuminated fraction
+太阳、月亮和行星 visibility 的更广外部表格
+更高保真的光度和天空亮度模型
 宫头/角点速度、fractional house-position 查询和其余宫制
 Engine / Store facade，用于多实例和长期运行服务
 ```

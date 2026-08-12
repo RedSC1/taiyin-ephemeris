@@ -1,12 +1,17 @@
 #include "taiyin/internal/opc_catalog_persistent.h"
 
+#include "taiyin/internal/ephemeris_source_identity.h"
 #include "taiyin/internal/mapped_file.h"
 #include "taiyin/internal/path_utils.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#if defined(_WIN32)
+#include "taiyin/internal/win32_dirent.h"
+#else
 #include <dirent.h>
+#endif
 #include <fstream>
 #include <limits>
 #include <sys/stat.h>
@@ -346,8 +351,8 @@ bool load_opc_persistent_catalog(
             || header->descriptor_count == 0
             || header->fingerprint != current_fingerprint
             || header->source_id != OPC_SOURCE_ID
-            || header->source_version != OPC_VERSION
-            || header->generation != OPC_VERSION
+            || header->source_version != OPC_DISCOVERY_VERSION
+            || header->generation != OPC_DISCOVERY_VERSION
             || !checked_array_range(size, header->descriptor_records_offset, header->descriptor_count, sizeof(OpcDescriptorRecord))
             || !checked_range(size, header->string_table_offset, header->string_table_size)
             || header->string_table_size > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
@@ -382,8 +387,13 @@ bool load_opc_persistent_catalog(
                 record.center_id,
                 record.method_id,
                 record.bucket_id);
+            descriptor.path = join_path(root, relative_path);
+            const EphemerisBlockFormat format = format_from_record(record.format);
+            const uint64_t source_id = format == EphemerisBlockFormat::Spk
+                ? classify_spk_source_id_from_path(descriptor.path)
+                : record.source_id;
             descriptor.source_key = EphemerisBlockKey(
-                record.source_id,
+                source_id,
                 record.block_id,
                 record.generation,
                 record.purpose);
@@ -391,10 +401,9 @@ bool load_opc_persistent_catalog(
             descriptor.center_id = record.center_id;
             descriptor.method_id = record.method_id;
             descriptor.frame = frame_from_record(record.frame_id);
-            descriptor.format = format_from_record(record.format);
+            descriptor.format = format;
             descriptor.jd_tdb_start = record.jd_tdb_start;
             descriptor.jd_tdb_end = record.jd_tdb_end;
-            descriptor.path = join_path(root, relative_path);
             descriptor.cache_policy.kind = static_cast<EphemerisCachePolicyKind>(record.cache_policy_kind);
             descriptor.cache_policy.origin_jd = record.cache_origin_jd;
             descriptor.cache_policy.span_days = record.cache_span_days;
@@ -496,8 +505,8 @@ bool write_opc_persistent_catalog(
         header.string_table_size = strings.size();
         header.fingerprint = fingerprint;
         header.source_id = OPC_SOURCE_ID;
-        header.source_version = OPC_VERSION;
-        header.generation = OPC_VERSION;
+        header.source_version = OPC_DISCOVERY_VERSION;
+        header.generation = OPC_DISCOVERY_VERSION;
 
         std::vector<uint8_t> bytes;
         append_bytes(&bytes, &header, sizeof(header));

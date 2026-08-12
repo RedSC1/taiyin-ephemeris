@@ -207,7 +207,13 @@ std::string tsc1_normalize_alias(const std::string& value) {
     bool last_was_separator = false;
     for (size_t i = 0; i < value.size(); ++i) {
         const unsigned char ch = static_cast<unsigned char>(value[i]);
-        if (std::isalnum(ch)) {
+        // TSC1's ASCII folding deliberately does not attempt Unicode case
+        // conversion. Preserve non-ASCII UTF-8 bytes verbatim so catalog
+        // aliases such as Chinese traditional star names remain lookupable.
+        if (ch >= 0x80) {
+            out.push_back(static_cast<char>(ch));
+            last_was_separator = false;
+        } else if (std::isalnum(ch)) {
             out.push_back(static_cast<char>(std::tolower(ch)));
             last_was_separator = false;
         } else if (ch == '_' || ch == '-' || std::isspace(ch)) {

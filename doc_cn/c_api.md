@@ -11,7 +11,7 @@ Rust 等绑定层使用。统一入口为：
 
 在支持版本化 SONAME 的平台，安装后的动态库名为 `taiyin`（Linux 为
 `libtaiyin.so`，macOS 为 `libtaiyin.dylib`）。Windows 的 DLL 和 import
-library 名称带 ABI 号，例如 `taiyin-5.dll` 和 `taiyin-5.lib`。动态加载时先检查
+library 名称带 ABI 号，例如 `taiyin-7.dll` 和 `taiyin-7.lib`。动态加载时先检查
 `taiyin_get_c_abi_version()`；`taiyin_get_library_version()` 返回与 ABI
 版本独立的库语义版本，当前 core baseline 为 `1.0.0`；
 `taiyin_get_library_codename()` 返回大版本代号，Taiyin `1.x.x` 的代号为
@@ -20,8 +20,16 @@ library 名称带 ABI 号，例如 `taiyin-5.dll` 和 `taiyin-5.lib`。动态加
 其他功能模块或细分能力。其中 `TAIYIN_CAPABILITY_SPLIT_TIME` 表示当前库
 导出了 split Julian Date 时间 API。
 
-八字是可选扩展，故意不放进统一头文件。构建时传入
-`-DTAIYIN_BUILD_BAZI_EXTENSION=ON`，调用方再显式包含：
+八字是可选的中国术数扩展，故意不放进统一头文件。只有术数 policy gate 和
+BaZi 子模块选项同时开启时才会构建：
+
+```sh
+cmake -S . -B build \
+  -DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON \
+  -DTAIYIN_BUILD_BAZI_EXTENSION=ON
+```
+
+调用方再显式包含：
 
 ```c
 #include <taiyin/c/bazi.h>
@@ -37,6 +45,27 @@ buffer。
 
 ## 构建与安装
 
+默认构建仍提供 legacy aggregate `taiyin_c` target。模块化构建会生成一个基础动态库，
+仅为已启用扩展生成独立动态库：
+
+```sh
+cmake -S . -B build-modular \
+  -DTAIYIN_BUILD_MODULAR_C_API=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-modular
+cmake --install build-modular --prefix /your/prefix
+```
+
+模块化安装始终包含 `taiyin`，其中合并了 core、astrology、Chinese calendar 与
+Ganzhi 的 C API 和 native 实现。启用 BaZi 时才会额外安装唯一可选的
+`taiyin_bazi`；因此 BaZi 发布包恰好包含两个 shared library：`taiyin` 和
+`taiyin_bazi`。所有启用依赖都会安装在同一目录；macOS 与 ELF 平台使用可重定位
+loader path，Windows 按 CMake 常规 runtime/archive 目录安装 DLL 与 import library。
+
+模块化调用方应先加载 `taiyin`，再加载扩展库；同一进程不要把 legacy aggregate
+和模块化库混用。基础库会导出可选扩展所需的 native implementation symbol；该 C++
+链接仅用于同一套 Taiyin 构建内部，不构成对第三方稳定的 C++ ABI。
+
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target taiyin_c
@@ -48,10 +77,14 @@ cmake --install build --prefix /your/prefix
 `TAIYIN_C_STATIC` 及内部静态依赖。安装结果还包括 `LICENSE` 和 `NOTICE`。
 头文件要求 C99 或更高版本，也可直接被 C++ 包含。
 
-C ABI 当前版本为 `5`。版本 3 将标量儒略日参数和结果时间字段替换为
+安装结果和 CPack 二进制压缩包有意不携带 OPM2、TSC1、TLL1 或其他 runtime 数据包。
+部署时应把选定的数据根目录放在应用旁，或在运行时注册单独分发的数据文件。
+
+C ABI 当前版本为 `7`。版本 3 将标量儒略日参数和结果时间字段替换为
 `taiyin_split_julian_date`；版本 5 扩展了 `taiyin_bazi_context_config`，加入
-起运与大运策略。使用版本 4 或更早头文件构建的调用方必须重新编译。
-库版本遵循语义化版本：兼容性新增不改变 ABI major；
+起运与大运策略；版本 7 为行星中天搜索加入 flags 参数，并确立 observed flags
+“低 32 位 position / 高 32 位 option”的分层。使用更早 ABI 头文件构建的调用方必须
+重新编译。库版本遵循语义化版本：兼容性新增不改变 ABI major；
 删除或改变已有 C symbol / struct contract 时必须提升 ABI major。
 共享库实体文件独立使用 `ABI.0.0` 版本号，避免安装新 ABI 时覆盖旧 SONAME
 指向的二进制；Windows 不把 `VERSION` 编入 DLL 文件名，因此改用
@@ -78,8 +111,10 @@ C ABI 当前版本为 `5`。版本 3 将标量儒略日参数和结果时间字�
 互不修改的 context 和普通计算可并发使用。全局运行时与注册表修改属于初始化阶段。
 
 自定义星体、Ayanamsha 和分宫制均可注册 C 回调，并携带 `void* user_data`。
-注册项在进程生命周期内有效且不能注销；回调和 `user_data` 必须一直有效，并能够承受
-并发调用。异常不能跨越 C ABI。
+注册后必须在回调或 `user_data` 失效前显式注销或清理，并且回调必须能够承受
+并发调用。异常不能跨越 C ABI。模块化构建中，
+占星功能仍位于基础 `taiyin` 动态库中，因此
+`taiyin_astrology_module_shutdown()` 返回 `TAIYIN_ERROR_UNSUPPORTED`。
 
 ## Context 配置
 
@@ -129,7 +164,7 @@ split 路径在应用时间偏移时不会先合并成单个 JD。TT/TDB 模型�
 统一头文件覆盖：
 
 - 运行时、context、时间、位置/状态、恒星、观测位置、可见性、现象和真太阳时；
-- 黄经、相位、相位角、逆行、最小角距、大距、轨道事件和凌日搜索；
+- 黄经、相位、相位角、逆行、天体—天体/天体—恒星最小角距、大距、轨道事件和凌日搜索；
 - 日月食、路线产品、月掩星/月掩行星和晨昏初见；
 - Ayanamsha、恒星黄道、分宫、月球交点与远近地点；
 - 中国农历冬至岁计算和公农历双向转换；

@@ -27,7 +27,7 @@ void expect_status(taiyin::Status status, const char* label) {
     }
 }
 
-void test_pascal_rules() {
+void test_ganzhi_rules() {
     uint8_t value = taiyin::chinese_calendar::kInvalidGanzhi;
     expect_status(taiyin::chinese_calendar::make_ganzhi(4, 6, &value), "make Wu-Wu");
     expect(value == 0x46u, "Ganzhi uses stem high nibble and branch low nibble");
@@ -47,7 +47,7 @@ void test_pascal_rules() {
                 (((stem % 5u) * 2u + 2u) + month) % 10u);
             expect(value == static_cast<uint8_t>(
                     (expected_stem << 4) | ((month + 2u) % 12u)),
-                "all Wu-Hu-Dun month pillars match the Pascal source");
+                "all Wu-Hu-Dun month pillars match the rule source");
         }
         for (uint8_t hour = 0; hour < 12u; ++hour) {
             expect_status(
@@ -56,7 +56,7 @@ void test_pascal_rules() {
             const uint8_t expected_stem = static_cast<uint8_t>(
                 ((stem % 5u) * 2u + hour) % 10u);
             expect(value == static_cast<uint8_t>((expected_stem << 4) | hour),
-                "all Wu-Shu-Dun hour pillars match the Pascal source");
+                "all Wu-Shu-Dun hour pillars match the rule source");
         }
     }
 
@@ -304,7 +304,7 @@ void test_four_pillars() {
 }  // namespace
 
 int main() {
-    test_pascal_rules();
+    test_ganzhi_rules();
     test_four_pillars();
     return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

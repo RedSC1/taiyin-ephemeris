@@ -37,7 +37,7 @@ void print_usage(const char* program) {
               << "If data_root is omitted, the example uses TAIYIN_DATA_ROOT or ./data.\n"
               << "This example initializes the packaged runtime, sets a Beijing observer\n"
               << "context, then prints a small topocentric observed bare chart for\n"
-              << "2024-01-01 12:00 UT.\n";
+              << "1046 BCE-01-20 06:30 UT (astronomical year -1045).\n";
 }
 
 }  // namespace
@@ -86,7 +86,9 @@ int main(int argc, char** argv) {
         body_ids[i] = bodies[i].body_id;
     }
 
-    const CalendarDateTime datetime_ut = { 2024, 1, 1, 12, 0, 0.0 };
+    // CalendarDateTime uses astronomical year numbering: year 0 is 1 BCE,
+    // therefore historical 1046 BCE is represented as year -1045.
+    const CalendarDateTime datetime_ut = { -1045, 1, 20, 6, 30, 0.0 };
     const double jd_ut = julian_day(datetime_ut);
     SplitJulianDate split_jd_ut;
     if (!split_julian_date_from_double(jd_ut, &split_jd_ut)) {
@@ -96,7 +98,7 @@ int main(int argc, char** argv) {
 
     ObservedPosition observed[sizeof(bodies) / sizeof(bodies[0])];
     EphemerisEvalDiagnostic diagnostics[sizeof(bodies) / sizeof(bodies[0])];
-    const uint32_t flags =
+    const uint64_t flags =
         TAIYIN_OBSERVED_SPEED
         | TAIYIN_OBSERVED_TOPOCENTRIC
         | TAIYIN_OBSERVED_HORIZONTAL
@@ -125,6 +127,7 @@ int main(int argc, char** argv) {
     std::cout << std::fixed;
     std::cout << "Taiyin observed UT bare chart\n";
     std::cout << "data_root: " << data_root << "\n";
+    std::cout << "date: 1046 BCE-01-20 06:30 UT (astronomical year -1045)\n";
     std::cout << "chart_ut_jd: " << std::setprecision(9) << jd_ut << "\n";
     std::cout << "observer: Beijing lon=116.4074 lat=39.9042 height=43.5m\n";
     std::cout << "atmosphere: Bennett pressure=1010mbar temperature=10C\n\n";

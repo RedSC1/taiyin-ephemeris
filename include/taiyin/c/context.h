@@ -207,6 +207,8 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_geocentric_observer(
     int32_t observer_id,
     int32_t center_id
 );
+/* Topocentric observer setters are Earth-only in the 1.0 API and return
+ * TAIYIN_ERROR_UNSUPPORTED when the context observer is not Earth. */
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL
 taiyin_context_set_topocentric_observer_offset(
     taiyin_context* context,

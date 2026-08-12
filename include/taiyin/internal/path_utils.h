@@ -5,10 +5,15 @@
 #include <cstring>
 #include <string>
 
-#ifdef _WIN32
 #include <sys/stat.h>
-#else
-#include <sys/stat.h>
+
+#if defined(_WIN32)
+#if !defined(S_ISDIR)
+#define S_ISDIR(mode) (((mode) & _S_IFMT) == _S_IFDIR)
+#endif
+#if !defined(S_ISREG)
+#define S_ISREG(mode) (((mode) & _S_IFMT) == _S_IFREG)
+#endif
 #endif
 
 namespace taiyin {

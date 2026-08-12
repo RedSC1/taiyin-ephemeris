@@ -1,9 +1,9 @@
 # Roadmap
 
 Status: Current
-Last reviewed: 2026-07-18
+Last reviewed: 2026-08-09
 
-Taiyin `1.0.0` is the first private core baseline. The runtime and C ABI are
+Taiyin `1.0.0` is the first core baseline. The runtime and C ABI are
 feature-complete enough for downstream bindings and applications; future work
 should not delay on speculative compatibility or chart-framework features.
 
@@ -39,7 +39,7 @@ The baseline includes:
   visibility calculations, and optional lunar-limb correction;
 - sidereal positions, ayanamsha, ASC/MC, house systems, lunar nodes/apsides,
   fitted lunar apogee, and custom astrology model registration;
-- stable C99 ABI version 2 for FFI and application integration.
+- stable C99 ABI version 7 for FFI and application integration.
 
 The exact-JD shared result cache has been removed. Shared runtime caching is
 limited to reusable source segments and route-loading coordination; user-level
@@ -47,7 +47,7 @@ memoization belongs in downstream contexts or bindings.
 
 ## Compatibility Policy
 
-- The C ABI is the compatibility boundary. ABI major 2 keeps existing symbols,
+- The C ABI is the compatibility boundary. ABI major 7 keeps existing symbols,
   flag meanings, and structure contracts compatible.
 - Structure growth uses trailing fields guarded by `struct_size`.
 - C++ headers remain implementation-facing and are not a stable binary ABI.
@@ -63,7 +63,8 @@ memoization belongs in downstream contexts or bindings.
 ### Bindings And Packaging
 
 1. Dart FFI wrapper and Flutter platform packaging.
-2. Python binding over the same C ABI.
+2. Python direct C++ binding through pybind11, with Python-owned localization
+   and input normalization rather than native DLL discovery.
 3. JavaScript/Node.js binding after the native package layout is stable.
 4. CI-built macOS, Linux, Windows, Android, and iOS binaries with install/package
    smoke tests, symbol checks, checksums, signing, and notices.
@@ -99,7 +100,8 @@ distribution remains deferred. Before distributing binaries externally:
 - publish data checksums and model/source identifiers;
 - prepare a changelog, migration guide, support window, and security contact.
 
-The detailed checklist lives in [`plans/v1_release_closure.md`](plans/v1_release_closure.md).
+The detailed binary-release checklist is maintained in the private development
+repository and is not part of this public source snapshot.
 
 ## Non-Goals
 

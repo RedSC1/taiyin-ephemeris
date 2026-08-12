@@ -1,7 +1,7 @@
 # 事件搜索
 
 文档状态：当前说明
-最后审阅：2026-07-01
+最后审阅：2026-08-12
 主要头文件：`include/taiyin/runtime/event_search.h`
 
 事件搜索是 Taiyin runtime 提供的底层数值求根能力。它只处理“某个角度条件在什么时候成立”，不直接生成历书、节气表、占星事件对象或可视化结果。
@@ -17,7 +17,8 @@
 - 月相，也就是 `Moon - Sun = phase`；
 - 精确相位，也就是一组 aspect separation 的命中；
 - 黄经速度为零的留点；
-- 两个星体的三维天球角距最小值。
+- 两个星体的三维天球角距最小值；
+- 一个太阳系星体与命名恒星的最小角距。
 
 这些函数都使用调用方传入的 `NativeCalcContext`。因此 observer、时间模型、岁差章动模型、route rule、数据源选择和普通 `calc_position_*` 一致。事件搜索不会绕过 context，也不会自己换一套数据源。
 
@@ -292,9 +293,29 @@ OPM2 保持接近。该模型相对 DE441 的 held-out 精度见
 ```cpp
 search_minimum_angular_separation_ut(...)
 search_minimum_angular_separation_tt(...)
+search_minimum_body_star_angular_separation_ut(...)
+search_minimum_body_star_angular_separation_tt(...)
 ```
 
 它搜索两个星体方向向量之间的三维夹角最小值。这个量不同于 `search_body_aspect_*()` 的黄经差：即使两个天体黄经相同，纬度不同也可能有明显天球角距。因此它适合给 appulse、掩星、凌日和“最近角距”类功能做底层 primitive；事件名称、是否算“合”、orb 规则和展示语义应由上层扩展决定。
+
+`body_star` 入口把一个太阳系 `body_id` 与已加载 TSC1/TSF1 星表中的
+命名恒星组成搜索目标，适合复算“某行星守/犯某星”一类历史或观测记录。
+调用前需要先加载恒星星表；`star_key` 仍由调用方持有，结果返回 body ID、
+时刻、角距、一阶导数和 solver 计数。恒星的视位置与速度参与角距及一阶导数
+计算；公共恒星位置 API 暂未暴露视加速度，因此恒星的 Newton 曲率贡献按零
+处理。Newton candidate 始终受 bracket 保护，必要时仍由二分或角距值最小化
+兜底，收敛正确性不依赖这个曲率近似。
+
+在很长的历史区间里，内置半解析路线会由九个行星质心的日心状态重建 `Sun/SSB`。
+命名恒星的视位置因此能让星表、地球 observer、太阳和恒星方向保持在同一个重心
+frame，而不是把重心星表与日心 observer 混用。这是坐标原点路线，不是调用方选择的
+本体近似。
+1.0 的固定星与 body-star 搜索 API 遇到非地球 context observer 时会返回
+`TAIYIN_ERROR_UNSUPPORTED`。
+`TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` 仍是另一件事，只在主行星
+本体路线不可用时允许请求退回对应的行星质心。可运行示例见
+[`examples/tang_833_antares.cpp`](../examples/tang_833_antares.cpp)。
 
 当前 solver 与大距使用同一组角距运动学纯函数：先用 `separation_rate` 找到局部极小值 bracket，再用 `separation_acceleration` 构造 guarded Newton candidate；candidate 不有限或跑出 bracket 时继续二分。如果没有找到 sign-change bracket，则在最佳采样点附近用角距值做保守最小化 fallback。
 
@@ -339,7 +360,7 @@ k candidate -> empirical conjunction seed -> inferior-distance filter -> node/la
 
 凌日搜索不会把调用者的 `NativeCalcContext::apparent_options.output_frame_id` 当成候选搜索语义。候选内合和 latitude gate 内部使用 true ecliptic-of-date；如果传入 `TAIYIN_NATIVE_POSITION_NONUT`，则使用 mean ecliptic-of-date。最终是否成凌日仍由三维最小角距和接触求根确认。
 
-`tools/validate_solar_transit_seed_de441.py` 是非 CI 的 DE441 验证工具，用来检查 `jd -> k` bootstrap、经验 seed 覆盖范围和平均 `k` 宽窗口兜底。默认采样下，Mercury 经验 seed 相对 DE441 内合根的最坏误差约 `2.38 day`，Venus 约 `0.33 day`，均落在生产小窗口内。工具会按 BSP 实际覆盖范围选择可验证的 `k`，避免把星历文件边界误判成搜索算法错误。
+私有的离线 DE441 验证流程会检查 `jd -> k` bootstrap、经验 seed 覆盖范围和平均 `k` 宽窗口兜底。默认采样下，Mercury 经验 seed 相对 DE441 内合根的最坏误差约 `2.38 day`，Venus 约 `0.33 day`，均落在生产小窗口内。它会按 BSP 实际覆盖范围选择可验证的 `k`，避免把星历文件边界误判成搜索算法错误。
 
 这个 latitude gate 是必要条件筛选，不是事件确认。也就是说 `abs(latitude) > 2°` 会被当作 definitely no transit；`abs(latitude) <= 2°` 只表示候选仍可能凌日。最终是否成凌日仍由 Sun-body 三维最小角距和接触求根确认。这个阈值通过 DE441 hard-scan 多点回归防漏：测试会在 DE441 古代、中段、近代和未来边界附近，用不依赖 `k` 的三维最小角距硬扫结果对比 `k` 搜索结果。
 
@@ -472,15 +493,15 @@ unknown   0.5 day
 - 逆行事件：搜索 station，然后由上层用前后速度标注顺行留、逆行留、逆行开始或逆行结束；
 - 命名相位：搜索 exact-aspect，然后由占星扩展应用 orb、name、display、入相/出相规则。
 
-后续更适合放在天文/历法扩展层的方向：
+当前天文/历法扩展工作会建立在 runtime 已有的 primitive 之上：
 
-- 多日升落、过中天、昼夜长短和 twilight 表格；
-- 太阳、月亮、行星和恒星的可见性窗口；
-- 偕日升、偕日降、晨见、夕见、acronychal/cosmical 等传统可见性事件；
-- 行星现象量，例如相位角、距角、照明比例、视直径和亮度；
+- 基于现有 visibility API 的多日升落、过中天、昼夜长短和 twilight 表格；
+- 更丰富的太阳、月亮、行星和恒星可见性窗口产品；
+- 偕日升、偕日降、晨见、夕见、acronychal/cosmical 等传统可见性产品；
+- 对现有现象量 API 的展示与上层使用：相位角、距角、照明比例、视直径和亮度；
 - 水星、金星东大距/西大距；
-- 月掩批量星表、行星互掩、行星合月的最小角距/appulse；
-- 水星/金星凌日；
+- 月掩批量星表、行星互掩、行星合月的最小角距/appulse 产品；
+- 对已有水星/金星凌日 API 的高层展示、表格和批量产品；
 - 更面向历法展示的地方日月食可见性表、观测摘要和批量查询。
 
 后续更适合放在占星扩展层的方向：
@@ -492,7 +513,7 @@ unknown   0.5 day
 - 庙旺弱陷、月宿、空亡月、择日规则；
 - 阿拉伯点、midpoint、Lilith 变体、虚拟点和其他 synthetic chart points。
 
-这些扩展会复用 runtime 的黄经、相对黄经、station、visibility、eclipse 和未来 occultation 能力，并在各自模块中提供更贴近使用场景的 API。
+这些扩展会复用 runtime 的黄经、相对黄经、station、visibility、eclipse 和现有 occultation API，并在各自模块中提供更贴近使用场景的 API。
 
 ## 优先实现功能
 
@@ -509,6 +530,6 @@ unknown   0.5 day
 | P2 | 掩星、凌日和最小角距 | `swe_lun_occult_*`, solar transit/occultation workflows | 已有 guarded Newton/bisection minimum angular separation primitive、Mercury/Venus 凌日、第一版月掩恒星和月掩太阳系 body next-search，并返回 maximum/begin/end/contact 和基础本地可见性摘要；下一步强化指定目标月掩的 seed/refine、`where` 风格可见区域和更多 oracle。批量星表扫描不是 SwissEph 单目标 API 对齐项，后置到 catalog/almanac 层。 |
 | P2 | 节点、拱点和轨道量 | `swe_nod_aps*`, `swe_get_orbital_elements`, `swe_orbit_max_min_true_distance` | 通用密切轨道量、物理节点/拱点搜索，以及可选 extension 的平均/真月球交点、Delaunay 平均远地点和瞬时远地点已经可用。自然/插值远地点和流派虚点仍留在 extension 后续工作。 |
 | P3 | 偕日升降和传统可见性 | `swe_heliacal_ut`, `swe_heliacal_pheno_ut`, `swe_vis_limit_mag`, `swe_heliacal_angle`, `swe_topo_arcus_visionis` | 基于点源的晨见/晨没/昏见/昏没搜索已提供 Belokrylov (2011) 与 Schaefer (1993) profile。下一步是城市光害、月牙专用初见、传统事件别名和外部行为 oracle。 |
-| P3 | 宫位和占星事件扩展 | `swe_houses*`, `swe_house_pos`, `swe_gauquelin_sector` | 放在占星扩展中实现 ASC/MC、宫制、星座/宫位入宫、回归、transit-to-natal 和 Gauquelin sector。 |
+| P3 | 宫位和占星事件扩展 | `swe_houses*`, `swe_house_pos`, `swe_gauquelin_sector` | astrology extension 已提供 ASC/MC 和 typed house system；下一步补星座/宫位入宫、回归、transit-to-natal、Gauquelin sector 和其他 chart-event 产品。 |
 
 优先顺序的核心原则是先补基础观测量，再补事件包装：先有可靠的位置、地平坐标、现象量、角距离和可见性判断，再实现大距、掩星、凌日、偕日升降和占星事件。

@@ -1447,7 +1447,8 @@ bool parse_opm2_summary(
     const void* bytes,
     size_t byte_count,
     Opm2EpheSection* ephe,
-    Opm2GridSection* grid
+    Opm2GridSection* grid,
+    uint32_t* source_id
 ) noexcept {
     if (!bytes || !ephe || !grid) {
         return false;
@@ -1456,6 +1457,9 @@ bool parse_opm2_summary(
     std::vector<Opm2SectionEntry> sections;
     if (!parse_section_table(raw, byte_count, &sections)) {
         return false;
+    }
+    if (source_id) {
+        *source_id = read_u32(raw + 24);
     }
     const uint8_t* payload = 0;
     size_t size = 0;

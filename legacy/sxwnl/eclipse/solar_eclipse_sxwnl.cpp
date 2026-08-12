@@ -1,4 +1,4 @@
-#include "runtime/eclipse/solar_eclipse_sxwnl.h"
+#include "solar_eclipse_sxwnl.h"
 
 #include "taiyin/geodetic_constants.h"
 

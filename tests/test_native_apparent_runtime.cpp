@@ -445,7 +445,7 @@ void test_observed_utc_topocentric_uses_eop(int* failures) {
     ObservedPosition base_observed;
     ObservedPosition shifted_observed;
     EphemerisEvalDiagnostic diagnostic;
-    const uint32_t flags = TAIYIN_OBSERVED_TOPOCENTRIC
+    const uint64_t flags = TAIYIN_OBSERVED_TOPOCENTRIC
         | TAIYIN_OBSERVED_HORIZONTAL
         | TAIYIN_OBSERVED_SPEED;
 
@@ -515,7 +515,7 @@ void test_observed_utc_topocentric_uses_dut1_and_polar_motion(int* failures) {
     ObservedPosition dut1_observed;
     ObservedPosition polar_observed;
     EphemerisEvalDiagnostic diagnostic;
-    const uint32_t flags = TAIYIN_OBSERVED_TOPOCENTRIC
+    const uint64_t flags = TAIYIN_OBSERVED_TOPOCENTRIC
         | TAIYIN_OBSERVED_HORIZONTAL
         | TAIYIN_OBSERVED_SPEED;
 
@@ -546,6 +546,58 @@ void test_observed_utc_topocentric_uses_dut1_and_polar_motion(int* failures) {
         horizontal_angle_delta(polar_observed, base_observed) > 1.0e-8,
         "polar motion changes topocentric horizontal output",
         failures);
+}
+
+void test_observed_flag_contract_and_barycenter_mask(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    const int body_id = TAIYIN_BODY_MARS;
+    ObservedPosition observed;
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_observed_ut(
+            &context,
+            JD_UT,
+            &body_id,
+            1,
+            TAIYIN_OBSERVED_ALLOW_BARYCENTER_APPROX,
+            &observed,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "observed Mars permits barycenter approximation",
+        failures);
+    expect_true(
+        observed.body_id == TAIYIN_BODY_MARS
+            && observed.apparent.body_mask_bit == TAIYIN_MAJOR_BODY_MARS
+            && observed.diagnostic.component_target_id
+                == TAIYIN_BODY_MARS_BARYCENTER,
+        "observed Mars preserves the major-body mask after barycenter fallback",
+        failures);
+
+    const uint32_t unsupported_flags[] = {
+        TAIYIN_NATIVE_POSITION_XYZ,
+        TAIYIN_NATIVE_POSITION_EQUATORIAL,
+        TAIYIN_NATIVE_POSITION_RADIANS,
+        TAIYIN_NATIVE_POSITION_NONUT,
+    };
+    for (size_t i = 0;
+         i < sizeof(unsupported_flags) / sizeof(unsupported_flags[0]);
+         ++i) {
+        expect_status(
+            calc_observed_ut(
+                &context,
+                JD_UT,
+                &body_id,
+                1,
+                unsupported_flags[i],
+                &observed,
+                &diagnostic),
+            TAIYIN_ERROR_UNSUPPORTED,
+            "observed rejects unsupported native representation flag",
+            failures);
+    }
 }
 
 void test_calc_position_utc_cirs_uses_eop_cpo(int* failures) {
@@ -826,7 +878,7 @@ void test_observed_utc_refraction_requires_atmosphere_fields(int* failures) {
     const int body = TAIYIN_BODY_MOON;
     ObservedPosition observed;
     EphemerisEvalDiagnostic diagnostic;
-    const uint32_t flags = TAIYIN_OBSERVED_TOPOCENTRIC
+    const uint64_t flags = TAIYIN_OBSERVED_TOPOCENTRIC
         | TAIYIN_OBSERVED_HORIZONTAL
         | TAIYIN_OBSERVED_REFRACTION;
 
@@ -849,6 +901,70 @@ void test_observed_utc_refraction_requires_atmosphere_fields(int* failures) {
     expect_true(std::isfinite(observed.refracted_horizontal.altitude_rad), "refracted altitude finite", failures);
 }
 
+void test_non_earth_topocentric_is_unsupported(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    expect_status(
+        native_context_set_geocentric_observer(
+            &context, TAIYIN_BODY_MARS_BARYCENTER, TAIYIN_BODY_SUN),
+        TAIYIN_STATUS_OK,
+        "set non-Earth observer for topocentric boundary",
+        failures);
+
+    const CartesianState zero_offset = {};
+    expect_status(
+        native_context_set_topocentric_observer_offset(&context, zero_offset),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "Cartesian topocentric offset rejects non-Earth observer",
+        failures);
+
+    const NativeObserverLocation surface =
+        native_observer_location_degrees(0.0, 0.0, 0.0);
+    expect_status(
+        native_context_set_simple_topocentric_observer(
+            &context, surface, JD_UT, JD_UT),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "simple topocentric observer rejects non-Earth observer",
+        failures);
+    expect_status(
+        native_context_set_precise_topocentric_observer(
+            &context, surface, JD_UT, JD_UT),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "precise topocentric observer rejects non-Earth observer",
+        failures);
+
+    EphemerisEvalDiagnostic diagnostic;
+    double position[6] = {};
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_SUN,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_TOPOCENTRIC,
+            position,
+            &diagnostic),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "native topocentric position rejects non-Earth observer",
+        failures);
+
+    const int body_id = TAIYIN_BODY_SUN;
+    ObservedPosition observed;
+    expect_status(
+        calc_observed_ut(
+            &context,
+            JD_UT,
+            &body_id,
+            1,
+            TAIYIN_OBSERVED_TOPOCENTRIC,
+            &observed,
+            &diagnostic),
+        TAIYIN_ERROR_UNSUPPORTED,
+        "observed topocentric position rejects non-Earth observer",
+        failures);
+}
+
 }  // namespace
 
 int main() {
@@ -861,11 +977,13 @@ int main() {
         test_observed_utc_geocentric_matches_native_utc(&failures);
         test_observed_utc_topocentric_uses_eop(&failures);
         test_observed_utc_topocentric_uses_dut1_and_polar_motion(&failures);
+        test_observed_flag_contract_and_barycenter_mask(&failures);
         test_calc_position_utc_cirs_uses_eop_cpo(&failures);
         test_calc_position_utc_matches_manual_precise_scales_and_cpo(&failures);
         test_precise_topocentric_observer_matches_erfa_baked_oracle(&failures);
         test_horizontal_formula_matches_erfa_baked_oracle(&failures);
         test_observed_utc_refraction_requires_atmosphere_fields(&failures);
+        test_non_earth_topocentric_is_unsupported(&failures);
     }
     return failures == 0 ? 0 : 1;
 }

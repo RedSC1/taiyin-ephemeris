@@ -11,7 +11,7 @@ not consume the C++ API. Include the umbrella header:
 
 The installed shared library is named `taiyin` on platforms with versioned
 SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). Windows includes the ABI in the
-runtime and import-library name, for example `taiyin-5.dll` and `taiyin-5.lib`.
+runtime and import-library name, for example `taiyin-7.dll` and `taiyin-7.lib`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
 the independent semantic library version; the current core baseline is
@@ -23,9 +23,17 @@ loaded build. In particular,
 `TAIYIN_CAPABILITY_SPLIT_TIME` identifies libraries that export the
 split-Julian-Date time API.
 
-BaZi is an optional extension and is intentionally not part of the umbrella
-header. Configure with `-DTAIYIN_BUILD_BAZI_EXTENSION=ON` and include it
-explicitly:
+BaZi is an optional Chinese-metaphysics extension and is intentionally not part
+of the umbrella header. It is disabled unless the policy gate and its own module
+option are both enabled:
+
+```sh
+cmake -S . -B build \
+  -DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON \
+  -DTAIYIN_BUILD_BAZI_EXTENSION=ON
+```
+
+Then include it explicitly:
 
 ```c
 #include <taiyin/c/bazi.h>
@@ -41,6 +49,32 @@ size (including the trailing NUL), then provide a caller-owned buffer.
 
 ## Build And Install
 
+The default build produces the legacy aggregate `taiyin_c` target. A modular build
+produces one base shared library and separate DLLs only for enabled extensions:
+
+```sh
+cmake -S . -B build-modular \
+  -DTAIYIN_BUILD_MODULAR_C_API=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-modular
+cmake --install build-modular --prefix /your/prefix
+```
+
+The modular install always contains `taiyin`, which bundles the core,
+astrology, Chinese-calendar, and Ganzhi APIs and native implementation.
+Enabling BaZi adds the only optional shared library, `taiyin_bazi`. A BaZi
+deployment therefore contains exactly two shared libraries: `taiyin` and
+`taiyin_bazi`.
+All enabled runtime dependencies are installed beside the facades, with
+relocatable loader paths on macOS and ELF platforms. Windows installs the DLLs
+and import libraries in the normal CMake runtime/archive destinations.
+
+A modular consumer must load `taiyin` before an extension and must not mix the
+legacy aggregate with modular libraries in one process. The base library
+exports the native implementation symbols required by the optional extensions;
+that native C++ linkage is internal to a matched Taiyin build and is not a
+stable third-party C++ ABI.
+
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target taiyin_c
@@ -54,10 +88,16 @@ the target propagates `TAIYIN_C_STATIC` and its internal archive dependencies.
 The install also includes `LICENSE` and `NOTICE`. The C ABI requires C99 or
 newer. The headers are also valid C++.
 
-The C ABI version is `5`. Version 3 replaced scalar Julian-day arguments and
-time-bearing result fields with `taiyin_split_julian_date`. Version 5 enlarges
-`taiyin_bazi_context_config` for qi-yun and da-yun policy; callers compiled
-against version 4 or earlier must be rebuilt. Taiyin follows semantic versioning
+The install and CPack binary archives deliberately do not include OPM2, TSC1,
+TLL1, or other runtime data packs. Deploy a selected data root beside the
+application, or register separately distributed data files at runtime.
+
+The C ABI version is `7`. Version 3 replaced scalar Julian-day arguments and
+time-bearing result fields with `taiyin_split_julian_date`. Version 5 enlarged
+`taiyin_bazi_context_config` for qi-yun and da-yun policy. Version 7 adds the
+planet-transit flag word and establishes the low-position/high-option layering
+for observed flags. Callers compiled against an earlier ABI must be
+rebuilt. Taiyin follows semantic versioning
 for the library: compatible additions retain the ABI major, while removing or
 changing an existing C symbol or structure contract requires a new ABI major.
 Shared-library physical filenames use `ABI.0.0` independently of the package
@@ -95,9 +135,11 @@ Independent calculations and immutable contexts may be used concurrently.
 Global runtime and registry mutations are setup-time operations.
 
 Custom native targets, ayanamsha models, and house systems accept a C callback
-and an opaque `user_data` pointer. Registrations are process-lifetime and cannot
-be removed. The callback and its `user_data` must remain valid until process
-exit and must tolerate concurrent calls. Exceptions must not cross the C ABI.
+and an opaque `user_data` pointer. Registrations must be explicitly removed or
+cleared before the callback or its `user_data` becomes invalid, and callbacks
+must tolerate concurrent calls. Exceptions must not cross the C ABI. In a
+modular build, astrology remains part of the base `taiyin` library, so
+`taiyin_astrology_module_shutdown()` returns `TAIYIN_ERROR_UNSUPPORTED`.
 
 ## Context Configuration
 
@@ -162,7 +204,8 @@ The umbrella header covers:
 
 - runtime initialization, contexts, time conversion, positions, states, stars,
   observed coordinates, visibility, phenomena, and local solar time;
-- longitude, aspect, phase, separation, station, orbital, and transit searches;
+- longitude, aspect, phase, body-body/body-star separation, station, orbital,
+  and transit searches;
 - solar and lunar eclipses, route products, occultations, and heliacal events;
 - sidereal positions, ayanamsha, houses, lunar nodes, and lunar apsides;
 - Chinese lunisolar year calculation and bidirectional civil-date conversion;
@@ -180,6 +223,53 @@ through `taiyin_runtime_add_source_path()` or the runtime configuration source
 paths. Fixed-star astrometry can be supplied as TSC1 memory, TSC1 files, or
 TSF1 files. Bindings may keep their own user-facing name-to-ID table; the C ABI
 does not expose the internal process-global body-name registry.
+
+During setup, `taiyin_runtime_set_ephemeris_source_priority()` can override the
+choice between files in one provider. For AUTO, it also reorders that
+provider's source-specific product rules, so promoting JUP349 above JUP365 or
+demoting DE442 below DE441 changes the selected product. It does not cross
+provider/method boundaries such as SPK versus OPM2. The function accepts either
+an exact loaded path or a bare filename; a repeated call replaces the previous
+value for that key. The supplied value replaces the file's numeric provider
+default, so it can be greater or smaller than built-in candidates.
+Path and basename matching is case-insensitive on Windows and case-sensitive
+on POSIX systems.
+`taiyin_runtime_clear_ephemeris_source_priority()` removes one override and
+restores that file's default; `taiyin_runtime_clear_all_ephemeris_source_priorities()`
+removes the whole overlay. Selection reads the table on every route choice, so
+changes also affect files discovered before the call without rebuilding the
+catalog. Do not mutate it concurrently with calculations.
+
+After initialization, bindings can inspect the successfully registered runtime
+data with `taiyin_runtime_registered_data_source_count()` and
+`taiyin_runtime_get_registered_data_source()`. Each result reports its kind,
+format, descriptor/sample count, coverage envelope, and physical source path.
+Built-in sources use stable labels such as `builtin:semi-analytic` and
+`builtin:eop`. Multiple descriptors from one physical OPM2, SPK, or TKC1 file
+are aggregated into one result. A missing expected path therefore means it was
+not registered successfully.
+
+The source string uses the usual two-call buffer contract:
+
+```c
+size_t count = taiyin_runtime_registered_data_source_count();
+for (size_t i = 0; i < count; ++i) {
+    taiyin_runtime_registered_data_source info;
+    char source[2048];
+    size_t required = 0;
+    taiyin_runtime_registered_data_source_init(&info);
+    if (taiyin_runtime_get_registered_data_source(
+            i, &info, source, sizeof(source), &required)
+            == TAIYIN_STATUS_OK) {
+        printf("%s: %llu items\n", source,
+               (unsigned long long)info.item_count);
+    }
+}
+```
+
+TSC1/TSF1 catalogs remain in the separate star-catalog store and are queried
+through the star-catalog API; they are intentionally not mixed into this
+ephemeris-runtime inventory.
 
 ## Minimal Example
 

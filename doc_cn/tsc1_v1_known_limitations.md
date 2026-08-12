@@ -1,7 +1,7 @@
 # TSC1 v1 已知限制
 
 文档状态：当前限制说明
-最后审阅：2026-07-01
+最后审阅：2026-08-12
 主要头文件：`include/taiyin/star_catalog_tsc1.h`, `include/taiyin/star_provider_tsf1.h`
 
 本文说明第一版 TSC1 precision-star catalog 的能力边界、数据假设和设计取舍。它面向需要加载恒星 catalog、调用恒星位置 API，或评估历史天空精度边界的使用者。
@@ -13,6 +13,7 @@ TSC1 v1 面向本地 precision-star catalog，当前主要覆盖：
 1. `stars-fixed-traditional`
 2. `stars-bright-gaia-bsc`
 3. `stars-hipparcos-gaia`
+4. `lite/stars-bright-v5`
 
 它不是 deep render-star catalog，也不是完整 stellar dynamics model。TSC1 的目标是给命名恒星、亮星和 Hipparcos/Gaia 级别恒星提供可查询、可传播、可接入 Taiyin apparent/observed flags 的本地数据格式。
 
@@ -287,21 +288,32 @@ view-dependent tile loading
 
 ## 打包限制
 
-生成的 catalog 文件当前是本地 artifacts：
+仓库保留完整生成 catalog，位于：
 
 ```text
 data/stars/catalogs/
 ```
 
-这些 catalog 文件不作为核心源码的一部分提交。
-
-公开分发时可以采用：
+面向分发的星表放在独立目录：
 
 ```text
-separate data repository
-release artifacts
-downloader/discovery mechanism
+data/stars/catalogs/lite/stars-bright-v5.tsc1
 ```
+
+它从 `stars-bright-gaia-bsc.tsc1` 机械生成：保留 `V <= 5.0` 的 catalog
+records、两个 manual special-direction records，以及 `lite/required_stars.json` 中的
+明确覆盖要求。该要求保证二十八宿全部 28 颗距星（含中文与拼音 alias），并保证西方
+十二黄道星座各有一颗代表亮星。它保持为适合语言绑定默认随包表的体积；父目录中的完整
+亮星表仍然保留 9,098 颗星（约 1.9 MB），Hipparcos/Gaia 表保留 118,058 颗星（约 21 MB），
+供需要更广覆盖的应用显式选用。
+
+这 28 颗距星是具名的 Taiyin v1 reference profile；它不宣称宋代、陈卓、清代及其他
+历史重建一定采用相同成员星。完整历史星官图需要另行版本化的 sky-culture overlay，
+其中包含星官成员、连线、时代、来源和 provenance；TSC1 仍只承担天体测量恒星层。
+
+runtime 不强制一种打包方法：分发包可以默认携带 lite 表、把大表做成可选数据，也可以
+加载用户提供的 TSC1/TSF1 catalog。当前 lite 文件按上文规则从亮星表机械生成；该
+维护者专用生成工具有意不包含在公开源码快照中。
 
 ## v1 意图总结
 

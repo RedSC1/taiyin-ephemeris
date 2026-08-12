@@ -1,7 +1,7 @@
 # 星历运行时架构
 
 文档状态：当前说明
-最后审阅：2026-07-01
+最后审阅：2026-08-12
 主要头文件：`include/taiyin/runtime/runtime.h`, `include/taiyin/runtime/ephemeris_engine.h`, `include/taiyin/runtime/native_context.h`, `include/taiyin/internal/ephemeris_segment_cache.h`
 
 本文说明 Taiyin 当前运行时如何发现数据、选择计算路线、加载 segment cache，并完成一次星历计算。
@@ -33,6 +33,13 @@ EphemerisRouteRuleTable  ----->  EphemerisEngine
 
 `EphemerisBlockCatalog` 保存从 OPC、源目录和用户新增 descriptor 发现出来的 descriptor。它是本机数据清单，不是方法优先级策略，也不是 runtime cache。Catalog 内部会为 descriptor 建索引，避免每次请求都线性扫描；索引和 segment cache 的细节见 [Catalog 和 Cache 模型](./catalog_cache_model.md)。
 
+OPC 保存的是 SPK segment metadata，不是不可变的产品身份。加载 OPC 时，runtime 会按当前
+文件路径规则重新识别 SPK descriptor 的 source product，因此早于命名 DE/卫星产品的旧
+catalog 仍能获得当前的 source priority 与防混用规则。若 discovery 规则本身会改变
+descriptor 集合（例如补出 Mars 中心卫星路线），独立的 `OPC_DISCOVERY_VERSION` 会使旧
+catalog 失效，再由目录 discovery 重建。版本与 fingerprint 细节见
+[OPC Catalog 格式](./opc_catalog_format.md)。
+
 `BodyRegistry` 管星体层路由能力：
 
 ```text
@@ -45,8 +52,15 @@ Catalog 初始化或新增 descriptor 后，会先在 `BodyRegistry` 里标记 d
 `EphemerisRouteRuleTable` 管直接数据方法偏好。每条规则有一个数值 priority；priority 越高越先尝试，相同 priority 保留注册顺序。当前 AUTO 默认规则是：
 
 ```text
-400  SPK
-300  OPM2
+440  JPL DE442 SPK
+435  Taiyin DE442-rebuilt OPM2（source id 2）
+430  JPL DE441 SPK
+420  JPL DE440 SPK
+419..398  已识别的历史 JPL DE SPK（DE438 至 DE102）
+397..390  已识别的 JPL 卫星 SPK fallback
+389  其他 SPK
+300  Taiyin prerelease OPM2（source id 1）
+290  其他 OPM2
 250  内置半解析模型
 200  TKC1
 100  Kepler file
@@ -66,6 +80,69 @@ semi-analytical-only  只走内置半解析模型
 Custom method 和 custom file method 注册后会进入 catalog，并按传入 priority 插入 AUTO route rule。也就是说用户扩展不需要绕过 runtime：只要 descriptor 的 target/center/method/source 语义正确，它就可以和内置 SPK、OPM2、半解析模型一起参与路由。
 
 `EphemerisEngine` 计算 direct request 时，会解析 method ids，按 route rule 查询 catalog 中匹配 method/route/JD 的 descriptor。选中 descriptor 后，engine 先查 segment cache；cache miss 时加载对应 descriptor bucket，再计算 compiled block。
+
+### Source Product Identity
+
+container format 与 source product 是刻意拆开的：`format` 表示如何加载（如 `SPK`、
+`OPM2`），`source_id` 则表示可以安全组合的一套产品。这样 AUTO 组合状态不会把
+DE441 的 Earth 和 DE442 的 Moon 静默拼到一起。
+
+对 raw JPL SPK，Taiyin 有限地识别历史 `DE` 系列（DE102 至 DE442）、MAR099、
+JUP347/348/349/365、SAT415/441/455–459/480、URA117/182/184、NEP097/098/104/105
+和 PLU060。`s`、`xl`、`_part-1` 等后缀仍归同一模型，例如 `nep098_part-2.bsp` 仍是
+NEP098。这是文件名约定，不是文件认证；调用者重命名数据，即对这个声明负责。
+
+OPM2 不从文件名推断来源；little-endian header 的 bytes 24–27 存 `uint32 source_id`：
+
+```text
+0  未定义；为兼容旧 version-1 文件，运行时映射到 prerelease
+1  TAIYIN_PRERELEASE
+2  TAIYIN_DE442_REBUILT
+```
+
+未来 Taiyin OPM2 产品使用递增 id；在 OPM2-only provider 内较大的 id 优先。未知正
+id 仍可使用，但应用若自行安装第三方 id，就应自行确定它们的排序，或按文件显式覆盖。
+
+未识别的 SPK/OPM2 仍能经 generic `SPK-only` / `OPM2-only` 使用，并会在 AUTO 中排在
+已识别内置产品之后。命名 DE SPK 规则只把非 DE SPK 作为**卫星辅助路线**：例如
+`mar099.bsp` 可与命名 DE 行星 kernel 组合，但组合成功必须实际使用至少一个该命名 DE
+source 的 descriptor；独立卫星 kernel 不能伪装成缺失的高优先级 DE。其他命名 DE 永不
+作为 auxiliary，因此不会混用 DE441 和 DE442。所有命名 DE 之后，每个已识别卫星产品
+还有 exact-source fallback，让 `505 -> 599` 之类直接边可用。OPM2 没有此 auxiliary
+例外。
+
+### 同一路线的多文件选择
+
+多文件覆盖同一 direct route 时，先按上面的 route-rule product/method 优先级选，再在
+provider 内应用模型策略。SPK 使用有限、写死的模型表：DE442 > DE441 > DE440 > …；
+火星卫星优先 MAR099，规则木星系统优先 JUP365，规则土星系统优先 SAT441，主天王星
+系统优先 URA182，海王星优先 NEP098，冥王星优先 PLU060。其他命名卫星解作为低优先级
+备选；只存在于一套产品的 irregular satellite 会自然按 coverage 选中该产品。
+
+这里刻意不使用通用“编号最大”规则：`jup365.bsp` 与 `jup349.bsp` 是不同生产线，
+`2000001.bsp` 又可能只是小行星编号。未知 Horizons/小天体 SPK 保持 discovery 顺序，
+除非应用显式覆盖。OPM2 则直接比较 header 的 `source_id`。
+
+应用可在 setup 阶段调用
+`taiyin_runtime_set_ephemeris_source_priority(path_or_basename, priority)` 覆盖 provider
+内的文件选择；精确 path 优先于 basename，较大值优先。显式数值替换该文件的 provider
+默认数值：OPM2 默认为 header `source_id`，命名 SPK 使用内部模型表（如 JUP365 为 800、
+JUP349 为 700）。所以既可提升，也可降级；未知未配置文件默认为零。AUTO 会在同一
+provider 内跨 source-specific product rule 应用这个覆盖，但 route table 仍拥有 provider /
+method 的边界，SPK 覆盖不会在 OPM2-only route 下选到 SPK。规则在每次选择时读取；应在
+setup 时配置，不应和计算并发。
+
+```c
+/* 提升 JUP349，使其超过默认值 800 的 JUP365。 */
+taiyin_runtime_set_ephemeris_source_priority("jup349.bsp", 900);
+
+/* 降级，再清除覆盖以恢复 provider 默认值。 */
+taiyin_runtime_set_ephemeris_source_priority("jup349.bsp", 600);
+taiyin_runtime_clear_ephemeris_source_priority("jup349.bsp");
+```
+
+`taiyin_runtime_clear_all_ephemeris_source_priorities()` 清除全部用户覆盖。设置为零不等于
+清除：零是有效显式优先级，可让文件排在所有正数内置产品之后。
 
 运行时刻意不保留共享的 exact-JD 数值结果 cache。事件搜索和路线图通常访问不同
 JD；全局 state/matrix cache 会在 writer lock 下反复写入低复用条目。复用只保留在
@@ -99,7 +176,9 @@ load_packaged_data
 strict_discovery
 ```
 
-`initialize_global_ephemeris_runtime()` 会重建 catalog、segment cache、body registry 和 engine 绑定，并替换全局 EOP/TLL1 数据。leap-second 表是进程级内置只读数据。用户 `NativeCalcContext` 不持有这些数据表的裸指针。`add_global_ephemeris_source_path()` 会追加发现 descriptor、重建 body registry。`clear_global_ephemeris_cache()` 只清空 segment cache。
+`initialize_global_ephemeris_runtime()` 会重建 catalog、segment cache、body registry 和 engine 绑定，并替换全局 EOP/TLL1 数据。leap-second 表是进程级内置只读数据。用户 `NativeCalcContext` 不持有这些数据表的裸指针。`add_global_ephemeris_source_path()` 会追加发现 descriptor、重建 body registry。`clear_global_ephemeris_cache()` 清空 compiled segment，并释放其 OPM2 source mapping；之后 OPM2 cache miss 会按需重新 mapping。
+
+`get_global_registered_data_sources()` 会把成功发布的数据 inventory 以结构化记录暴露给调用方。星历 descriptor 按物理 source 与 format 聚合，EOP/TLL1 是单独 source kind。报告的 JD 区间只是 source 覆盖 envelope，不保证其中每条 route 每个时刻都存在；内置/内存 source 使用稳定标签和 flags，不伪装成文件路径。runtime replacement 是事务式的，初始化失败时旧 catalog 及其 inventory 保持不变。
 
 `eop_path` 指向 finals2000A 文本并优先于 `load_builtin_eop`；二者都未设置时，
 精密 UTC 路线没有 EOP，`TimeScaleAuto` 可按既有策略回退到 Delta T。
@@ -195,7 +274,7 @@ Mars/Jupiter/Saturn/Uranus/Neptune/Pluto barycenter / SSB
 COB slices such as Uranus body / Uranus barycenter
 ```
 
-Body fallback 把用户侧 NAIF body ids 映射到这些 route：Mercury/Venus body ids alias 到它们的 barycenter，Earth/Moon 使用 EMB + Moon/Earth 质量比组合，Mars 到 Pluto 的 body ids 在所选方法只提供 barycenter 数据时需要 body/barycenter COB offset。如果缺少这些 COB offset，native position 默认保持严格语义；只有显式传 `TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` 时，Mars 到 Pluto 才会改试对应 barycenter 近似，并在 `component_target_id` 里记录实际使用的 barycenter。
+Body fallback 把用户侧 NAIF body ids 映射到这些 route：Mercury/Venus body ids alias 到它们的 barycenter，Earth/Moon 使用 EMB + Moon/Earth 质量比组合，Mars 到 Pluto 的 body ids 在所选方法只提供 barycenter 数据时需要 body/barycenter COB offset。NAIF permanent `PNN`、extended permanent `P0NNN` 和 provisional `P5NNN` 形式的 natural-satellite id，会经对应物理 `P99` primary 组合，即使 Taiyin 没有该卫星的命名常量也一样。如果缺少这些 COB offset，native position 默认保持严格语义；只有显式传 `TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` 时，Mars 到 Pluto 才会改试对应 barycenter 近似，并在 `component_target_id` 里记录实际使用的 barycenter。
 
 这个近似路径有意保持 strict-first：每次调用都会先尝试请求的本体路线，只有遇到 route、覆盖范围或组合组件失败后才 retry barycenter。这样以后补上真实 body/COB 数据时不会被静默绕过。如果 barycenter approximation 以后成为事件搜索或密集表格的热路径，更合适的优化方向是 route-level approximation decision cache，或者新增一个语义明确的 direct-barycenter 模式；当前 API 不缓存这个决策。
 
@@ -203,6 +282,7 @@ Body fallback 把用户侧 NAIF body ids 映射到这些 route：Mercury/Venus b
 
 ```text
 Mercury/Venus/EMB/Mars/Jupiter/Saturn/Uranus/Neptune/Pluto / Sun
+Sun / SSB
 Moon / Earth
 Earth body / Sun
 ```

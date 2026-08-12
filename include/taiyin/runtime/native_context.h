@@ -30,6 +30,17 @@ enum NativeCalcField {
 
 constexpr uint32_t TAIYIN_NATIVE_ATMOSPHERE_ALLOW_STANDARD_FALLBACK = 1u << 0;
 
+// Records how the current topocentric offset was produced. Event searches
+// copy a context for each sample and must only recompute offsets that are
+// derived from an observer location; an explicit caller-supplied offset is
+// already the requested state and must be preserved verbatim.
+enum NativeTopocentricObserverModel {
+    TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_NONE = 0,
+    TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_EXPLICIT_OFFSET = 1,
+    TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_SIMPLE = 2,
+    TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_PRECISE = 3,
+};
+
 struct NativeObserverLocation {
     double longitude_rad;
     double latitude_rad;
@@ -57,6 +68,7 @@ struct NativeCalcContext {
     int ephemeris_family_id;
     int observer_id;
     int center_id;
+    uint8_t topocentric_observer_model;
     NativeObserverLocation observer_location;
     NativeAtmosphere atmosphere;
     // Controls whether refraction and visibility models may fill missing
@@ -138,6 +150,8 @@ Status native_context_set_geocentric_observer(
     int center_id
 ) noexcept;
 
+// Topocentric observer models are Earth-only in the 1.0 API. These setters
+// return TAIYIN_ERROR_UNSUPPORTED when context->observer_id is not Earth.
 Status native_context_set_topocentric_observer_offset(
     NativeCalcContext* context,
     const CartesianState& observer_offset
@@ -154,6 +168,14 @@ Status native_context_set_precise_topocentric_observer(
     NativeCalcContext* context,
     const NativeObserverLocation& location,
     const SplitJulianDate& jd_utc,
+    const SplitJulianDate& jd_tt
+) noexcept;
+
+// Rebuild a location-derived observer at a search sample. Explicit offsets
+// are intentionally left unchanged.
+Status native_context_refresh_topocentric_observer(
+    NativeCalcContext* context,
+    const SplitJulianDate& jd_ut1,
     const SplitJulianDate& jd_tt
 ) noexcept;
 

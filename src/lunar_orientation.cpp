@@ -8,8 +8,8 @@
 namespace taiyin {
 namespace {
 
-const double kDegreesToRadians = M_PI / 180.0;
-const double kRadiansToDegrees = 180.0 / M_PI;
+const double kDegreesToRadians = TAIYIN_DEG_TO_RAD;
+const double kRadiansToDegrees = TAIYIN_RAD_TO_DEG;
 
 const double kPhaseAngleBaseDeg[13] = {
     125.045, 250.089, 260.008, 176.625, 357.529, 311.589, 134.963,

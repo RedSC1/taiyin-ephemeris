@@ -9,7 +9,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#if defined(_WIN32)
+#include "taiyin/internal/win32_dirent.h"
+#else
 #include <dirent.h>
+#endif
 #include <limits>
 #include <sys/stat.h>
 #include <vector>

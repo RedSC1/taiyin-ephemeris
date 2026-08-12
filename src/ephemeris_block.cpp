@@ -63,9 +63,25 @@ static void init_builtin_body_aliases(GlobalIdRegistry& reg) noexcept {
     register_builtin_body(reg, "europa", TAIYIN_BODY_EUROPA);
     register_builtin_body(reg, "ganymede", TAIYIN_BODY_GANYMEDE);
     register_builtin_body(reg, "callisto", TAIYIN_BODY_CALLISTO);
+    register_builtin_body(reg, "mimas", TAIYIN_BODY_MIMAS);
+    register_builtin_body(reg, "enceladus", TAIYIN_BODY_ENCELADUS);
+    register_builtin_body(reg, "tethys", TAIYIN_BODY_TETHYS);
+    register_builtin_body(reg, "dione", TAIYIN_BODY_DIONE);
+    register_builtin_body(reg, "rhea", TAIYIN_BODY_RHEA);
     register_builtin_body(reg, "titan", TAIYIN_BODY_TITAN);
+    register_builtin_body(reg, "hyperion", TAIYIN_BODY_HYPERION);
+    register_builtin_body(reg, "iapetus", TAIYIN_BODY_IAPETUS);
+    register_builtin_body(reg, "miranda", TAIYIN_BODY_MIRANDA);
+    register_builtin_body(reg, "ariel", TAIYIN_BODY_ARIEL);
+    register_builtin_body(reg, "umbriel", TAIYIN_BODY_UMBRIEL);
+    register_builtin_body(reg, "titania", TAIYIN_BODY_TITANIA);
+    register_builtin_body(reg, "oberon", TAIYIN_BODY_OBERON);
     register_builtin_body(reg, "triton", TAIYIN_BODY_TRITON);
     register_builtin_body(reg, "charon", TAIYIN_BODY_CHARON);
+    register_builtin_body(reg, "nix", TAIYIN_BODY_NIX);
+    register_builtin_body(reg, "hydra", TAIYIN_BODY_HYDRA);
+    register_builtin_body(reg, "kerberos", TAIYIN_BODY_KERBEROS);
+    register_builtin_body(reg, "styx", TAIYIN_BODY_STYX);
 
     register_builtin_body(reg, "ceres", TAIYIN_BODY_CERES);
     register_builtin_body(reg, "pallas", TAIYIN_BODY_PALLAS);

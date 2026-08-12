@@ -31,6 +31,16 @@ std::vector<EphemerisRouteRule>::iterator find_rule(
 
 }  // namespace
 
+bool ephemeris_route_source_usage_is_anchored(
+    const EphemerisRouteRule& rule,
+    bool used_exact_source,
+    bool used_auxiliary_source
+) noexcept {
+    return !rule.allow_non_de_spk_auxiliary
+        || !used_auxiliary_source
+        || used_exact_source;
+}
+
 EphemerisRouteRuleTable::EphemerisRouteRuleTable() noexcept
     : rules_(),
       next_order_(0) {}
@@ -44,7 +54,8 @@ bool EphemerisRouteRuleTable::upsert_source_method(
     uint64_t source_id,
     int method_id,
     int priority,
-    const char* description
+    const char* description,
+    bool allow_non_de_spk_auxiliary
 ) noexcept {
     if (method_id == 0) {
         return false;
@@ -57,12 +68,14 @@ bool EphemerisRouteRuleTable::upsert_source_method(
             rule.method_id = method_id;
             rule.priority = priority;
             rule.order = next_order_++;
+            rule.allow_non_de_spk_auxiliary = allow_non_de_spk_auxiliary;
             if (description) {
                 rule.description = description;
             }
             rules_.push_back(rule);
         } else {
             it->priority = priority;
+            it->allow_non_de_spk_auxiliary = allow_non_de_spk_auxiliary;
             if (description) {
                 it->description = description;
             }

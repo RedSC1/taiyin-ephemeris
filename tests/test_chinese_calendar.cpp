@@ -212,7 +212,9 @@ void expect_lunar(
     uint8_t lunar_day,
     bool is_leap,
     uint8_t month_days,
-    const char* label
+    const char* label,
+    uint8_t month_name =
+        taiyin::chinese_calendar::TAIYIN_CHINESE_MONTH_NAME_NORMAL
 ) {
     using namespace taiyin::chinese_calendar;
     SolarDate solar;
@@ -227,7 +229,8 @@ void expect_lunar(
             && lunar.month == lunar_month
             && lunar.day == lunar_day
             && lunar.is_leap == (is_leap ? 1u : 0u)
-            && lunar.month_days == month_days,
+            && lunar.month_days == month_days
+            && lunar.month_name == month_name,
         label);
 }
 
@@ -530,7 +533,7 @@ void test_single_solar_term_queries() {
     expect(
         lichun.jd_ut > lichun_2025_probe - 2.0
             && lichun.jd_ut < lichun_2025_probe + 2.0,
-        "sxwnl direct index maps Lichun to the same Gregorian year");
+        "spring-cycle direct index maps Lichun to the same Gregorian year");
     expect(
         getSpecificJieQi(&context, 2025, 24, &winter_solstice, &diagnostic)
             == taiyin::TAIYIN_ERROR_INVALID_ARGUMENT,
@@ -754,6 +757,26 @@ void test_historical_calendar_fixtures() {
     }
 
     expect_roundtrip(context, -456, 4, 4, "BCE historical roundtrip");
+
+    // The Taichu transition changes the year-start convention. Adjacent
+    // winter-solstice windows must not assign the same LunarDate identity to
+    // both 105 BCE-01-03 and 104 BCE-01-20 (astronomical years -104/-103), or
+    // fromLunar() cannot invert the value returned by fromSolar().
+    expect_lunar(
+        context,
+        -104, 1, 3,
+        -105, 11, 27, false, 29,
+        "pre-Taichu winter-year identity");
+    expect_lunar(
+        context,
+        -103, 1, 20,
+        -104, 11, 27, false, 30,
+        "Taichu transition winter-year identity");
+    expect_roundtrip(
+        context, -104, 1, 3, "pre-Taichu BCE roundtrip");
+    expect_roundtrip(
+        context, -103, 1, 20, "Taichu-transition BCE roundtrip");
+
     expect_lunar(
         context,
         10, 6, 1,
@@ -769,9 +792,113 @@ void test_historical_calendar_fixtures() {
         690, 6, 1,
         690, 4, 19, false, 29,
         "Wu Zetian reform Dart fixture");
+
+    // Reform windows can produce structurally adjacent months with the same
+    // numeric month. Where the historical profile supplies an exceptional
+    // written name or a new year boundary, preserve it in the structured
+    // identity so fromSolar() remains invertible.
+    expect_lunar(
+        context,
+        23, 12, 2,
+        23, 12, 1, false, 29,
+        "Xin alternate-twelve month",
+        TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE);
+    expect_lunar(
+        context,
+        24, 1, 12,
+        23, 12, 13, false, 30,
+        "post-Xin ordinary twelve month");
+    expect_lunar(
+        context,
+        239, 12, 13,
+        239, 12, 1, false, 30,
+        "Jingchu alternate-twelve month",
+        TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE);
+    expect_lunar(
+        context,
+        240, 1, 12,
+        239, 12, 1, false, 29,
+        "post-Jingchu ordinary twelve month");
+    expect_lunar(
+        context,
+        689, 12, 18,
+        690, 1, 1, false, 29,
+        "Wu Zetian renamed first month");
+    expect_lunar(
+        context,
+        690, 2, 15,
+        690, 1, 1, false, 29,
+        "Wu Zetian alternate-one month",
+        TAIYIN_CHINESE_MONTH_NAME_ALT_ONE);
+    expect_lunar(
+        context,
+        761, 12, 2,
+        762, 1, 1, false, 29,
+        "Tang renamed first month advances lunar year");
+    expect_lunar(
+        context,
+        762, 3, 30,
+        762, 5, 1, false, 30,
+        "Tang reform window end");
+    expect_lunar(
+        context,
+        701, 1, 15,
+        700, 12, 2, false, 30,
+        "post-Wu same-name twelve month",
+        TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME);
+    expect_lunar(
+        context,
+        762, 5, 28,
+        762, 5, 1, false, 30,
+        "post-Tang same-name five month",
+        TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME);
+
     expect_roundtrip(context, 10, 6, 1, "Xin reform roundtrip");
     expect_roundtrip(context, 238, 6, 1, "Jingchu reform roundtrip");
     expect_roundtrip(context, 690, 6, 1, "Wu Zetian reform roundtrip");
+    expect_roundtrip(context, 23, 12, 2, "Xin alternate-twelve roundtrip");
+    expect_roundtrip(context, 24, 1, 12, "post-Xin twelve roundtrip");
+    expect_roundtrip(
+        context, 239, 12, 13, "Jingchu alternate-twelve roundtrip");
+    expect_roundtrip(
+        context, 240, 1, 12, "post-Jingchu twelve roundtrip");
+    expect_roundtrip(
+        context, 690, 2, 15, "Wu Zetian alternate-one roundtrip");
+    expect_roundtrip(
+        context, 701, 1, 15, "post-Wu later-same-name roundtrip");
+    expect_roundtrip(
+        context, 761, 12, 2, "Tang renamed first-month roundtrip");
+    expect_roundtrip(
+        context, 762, 5, 28, "post-Tang later-same-name roundtrip");
+
+    uint8_t ordinary_month_days = 0;
+    taiyin::runtime::EphemerisEvalDiagnostic month_diagnostic;
+    expect(
+        getLunarMonthNum(
+            &context, 23, 12, false, &ordinary_month_days, &month_diagnostic)
+            == taiyin::TAIYIN_STATUS_OK
+            && ordinary_month_days == 30,
+        "ordinary Xin twelve month wins over alternate-twelve fallback");
+    expect(
+        getLunarMonthNum(
+            &context, 239, 12, false, &ordinary_month_days, &month_diagnostic)
+            == taiyin::TAIYIN_STATUS_OK
+            && ordinary_month_days == 29,
+        "ordinary Jingchu twelve month wins over alternate-twelve fallback");
+
+    uint8_t exceptional_month_days = 0;
+    expect(
+        getLunarMonthNum(
+            &context,
+            -456,
+            13,
+            true,
+            &exceptional_month_days,
+            &month_diagnostic) == taiyin::TAIYIN_STATUS_OK,
+        "exceptional-only leap thirteenth month is queryable");
+    expect(
+        exceptional_month_days == 29 || exceptional_month_days == 30,
+        "exceptional-only leap thirteenth month has a civil month length");
 }
 
 void test_jingchu_transition_month() {

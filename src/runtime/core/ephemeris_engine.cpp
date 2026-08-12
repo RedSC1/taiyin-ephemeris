@@ -3,6 +3,9 @@
 #include "taiyin/body_id.h"
 #include "taiyin/internal/descriptor_loader.h"
 #include "taiyin/internal/ephemeris_discovery.h"
+#include "taiyin/internal/ephemeris_source_identity.h"
+#include "taiyin/internal/opm2.h"
+#include "taiyin/internal/spk_catalog_discovery.h"
 #include "taiyin/physical_constants.h"
 #include <algorithm>
 #include <cstdarg>
@@ -11,6 +14,7 @@
 #include <limits>
 #include <new>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace taiyin {
@@ -48,11 +52,162 @@ EphemerisRequest make_component_request(
     return request;
 }
 
-bool descriptor_matches_rule(
+int descriptor_match_rank(
     const internal::EphemerisBlockDescriptor& descriptor,
     const internal::EphemerisRouteRule& rule
 ) noexcept {
-    return rule.source_id == 0 || descriptor.source_key.source_id == rule.source_id;
+    if (rule.source_id == 0 || descriptor.source_key.source_id == rule.source_id) {
+        return 0;
+    }
+    if (rule.allow_non_de_spk_auxiliary
+        && descriptor.format == internal::EphemerisBlockFormat::Spk
+        && !internal::is_jpl_de_spk_source_id(descriptor.source_key.source_id)) {
+        return 1;
+    }
+    return -1;
+}
+
+void order_candidates_by_source_preference(
+    std::vector<internal::EphemerisBlockDescriptor>* candidates,
+    const internal::EphemerisSourcePriorityTable* priorities
+) {
+    if (!candidates || !priorities || candidates->size() < 2) {
+        return;
+    }
+    std::stable_sort(
+        candidates->begin(),
+        candidates->end(),
+        [priorities](
+            const internal::EphemerisBlockDescriptor& lhs,
+            const internal::EphemerisBlockDescriptor& rhs
+        ) {
+            return priorities->compare(lhs, rhs) < 0;
+        });
+}
+
+struct RouteRulePreference {
+    const internal::EphemerisRouteRule* rule;
+    int64_t source_priority;
+    size_t original_index;
+    bool has_catalog_candidate;
+
+    RouteRulePreference() noexcept
+        : rule(0),
+          source_priority(0),
+          original_index(0),
+          has_catalog_candidate(false) {}
+};
+
+internal::EphemerisBlockFormat provider_format_for_method(int method_id) noexcept {
+    if (method_id == internal::SPK_METHOD_ID) {
+        return internal::EphemerisBlockFormat::Spk;
+    }
+    if (method_id == static_cast<int>(internal::OPM2_METHOD_ID)) {
+        return internal::EphemerisBlockFormat::Opm2;
+    }
+    return internal::EphemerisBlockFormat::FormatUnknown;
+}
+
+int64_t default_route_rule_source_priority(
+    const internal::EphemerisRouteRule& rule,
+    const internal::EphemerisSourcePriorityTable& priorities
+) noexcept {
+    internal::EphemerisBlockDescriptor product;
+    product.method_id = rule.method_id;
+    product.format = provider_format_for_method(rule.method_id);
+    product.source_key.source_id = rule.source_id;
+    return priorities.priority_for(product);
+}
+
+std::vector<const internal::EphemerisRouteRule*> order_route_rules_by_source_preference(
+    const std::vector<internal::EphemerisRouteRule>& rules,
+    const internal::EphemerisBlockCatalog* catalog,
+    const internal::EphemerisSourcePriorityTable* priorities
+) {
+    std::vector<const internal::EphemerisRouteRule*> ordered;
+    ordered.reserve(rules.size());
+    for (size_t i = 0; i < rules.size(); ++i) {
+        ordered.push_back(&rules[i]);
+    }
+    if (!catalog || !priorities || priorities->empty()) {
+        return ordered;
+    }
+
+    const int provider_methods[] = {
+        internal::SPK_METHOD_ID,
+        static_cast<int>(internal::OPM2_METHOD_ID),
+    };
+    for (size_t method_index = 0;
+         method_index < sizeof(provider_methods) / sizeof(provider_methods[0]);
+         ++method_index) {
+        bool provider_has_explicit_product_override = false;
+        std::vector<size_t> slots;
+        std::vector<RouteRulePreference> products;
+        std::unordered_map<uint64_t, size_t> product_by_source;
+        for (size_t i = 0; i < rules.size(); ++i) {
+            if (rules[i].method_id != provider_methods[method_index]
+                || rules[i].source_id == 0) {
+                continue;
+            }
+            RouteRulePreference preference;
+            preference.rule = &rules[i];
+            preference.source_priority = default_route_rule_source_priority(
+                rules[i], *priorities);
+            preference.original_index = i;
+            slots.push_back(i);
+            products.push_back(preference);
+            product_by_source[rules[i].source_id] = products.size() - 1;
+        }
+
+        // A path override names a file but selects the product rule that owns
+        // it. Scan the catalog once per provider, not once per product rule:
+        // event searches may evaluate thousands of epochs with one stable
+        // override table.
+        const size_t descriptor_count = catalog->size();
+        for (size_t i = 0; i < descriptor_count; ++i) {
+            internal::EphemerisBlockDescriptor descriptor;
+            if (!catalog->get(i, &descriptor)
+                || descriptor.method_id != provider_methods[method_index]) {
+                continue;
+            }
+            std::unordered_map<uint64_t, size_t>::const_iterator product =
+                product_by_source.find(descriptor.source_key.source_id);
+            if (product == product_by_source.end()) {
+                continue;
+            }
+            RouteRulePreference& preference = products[product->second];
+            int explicit_priority = 0;
+            if (priorities->explicit_priority(
+                    descriptor, &explicit_priority)) {
+                provider_has_explicit_product_override = true;
+            }
+            const int64_t candidate_priority =
+                priorities->priority_for(descriptor);
+            if (!preference.has_catalog_candidate
+                || candidate_priority > preference.source_priority) {
+                preference.source_priority = candidate_priority;
+                preference.has_catalog_candidate = true;
+            }
+        }
+        // An override for another provider must not implicitly replace this
+        // provider's route-table ordering with its numeric source defaults.
+        if (!provider_has_explicit_product_override) {
+            continue;
+        }
+        std::stable_sort(
+            products.begin(),
+            products.end(),
+            [](const RouteRulePreference& lhs, const RouteRulePreference& rhs) {
+                if (lhs.source_priority != rhs.source_priority) {
+                    return lhs.source_priority > rhs.source_priority;
+                }
+                return lhs.original_index < rhs.original_index;
+            });
+        for (size_t i = 0; i < slots.size(); ++i) {
+            ordered[slots[i]] = products[i].rule;
+        }
+    }
+    return ordered;
 }
 
 bool status_allows_route_fallback(Status status) noexcept {
@@ -87,6 +242,35 @@ int barycenter_for_physical_body(int body_id) noexcept {
 
 bool body_is_barycenter_alias(int body_id) noexcept {
     return body_id == TAIYIN_BODY_MERCURY || body_id == TAIYIN_BODY_VENUS;
+}
+
+int physical_primary_for_satellite(int body_id) noexcept {
+    if (body_id <= 0) {
+        return 0;
+    }
+
+    // NAIF encodes permanent natural satellites as PNN (NN=01..98),
+    // extended permanent satellites as P0NNN, and provisional satellites as
+    // P5NNN.  Recover the physical planet P99 from either representation so
+    // kernels can expose satellites that do not have named Taiyin constants.
+    int planetary_system = 0;
+    if (body_id <= 999) {
+        const int satellite_number = body_id % 100;
+        if (satellite_number >= 1 && satellite_number <= 98) {
+            planetary_system = body_id / 100;
+        }
+    } else if (body_id >= 10000 && body_id <= 99999) {
+        const int range_separator = (body_id / 1000) % 10;
+        const int satellite_number = body_id % 1000;
+        if ((range_separator == 0 || range_separator == 5)
+            && satellite_number >= 1 && satellite_number <= 999) {
+            planetary_system = body_id / 10000;
+        }
+    }
+    if (planetary_system < 1 || planetary_system > 9) {
+        return 0;
+    }
+    return planetary_system * 100 + 99;
 }
 
 const internal::EphemerisRouteRuleTable* request_route_rules(
@@ -343,6 +527,18 @@ bool eval_storage_cache_data(const void* data, void* user) {
 
 }  // namespace
 
+void EphemerisEngine::merge_rule_source_usage(
+    RuleSourceUsage* out,
+    const RuleSourceUsage& first,
+    const RuleSourceUsage& second
+) noexcept {
+    if (!out) return;
+    out->used_exact_source =
+        first.used_exact_source || second.used_exact_source;
+    out->used_auxiliary_source =
+        first.used_auxiliary_source || second.used_auxiliary_source;
+}
+
 size_t format_ephemeris_eval_diagnostic(
     const EphemerisEvalDiagnostic& diagnostic,
     char* buffer,
@@ -432,6 +628,7 @@ EphemerisEngine::EphemerisEngine() noexcept
     : catalog_(0),
       segment_cache_(0),
       default_route_rules_(0),
+      source_priorities_(0),
       body_registry_(0),
       inflight_() {}
 
@@ -453,6 +650,12 @@ void EphemerisEngine::set_default_route_rules(const internal::EphemerisRouteRule
     default_route_rules_ = rules;
 }
 
+void EphemerisEngine::set_source_priorities(
+    const internal::EphemerisSourcePriorityTable* priorities
+) noexcept {
+    source_priorities_ = priorities;
+}
+
 const internal::EphemerisBlockCatalog* EphemerisEngine::catalog() const noexcept {
     return catalog_;
 }
@@ -467,6 +670,10 @@ const EphemerisBodyRegistry* EphemerisEngine::body_registry() const noexcept {
 
 const internal::EphemerisRouteRuleTable* EphemerisEngine::default_route_rules() const noexcept {
     return default_route_rules_;
+}
+
+const internal::EphemerisSourcePriorityTable* EphemerisEngine::source_priorities() const noexcept {
+    return source_priorities_;
 }
 
 bool EphemerisEngine::find_descriptor(
@@ -492,15 +699,26 @@ bool EphemerisEngine::find_descriptor(
     if (rules.empty()) {
         return false;
     }
-    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+    std::vector<const internal::EphemerisRouteRule*> ordered_rules;
+    try {
+        ordered_rules = order_route_rules_by_source_preference(
+            rules, catalog_, source_priorities_);
+    } catch (...) {
+        return false;
+    }
+    for (size_t rule_index = 0; rule_index < ordered_rules.size(); ++rule_index) {
+        const internal::EphemerisRouteRule& rule = *ordered_rules[rule_index];
         std::vector<internal::EphemerisBlockDescriptor> candidates;
-        if (!catalog_->find_method_candidates(query, rules[rule_index].method_id, &candidates)) {
+        if (!catalog_->find_method_candidates(query, rule.method_id, &candidates)) {
             continue;
         }
-        for (size_t i = 0; i < candidates.size(); ++i) {
-            if (descriptor_matches_rule(candidates[i], rules[rule_index])) {
-                *out = candidates[i];
-                return true;
+        order_candidates_by_source_preference(&candidates, source_priorities_);
+        for (int match_rank = 0; match_rank <= 1; ++match_rank) {
+            for (size_t i = 0; i < candidates.size(); ++i) {
+                if (descriptor_match_rank(candidates[i], rule) == match_rank) {
+                    *out = candidates[i];
+                    return true;
+                }
             }
         }
     }
@@ -541,33 +759,44 @@ Status EphemerisEngine::eval_method_queue_state(
         return set_diagnostic_status(diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
     }
 
+    std::vector<const internal::EphemerisRouteRule*> ordered_rules;
+    try {
+        ordered_rules = order_route_rules_by_source_preference(
+            rules, catalog_, source_priorities_);
+    } catch (...) {
+        return set_diagnostic_status(diagnostic, TAIYIN_ERROR_OUT_OF_MEMORY);
+    }
+
     int candidate_count = 0;
     Status last_status = TAIYIN_EPHEMERIS_ERROR_NO_ROUTE;
     std::vector<internal::EphemerisBlockDescriptor> candidates;
-    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
-        if (!catalog_->find_method_candidates(query, rules[rule_index].method_id, &candidates)) {
+    for (size_t rule_index = 0; rule_index < ordered_rules.size(); ++rule_index) {
+        const internal::EphemerisRouteRule& rule = *ordered_rules[rule_index];
+        if (!catalog_->find_method_candidates(query, rule.method_id, &candidates)) {
             continue;
         }
-        for (size_t i = 0; i < candidates.size(); ++i) {
-            if (!descriptor_matches_rule(candidates[i], rules[rule_index])) {
-                continue;
-            }
-            ++candidate_count;
-            Status status = eval_method_descriptor_state(
-                candidates[i],
-                request.jd_tdb,
-                request.components,
-                request.include_descriptor,
-                selection,
-                out,
-                diagnostic);
-            if (status == TAIYIN_STATUS_OK) {
-                if (diagnostic) {
-                    diagnostic->candidate_count = candidate_count;
+        order_candidates_by_source_preference(&candidates, source_priorities_);
+        for (int match_rank = 0; match_rank <= 1; ++match_rank) {
+            for (size_t i = 0; i < candidates.size(); ++i) {
+                if (descriptor_match_rank(candidates[i], rule) != match_rank) {
+                    continue;
                 }
-                return TAIYIN_STATUS_OK;
+                ++candidate_count;
+                Status status = eval_method_descriptor_state(
+                    candidates[i],
+                    request.jd_tdb,
+                    request.components,
+                    selection,
+                    out,
+                    diagnostic);
+                if (status == TAIYIN_STATUS_OK) {
+                    if (diagnostic) {
+                        diagnostic->candidate_count = candidate_count;
+                    }
+                    return TAIYIN_STATUS_OK;
+                }
+                last_status = status;
             }
-            last_status = status;
         }
     }
 
@@ -596,29 +825,31 @@ Status EphemerisEngine::eval_direct_state_for_rule(
     if (!catalog_->find_method_candidates(query, rule.method_id, &candidates)) {
         return set_diagnostic_status(diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
     }
+    order_candidates_by_source_preference(&candidates, source_priorities_);
 
     int candidate_count = 0;
     Status last_status = TAIYIN_EPHEMERIS_ERROR_NO_ROUTE;
-    for (size_t i = 0; i < candidates.size(); ++i) {
-        if (!descriptor_matches_rule(candidates[i], rule)) {
-            continue;
-        }
-        ++candidate_count;
-        const Status status = eval_method_descriptor_state(
-            candidates[i],
-            request.jd_tdb,
-            request.components,
-            request.include_descriptor,
-            selection,
-            out,
-            diagnostic);
-        if (status == TAIYIN_STATUS_OK) {
-            if (diagnostic) {
-                diagnostic->candidate_count = candidate_count;
+    for (int match_rank = 0; match_rank <= 1; ++match_rank) {
+        for (size_t i = 0; i < candidates.size(); ++i) {
+            if (descriptor_match_rank(candidates[i], rule) != match_rank) {
+                continue;
             }
-            return TAIYIN_STATUS_OK;
+            ++candidate_count;
+            const Status status = eval_method_descriptor_state(
+                candidates[i],
+                request.jd_tdb,
+                request.components,
+                selection,
+                out,
+                diagnostic);
+            if (status == TAIYIN_STATUS_OK) {
+                if (diagnostic) {
+                    diagnostic->candidate_count = candidate_count;
+                }
+                return TAIYIN_STATUS_OK;
+            }
+            last_status = status;
         }
-        last_status = status;
     }
 
     if (candidate_count == 0) {
@@ -634,7 +865,6 @@ Status EphemerisEngine::eval_method_descriptor_state(
     const internal::EphemerisBlockDescriptor& source,
     const SplitJulianDate& jd_tdb,
     uint32_t components,
-    bool include_descriptor,
     EphemerisSelectionResult* selection,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
@@ -669,10 +899,8 @@ Status EphemerisEngine::eval_method_descriptor_state(
     context.out = out;
 
     if (segment_cache_->with_data(cache_key, eval_storage_cache_data, &context)) {
-        if (include_descriptor) {
-            selection->source_descriptor = source;
-            selection->has_source_descriptor = true;
-        }
+        selection->source_descriptor = source;
+        selection->has_source_descriptor = true;
         selection->cache_hit = true;
         selection->loaded = false;
         return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
@@ -724,10 +952,8 @@ Status EphemerisEngine::eval_method_descriptor_state(
             return set_diagnostic_status(diagnostic, TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED);
         }
 
-        if (include_descriptor) {
-            selection->source_descriptor = source;
-            selection->has_source_descriptor = true;
-        }
+        selection->source_descriptor = source;
+        selection->has_source_descriptor = true;
         selection->cache_hit = false;
         selection->loaded = true;
         return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
@@ -737,10 +963,8 @@ Status EphemerisEngine::eval_method_descriptor_state(
         return set_diagnostic_status(diagnostic, TAIYIN_EPHEMERIS_ERROR_LOAD_FAILED);
     }
 
-    if (include_descriptor) {
-        selection->source_descriptor = source;
-        selection->has_source_descriptor = true;
-    }
+    selection->source_descriptor = source;
+    selection->has_source_descriptor = true;
     selection->cache_hit = true;
     selection->loaded = false;
     return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
@@ -780,12 +1004,16 @@ Status EphemerisEngine::eval_direct_body_state_for_rule(
     const EphemerisRequest& request,
     const internal::EphemerisRouteRule& rule,
     EphemerisResult* out,
+    RuleSourceUsage* usage,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (out) {
         *out = EphemerisResult();
     }
-    if (!out) {
+    if (usage) {
+        *usage = RuleSourceUsage();
+    }
+    if (!out || !usage) {
         return set_diagnostic_status(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT);
     }
 
@@ -803,6 +1031,11 @@ Status EphemerisEngine::eval_direct_body_state_for_rule(
             : internal::EphemerisBlockDescriptor();
     }
     out->cache_hit = selection.cache_hit;
+    const int match_rank = selection.has_source_descriptor
+        ? descriptor_match_rank(selection.source_descriptor, rule)
+        : -1;
+    usage->used_exact_source = match_rank == 0 && rule.source_id != 0;
+    usage->used_auxiliary_source = match_rank == 1;
     return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
 }
 
@@ -815,6 +1048,7 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
     const internal::EphemerisRouteRule& rule,
     bool include_descriptor,
     EphemerisResult* out,
+    RuleSourceUsage* usage,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     EphemerisRequest request = make_component_request(
@@ -829,7 +1063,10 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
     if (out) {
         *out = EphemerisResult();
     }
-    if (!out) {
+    if (usage) {
+        *usage = RuleSourceUsage();
+    }
+    if (!out || !usage) {
         return set_diagnostic_status(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     if (body_id == TAIYIN_BODY_SUN) {
@@ -837,6 +1074,7 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
     }
     if (body_id == TAIYIN_BODY_SSB) {
         EphemerisResult sun_ssb;
+        RuleSourceUsage sun_ssb_usage;
         const EphemerisRequest sun_ssb_request = make_component_request(
             TAIYIN_BODY_SUN,
             TAIYIN_BODY_SSB,
@@ -847,7 +1085,8 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             0,
             include_descriptor);
         const Status sun_ssb_status =
-            eval_direct_body_state_for_rule(sun_ssb_request, rule, &sun_ssb, diagnostic);
+            eval_direct_body_state_for_rule(
+                sun_ssb_request, rule, &sun_ssb, &sun_ssb_usage, diagnostic);
         if (sun_ssb_status != TAIYIN_STATUS_OK) {
             if (diagnostic) {
                 diagnostic->component_target_id = sun_ssb_request.target_id;
@@ -861,18 +1100,23 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             out->descriptor = make_synthetic_descriptor(request, sun_ssb.descriptor);
         }
         out->cache_hit = sun_ssb.cache_hit;
+        *usage = sun_ssb_usage;
         return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
     }
 
     EphemerisResult direct;
-    Status direct_status = eval_direct_body_state_for_rule(request, rule, &direct, diagnostic);
+    RuleSourceUsage direct_usage;
+    Status direct_status = eval_direct_body_state_for_rule(
+        request, rule, &direct, &direct_usage, diagnostic);
     if (direct_status == TAIYIN_STATUS_OK) {
         *out = direct;
+        *usage = direct_usage;
         return TAIYIN_STATUS_OK;
     }
 
     if (body_id == TAIYIN_BODY_EARTH || body_id == TAIYIN_BODY_MOON) {
         EphemerisResult emb_sun;
+        RuleSourceUsage emb_sun_usage;
         Status emb_status = eval_body_wrt_sun_for_rule(
             TAIYIN_BODY_EMB,
             frame,
@@ -882,12 +1126,14 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             rule,
             include_descriptor,
             &emb_sun,
+            &emb_sun_usage,
             diagnostic);
         if (emb_status != TAIYIN_STATUS_OK) {
             return set_diagnostic_status(diagnostic, emb_status);
         }
 
         EphemerisResult moon_earth;
+        RuleSourceUsage moon_earth_usage;
         const EphemerisRequest moon_earth_request = make_component_request(
             TAIYIN_BODY_MOON,
             TAIYIN_BODY_EARTH,
@@ -898,7 +1144,12 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             0,
             include_descriptor);
         Status moon_status =
-            eval_direct_body_state_for_rule(moon_earth_request, rule, &moon_earth, diagnostic);
+            eval_direct_body_state_for_rule(
+                moon_earth_request,
+                rule,
+                &moon_earth,
+                &moon_earth_usage,
+                diagnostic);
         if (moon_status != TAIYIN_STATUS_OK) {
             if (diagnostic) {
                 diagnostic->component_target_id = moon_earth_request.target_id;
@@ -929,10 +1180,73 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
                 moon_earth.descriptor.jd_tdb_end);
         }
         out->cache_hit = emb_sun.cache_hit && moon_earth.cache_hit;
+        merge_rule_source_usage(usage, emb_sun_usage, moon_earth_usage);
         return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
     }
 
+    const int physical_primary_id = physical_primary_for_satellite(body_id);
+    Status satellite_composite_status = direct_status;
+    if (physical_primary_id != 0) {
+        EphemerisResult primary_sun;
+        RuleSourceUsage primary_sun_usage;
+        const Status primary_status = eval_body_wrt_sun_for_rule(
+            physical_primary_id,
+            frame,
+            jd_tdb,
+            components,
+            route_rule_id,
+            rule,
+            include_descriptor,
+            &primary_sun,
+            &primary_sun_usage,
+            diagnostic);
+        if (primary_status == TAIYIN_STATUS_OK) {
+            EphemerisResult satellite_primary;
+            RuleSourceUsage satellite_primary_usage;
+            const EphemerisRequest satellite_primary_request = make_component_request(
+                body_id,
+                physical_primary_id,
+                frame,
+                jd_tdb,
+                components,
+                route_rule_id,
+                0,
+                include_descriptor);
+            const Status satellite_status = eval_direct_body_state_for_rule(
+                satellite_primary_request,
+                rule,
+                &satellite_primary,
+                &satellite_primary_usage,
+                diagnostic);
+            if (satellite_status == TAIYIN_STATUS_OK) {
+                out->state = cartesian_state_add(primary_sun.state, satellite_primary.state);
+                if (include_descriptor) {
+                    out->descriptor = make_synthetic_descriptor(request, primary_sun.descriptor);
+                    out->descriptor.jd_tdb_start = std::max(
+                        primary_sun.descriptor.jd_tdb_start,
+                        satellite_primary.descriptor.jd_tdb_start);
+                    out->descriptor.jd_tdb_end = std::min(
+                        primary_sun.descriptor.jd_tdb_end,
+                        satellite_primary.descriptor.jd_tdb_end);
+                }
+                out->cache_hit = primary_sun.cache_hit && satellite_primary.cache_hit;
+                merge_rule_source_usage(
+                    usage, primary_sun_usage, satellite_primary_usage);
+                return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
+            }
+            satellite_composite_status = satellite_status;
+            if (diagnostic) {
+                diagnostic->component_target_id = satellite_primary_request.target_id;
+                diagnostic->component_center_id = satellite_primary_request.center_id;
+                diagnostic->component_method_id = satellite_primary.descriptor.method_id;
+            }
+        } else {
+            satellite_composite_status = primary_status;
+        }
+    }
+
     EphemerisResult body_ssb;
+    RuleSourceUsage body_ssb_usage;
     const EphemerisRequest body_ssb_request = make_component_request(
         body_id,
         TAIYIN_BODY_SSB,
@@ -943,9 +1257,11 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
         0,
         include_descriptor);
     Status body_ssb_status =
-        eval_direct_body_state_for_rule(body_ssb_request, rule, &body_ssb, diagnostic);
+        eval_direct_body_state_for_rule(
+            body_ssb_request, rule, &body_ssb, &body_ssb_usage, diagnostic);
     if (body_ssb_status == TAIYIN_STATUS_OK) {
         EphemerisResult sun_ssb;
+        RuleSourceUsage sun_ssb_usage;
         const EphemerisRequest sun_ssb_request = make_component_request(
             TAIYIN_BODY_SUN,
             TAIYIN_BODY_SSB,
@@ -956,7 +1272,8 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             0,
             include_descriptor);
         Status sun_ssb_status =
-            eval_direct_body_state_for_rule(sun_ssb_request, rule, &sun_ssb, diagnostic);
+            eval_direct_body_state_for_rule(
+                sun_ssb_request, rule, &sun_ssb, &sun_ssb_usage, diagnostic);
         if (sun_ssb_status == TAIYIN_STATUS_OK) {
             out->state = cartesian_state_subtract(body_ssb.state, sun_ssb.state);
             if (include_descriptor) {
@@ -969,6 +1286,7 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
                     sun_ssb.descriptor.jd_tdb_end);
             }
             out->cache_hit = body_ssb.cache_hit && sun_ssb.cache_hit;
+            merge_rule_source_usage(usage, body_ssb_usage, sun_ssb_usage);
             return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
         }
     }
@@ -976,6 +1294,7 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
     const int barycenter_id = barycenter_for_physical_body(body_id);
     if (barycenter_id != 0) {
         EphemerisResult barycenter_sun;
+        RuleSourceUsage barycenter_sun_usage;
         Status barycenter_status = eval_body_wrt_sun_for_rule(
             barycenter_id,
             frame,
@@ -985,6 +1304,7 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
             rule,
             include_descriptor,
             &barycenter_sun,
+            &barycenter_sun_usage,
             diagnostic);
         if (barycenter_status == TAIYIN_STATUS_OK) {
             if (body_is_barycenter_alias(body_id)) {
@@ -992,10 +1312,12 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
                 if (include_descriptor) {
                     out->descriptor = make_synthetic_descriptor(request, barycenter_sun.descriptor);
                 }
+                *usage = barycenter_sun_usage;
                 return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
             }
 
             EphemerisResult offset;
+            RuleSourceUsage offset_usage;
             const EphemerisRequest offset_request = make_component_request(
                 body_id,
                 barycenter_id,
@@ -1006,7 +1328,8 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
                 0,
                 include_descriptor);
             Status offset_status =
-                eval_direct_body_state_for_rule(offset_request, rule, &offset, diagnostic);
+                eval_direct_body_state_for_rule(
+                    offset_request, rule, &offset, &offset_usage, diagnostic);
             if (offset_status == TAIYIN_STATUS_OK) {
                 out->state = cartesian_state_add(barycenter_sun.state, offset.state);
                 if (include_descriptor) {
@@ -1019,12 +1342,15 @@ Status EphemerisEngine::eval_body_wrt_sun_for_rule(
                         offset.descriptor.jd_tdb_end);
                 }
                 out->cache_hit = barycenter_sun.cache_hit && offset.cache_hit;
+                merge_rule_source_usage(usage, barycenter_sun_usage, offset_usage);
                 return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
             }
         }
     }
 
-    return set_diagnostic_status(diagnostic, direct_status);
+    return set_diagnostic_status(
+        diagnostic,
+        physical_primary_id != 0 ? satellite_composite_status : direct_status);
 }
 
 Status EphemerisEngine::eval_state_for_rule(
@@ -1040,9 +1366,30 @@ Status EphemerisEngine::eval_state_for_rule(
         return set_diagnostic_status(diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT);
     }
 
+    // A direct auxiliary edge cannot anchor a named-DE route by itself. Do
+    // not numerically evaluate the same satellite descriptor once for every
+    // DE rule merely to reject it after the fact; auxiliaries remain enabled
+    // for the component-composition paths below, where an exact DE component
+    // can supply the required anchor.
+    internal::EphemerisRouteRule exact_direct_rule;
+    exact_direct_rule.source_id = rule.source_id;
+    exact_direct_rule.method_id = rule.method_id;
+    exact_direct_rule.priority = rule.priority;
+    exact_direct_rule.order = rule.order;
+    const internal::EphemerisRouteRule& direct_rule =
+        rule.allow_non_de_spk_auxiliary ? exact_direct_rule : rule;
     EphemerisResult direct;
-    Status direct_status = eval_direct_body_state_for_rule(request, rule, &direct, diagnostic);
+    RuleSourceUsage direct_usage;
+    Status direct_status = eval_direct_body_state_for_rule(
+        request, direct_rule, &direct, &direct_usage, diagnostic);
     if (direct_status == TAIYIN_STATUS_OK) {
+        if (!internal::ephemeris_route_source_usage_is_anchored(
+                rule,
+                direct_usage.used_exact_source,
+                direct_usage.used_auxiliary_source)) {
+            return set_diagnostic_status(
+                diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
+        }
         *out = direct;
         return TAIYIN_STATUS_OK;
     }
@@ -1055,6 +1402,7 @@ Status EphemerisEngine::eval_state_for_rule(
     }
 
     EphemerisResult target_sun;
+    RuleSourceUsage target_sun_usage;
     Status status = eval_body_wrt_sun_for_rule(
         request.target_id,
         request.frame,
@@ -1064,12 +1412,20 @@ Status EphemerisEngine::eval_state_for_rule(
         rule,
         request.include_descriptor,
         &target_sun,
+        &target_sun_usage,
         diagnostic);
     if (status != TAIYIN_STATUS_OK) {
         return set_diagnostic_status(diagnostic, status);
     }
 
     if (request.center_id == TAIYIN_BODY_SUN) {
+        if (!internal::ephemeris_route_source_usage_is_anchored(
+                rule,
+                target_sun_usage.used_exact_source,
+                target_sun_usage.used_auxiliary_source)) {
+            return set_diagnostic_status(
+                diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
+        }
         *out = target_sun;
         if (request.include_descriptor) {
             out->descriptor = make_synthetic_descriptor(request, target_sun.descriptor);
@@ -1078,6 +1434,7 @@ Status EphemerisEngine::eval_state_for_rule(
     }
 
     EphemerisResult center_sun;
+    RuleSourceUsage center_sun_usage;
     status = eval_body_wrt_sun_for_rule(
         request.center_id,
         request.frame,
@@ -1087,9 +1444,21 @@ Status EphemerisEngine::eval_state_for_rule(
         rule,
         request.include_descriptor,
         &center_sun,
+        &center_sun_usage,
         diagnostic);
     if (status != TAIYIN_STATUS_OK) {
         return set_diagnostic_status(diagnostic, status);
+    }
+
+    RuleSourceUsage combined_usage;
+    merge_rule_source_usage(
+        &combined_usage, target_sun_usage, center_sun_usage);
+    if (!internal::ephemeris_route_source_usage_is_anchored(
+            rule,
+            combined_usage.used_exact_source,
+            combined_usage.used_auxiliary_source)) {
+        return set_diagnostic_status(
+            diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
     }
 
     out->state = cartesian_state_subtract(target_sun.state, center_sun.state);
@@ -1128,9 +1497,18 @@ Status EphemerisEngine::eval_state(
         return set_diagnostic_status(diagnostic, TAIYIN_EPHEMERIS_ERROR_NO_ROUTE);
     }
 
+    std::vector<const internal::EphemerisRouteRule*> ordered_rules;
+    try {
+        ordered_rules = order_route_rules_by_source_preference(
+            rules, catalog_, source_priorities_);
+    } catch (...) {
+        return set_diagnostic_status(diagnostic, TAIYIN_ERROR_OUT_OF_MEMORY);
+    }
+
     Status last_status = TAIYIN_EPHEMERIS_ERROR_NO_ROUTE;
-    for (size_t i = 0; i < rules.size(); ++i) {
-        Status status = eval_state_for_rule(request, rules[i], out, diagnostic);
+    for (size_t i = 0; i < ordered_rules.size(); ++i) {
+        Status status = eval_state_for_rule(
+            request, *ordered_rules[i], out, diagnostic);
         if (status == TAIYIN_STATUS_OK) {
             return TAIYIN_STATUS_OK;
         }
