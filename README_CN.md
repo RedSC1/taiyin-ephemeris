@@ -158,18 +158,22 @@ const Status status = calc_positions_ut(
 `TAIYIN_NATIVE_POSITION_SPEED` 后，`positions[i][3..5]` 输出对应速度。
 稳定 C 接口见 [`doc_cn/c_api.md`](doc_cn/c_api.md)；C++ 的 typed API 见相应头文件。
 
-## 可选扩展
+## 构建结构与可选扩展
 
-天文、占星、历法和中国术数模块位于同一源码树，是因为上层模块直接复用并高度依赖
-相同的时间、位置和事件 primitive。它们仍是彼此独立的构建目标，只需要核心天文能力
-的使用者无需链接扩展：
+源码树将 `taiyin_ephemeris`、`taiyin_astrology_extension` 和 Chinese Calendar 的
+静态 target 分开，以明确内部依赖。占星、中国历法和 Ganzhi 都是**内置能力**：它们
+始终会构建，也始终被链接进基础 C ABI 库（模块化构建的 `taiyin`，或 legacy aggregate
+构建的 `taiyin_c`）。因此 `taiyin_astrology_extension` 只是源码树里的 C++ 链接 target，
+不是可单独选择的包或 shared library。
 
-- 链接 `taiyin_ephemeris` 可使用核心天文 runtime。
-- 使用恒星黄道、宫位或月球点时，再链接 `taiyin_astrology_extension`。
-- 中国术数扩展默认关闭。未设置
+直接使用源码树 C++ target 时，核心天文链接 `taiyin_ephemeris`；调用恒星黄道、宫位或
+月球点 C++ 入口时还需链接 `taiyin_astrology_extension`。C++ ABI 不作为稳定分发接口；
+应用和 FFI 应使用基础 C ABI。
+
+中国术数扩展默认关闭。未设置
   `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 时，CMake 不会构建 BaZi
   代码、target、测试、C ABI symbol 或头文件。
-- 构建 BaZi 时，必须显式同时设置
+- BaZi 是目前唯一可选的 native 扩展。构建时必须显式同时设置
   `-DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 和
   `-DTAIYIN_BUILD_BAZI_EXTENSION=ON`，不需要额外编译器工具链。
 

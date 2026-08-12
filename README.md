@@ -191,20 +191,25 @@ distance. Add `TAIYIN_NATIVE_POSITION_SPEED` to request rates in
 `positions[i][3..5]`. See [`docs/c_api.md`](docs/c_api.md) for the stable C
 interface and the native API headers for typed C++ entry points.
 
-## Optional Extensions
+## Build Structure And Optional Extensions
 
-The repository keeps astronomy, astrology, calendars, and Chinese metaphysics
-modules in one source tree because the higher-level modules directly depend on
-the same time, position, and event primitives. They remain separate build
-targets for users who only need the astronomy core:
+The source tree keeps `taiyin_ephemeris`, `taiyin_astrology_extension`, and
+the Chinese-calendar static targets separate so their internal dependencies are
+explicit. Astrology, Chinese-calendar, and Ganzhi functionality are **built
+in**: they are always built and are always linked into the base C ABI library
+(`taiyin` in a modular build, or `taiyin_c` in the legacy aggregate build).
+`taiyin_astrology_extension` is therefore a source-tree C++ link target, not a
+separately selectable package or shared library.
 
-- Link `taiyin_ephemeris` for the core astronomy runtime.
-- Link `taiyin_astrology_extension` when using sidereal, house, or lunar-point
-  calculations.
-- Chinese metaphysics extensions are disabled by default. Without
+Direct C++ source-tree consumers link `taiyin_ephemeris` for core astronomy and
+also link `taiyin_astrology_extension` when calling sidereal, house, or
+lunar-point C++ entry points. The C++ ABI itself is not a stable distribution
+interface; application and FFI consumers should use the base C ABI instead.
+
+Chinese metaphysics extensions are disabled by default. Without
   `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON`, CMake does not build BaZi
   code, targets, tests, C ABI symbols, or headers.
-- To build BaZi, explicitly enable both
+- BaZi is the only currently optional native extension. To build it, explicitly enable both
   `-DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` and
   `-DTAIYIN_BUILD_BAZI_EXTENSION=ON`; no extra compiler toolchain is required.
 
