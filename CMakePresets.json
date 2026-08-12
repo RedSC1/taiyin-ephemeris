@@ -9,7 +9,10 @@
     {
       "name": "base",
       "hidden": true,
-      "binaryDir": "${sourceDir}/build-preset-${presetName}"
+      "binaryDir": "${sourceDir}/build-preset-${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     },
     {
       "name": "release",
