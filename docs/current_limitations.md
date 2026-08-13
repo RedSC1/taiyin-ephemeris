@@ -126,7 +126,7 @@ local lunar eclipse visibility
 global solar eclipse solve/search
 local solar eclipse circumstances/search
 solar Besselian elements
-route rows / route curves
+instantaneous global geometry / route rows / route curves
 local boundary helpers
 ```
 

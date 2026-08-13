@@ -278,6 +278,25 @@ typedef struct taiyin_solar_eclipse_route_row {
     double sun_azimuth_deg;
 } taiyin_solar_eclipse_route_row;
 
+/* Lightweight instantaneous global geometry. It returns the center line plus
+ * core and penumbral north/south limits, without half-magnitude limits,
+ * transverse width, duration, or numerical center-line refinement. */
+typedef struct taiyin_solar_eclipse_where {
+    uint32_t struct_size;
+    taiyin_split_julian_date jd_tt;
+    taiyin_split_julian_date jd_ut;
+    taiyin_solar_eclipse_path_point center_line;
+    taiyin_solar_eclipse_path_point penumbral_north_limit;
+    taiyin_solar_eclipse_path_point penumbral_south_limit;
+    taiyin_solar_eclipse_path_point north_limit;
+    taiyin_solar_eclipse_path_point south_limit;
+    double magnitude;
+    double obscuration;
+    double center_separation_deg;
+    double sun_angular_radius_deg;
+    double moon_angular_radius_deg;
+} taiyin_solar_eclipse_where;
+
 typedef struct taiyin_solar_eclipse_route_curve_point {
     uint32_t struct_size;
     taiyin_split_julian_date jd_tt;
@@ -371,6 +390,7 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_local_solar_eclipse_circumstances_tt_init
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_local_solar_eclipse_circumstances_ut_init(taiyin_local_solar_eclipse_circumstances_ut*);
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_local_solar_eclipse_boundary_init(taiyin_local_solar_eclipse_boundary*);
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_eclipse_route_row_init(taiyin_solar_eclipse_route_row*);
+TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_eclipse_where_init(taiyin_solar_eclipse_where*);
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_eclipse_route_product_summary_init(taiyin_solar_eclipse_route_product_summary*);
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_besselian_elements_init(taiyin_solar_besselian_elements*);
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_besselian_polynomial_init(taiyin_solar_besselian_polynomial*);
@@ -405,6 +425,8 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_evaluate_solar_besselian_polynom
 
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_tt(const taiyin_context*, const taiyin_split_julian_date*, uint64_t, taiyin_solar_eclipse_route_row*, taiyin_ephemeris_diagnostic*);
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_ut(const taiyin_context*, const taiyin_split_julian_date*, uint64_t, taiyin_solar_eclipse_route_row*, taiyin_ephemeris_diagnostic*);
+TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_tt(const taiyin_context*, const taiyin_split_julian_date*, uint64_t, taiyin_solar_eclipse_where*, taiyin_ephemeris_diagnostic*);
+TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_ut(const taiyin_context*, const taiyin_split_julian_date*, uint64_t, taiyin_solar_eclipse_where*, taiyin_ephemeris_diagnostic*);
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_tt(const taiyin_context*, const taiyin_split_julian_date*, const taiyin_split_julian_date*, double, uint64_t, taiyin_solar_eclipse_route_row*, size_t, size_t*, taiyin_ephemeris_diagnostic*);
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_ut(const taiyin_context*, const taiyin_split_julian_date*, const taiyin_split_julian_date*, double, uint64_t, taiyin_solar_eclipse_route_row*, size_t, size_t*, taiyin_ephemeris_diagnostic*);
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_curves_tt(const taiyin_context*, const taiyin_split_julian_date*, uint64_t, size_t, taiyin_solar_eclipse_route_curve_point*, size_t, size_t*, taiyin_ephemeris_diagnostic*);

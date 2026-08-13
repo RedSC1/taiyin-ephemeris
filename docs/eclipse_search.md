@@ -387,12 +387,18 @@ Route APIs expose lower-level path products:
 
 - `compute_solar_besselian_elements_tt` computes Besselian elements for one instant;
 - `compute_solar_besselian_polynomial_tt` samples and fits a polynomial over a time span;
+- `compute_solar_eclipse_where_*` returns lightweight instantaneous global geometry: the center line and core/penumbral north/south limits;
 - `compute_solar_eclipse_route_row_*` returns a route row near one instant;
 - `compute_solar_eclipse_route_*` samples rows over an interval;
 - `compute_solar_eclipse_route_curves_*` returns route and limit curve points;
 - `compute_solar_eclipse_route_product_*` returns the core north/south limits and a convenience core-path polygon;
 - `compute_solar_eclipse_route_map_product_*` closes core, penumbral, and half-magnitude layers into map-product polygons, using sunrise/sunset maximum boundaries when one physical wide-limit curve does not exist;
 - `compute_local_solar_eclipse_boundary_*` computes a local boundary near a given point and time.
+
+`compute_solar_eclipse_where_*` is the inexpensive choice when a map needs only
+one epoch's center/core/penumbra geometry. It deliberately omits half-magnitude
+limits, transverse width, duration, and numerical center-line refinement. Use
+`compute_solar_eclipse_route_row_*` when those route-table metrics are needed.
 
 These functions are for map/path generation and diagnostics. A simple "is there an eclipse near this date?" query does not need them.
 
@@ -574,6 +580,8 @@ These entry points are for geographic observers. They read the observer longitud
 compute_solar_besselian_elements_tt(...)
 compute_solar_besselian_polynomial_tt(...)
 evaluate_solar_besselian_polynomial(...)
+compute_solar_eclipse_where_tt(...)
+compute_solar_eclipse_where_ut(...)
 compute_solar_eclipse_route_row_tt(...)
 compute_solar_eclipse_route_row_ut(...)
 compute_solar_eclipse_route_tt(...)

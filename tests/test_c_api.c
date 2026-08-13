@@ -1511,6 +1511,24 @@ int main(int argc, char** argv) {
             return fail("solar eclipse C ABI calculation failed");
         }
         {
+            taiyin_solar_eclipse_where where;
+            taiyin_solar_eclipse_where_init(&where);
+            if (taiyin_compute_solar_eclipse_where_ut(
+                    context, &eclipse.maximum_jd_ut, 0u, &where, NULL)
+                    != TAIYIN_STATUS_OK
+                || !isfinite(where.center_line.latitude_deg)
+                || !isfinite(where.center_line.longitude_deg)
+                || !isfinite(where.penumbral_north_limit.latitude_deg)
+                || !isfinite(where.penumbral_south_limit.latitude_deg)
+                || !isfinite(where.north_limit.latitude_deg)
+                || !isfinite(where.south_limit.latitude_deg)
+                || !isfinite(where.magnitude)
+                || where.center_line.struct_size != sizeof(where.center_line)) {
+                taiyin_context_destroy(context);
+                return fail("lightweight solar eclipse C ABI calculation failed");
+            }
+        }
+        {
             taiyin_solar_eclipse_route_curve_point curve_points[1024];
             size_t required_curve_count = 0;
             size_t curve_count = 0;

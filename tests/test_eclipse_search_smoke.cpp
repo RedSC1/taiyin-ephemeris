@@ -1355,6 +1355,35 @@ int main() {
             return fail("route row should include both limits");
         }
 
+        // The lightweight "where" API deliberately omits the expensive
+        // center-line refinement and route metrics, but must still expose the
+        // instantaneous global geometry needed by an eclipse map.
+        SolarEclipseWhere where;
+        if (expect_status(
+                compute_solar_eclipse_where_ut(
+                    &ctx, split_jd(2460409.262039739), 0, &where, &diag),
+                "compute_solar_eclipse_where_ut 2024")) {
+            return 1;
+        }
+        if (!(std::isfinite(where.center_line.latitude_deg)
+              && std::isfinite(where.center_line.longitude_deg)
+              && std::isfinite(where.penumbral_north_limit.latitude_deg)
+              && std::isfinite(where.penumbral_south_limit.latitude_deg)
+              && std::isfinite(where.north_limit.latitude_deg)
+              && std::isfinite(where.south_limit.latitude_deg)
+              && std::isfinite(where.magnitude)
+              && std::isfinite(where.obscuration)
+              && std::isfinite(where.center_line.sun_altitude_deg)
+              && std::isfinite(where.center_line.sun_azimuth_deg))) {
+            return fail("lightweight solar-eclipse geometry should be finite at 2024 maximum");
+        }
+        if (expect_close_value(
+                where.center_line.latitude_deg, row.center_line.latitude_deg,
+                0.1, "lightweight route center latitude")) return 1;
+        if (expect_close_value(
+                where.center_line.longitude_deg, row.center_line.longitude_deg,
+                0.1, "lightweight route center longitude")) return 1;
+
         NativeCalcContext mean_moon_ctx = ctx;
         mean_moon_ctx.eclipse_moon_radius_model_id =
             static_cast<uint8_t>(taiyin::dispatch::ECLIPSE_MOON_MEAN);

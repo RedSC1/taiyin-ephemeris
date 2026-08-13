@@ -396,6 +396,27 @@ struct SolarEclipseRouteRow {
     double sun_azimuth_deg;
 };
 
+// Lightweight instantaneous global-eclipse geometry. This is the counterpart
+// to the geographic portion of Swiss Ephemeris' swe_sol_eclipse_where(): it
+// returns the center line plus the core and penumbral north/south limits at
+// one epoch. Unlike SolarEclipseRouteRow, it does not calculate half-magnitude
+// limits, transverse path width, duration, or run a numerical center-line
+// refinement. Center-point circumstances are provided for map annotations.
+struct SolarEclipseWhere {
+    SplitJulianDate jd_tt;
+    SplitJulianDate jd_ut;
+    SolarEclipsePathPoint center_line;
+    SolarEclipsePathPoint penumbral_north_limit;
+    SolarEclipsePathPoint penumbral_south_limit;
+    SolarEclipsePathPoint north_limit;
+    SolarEclipsePathPoint south_limit;
+    double magnitude;
+    double obscuration;
+    double center_separation_deg;
+    double sun_angular_radius_deg;
+    double moon_angular_radius_deg;
+};
+
 enum SolarEclipseRouteCurveKind {
     // Contact, sunrise/sunset maximum, center, and shadow-limit curves used by
     // complete eclipse-map products.
@@ -793,6 +814,22 @@ Status compute_local_solar_circumstances_ut(
 // TAIYIN_ECLIPSE_LUNAR_LIMB_CORRECTION only. The lunar-limb flag refines all
 // non-center route limits and the polygons built from them; the center line is
 // unchanged because it is defined by the shadow axis.
+Status compute_solar_eclipse_where_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    uint64_t flags,
+    SolarEclipseWhere* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+Status compute_solar_eclipse_where_ut(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_ut,
+    uint64_t flags,
+    SolarEclipseWhere* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
 Status compute_solar_eclipse_route_row_tt(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,

@@ -101,6 +101,27 @@ EarthOrientationSample interpolate_two_samples(
     return sample;
 }
 
+// Return the first sample at or after jd_utc.  EOP tables commonly contain
+// tens of thousands of daily entries and eclipse solvers query them many times
+// per event, so a linear scan here turns an otherwise small interpolation into
+// the dominant cost of a search.
+size_t first_eop_sample_at_or_after(
+    const EarthOrientationTable& table,
+    const SplitJulianDate& jd_utc
+) noexcept {
+    size_t lower = 0;
+    size_t upper = table.count;
+    while (lower < upper) {
+        const size_t middle = lower + (upper - lower) / 2;
+        if (days_between_split_jd_and_double(jd_utc, table.samples[middle].jd_utc) < 0.0) {
+            lower = middle + 1;
+        } else {
+            upper = middle;
+        }
+    }
+    return lower;
+}
+
 Status read_file_bytes(const char* path, std::vector<char>* out) noexcept {
     if (!path || !out) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
@@ -149,12 +170,7 @@ bool interpolate_earth_orientation(
         || days_between_split_jd_and_double(jd_utc, table->samples[table->count - 1].jd_utc) < 0.0) {
         return false;
     }
-    size_t upper = 0;
-    size_t lower = 0;
-    while (upper < table->count
-        && days_between_split_jd_and_double(jd_utc, table->samples[upper].jd_utc) < 0.0) {
-        ++upper;
-    }
+    const size_t upper = first_eop_sample_at_or_after(*table, jd_utc);
     if (upper == table->count) {
         *out = table->samples[table->count - 1];
         return true;
@@ -163,7 +179,7 @@ bool interpolate_earth_orientation(
         *out = table->samples[upper];
         return true;
     }
-    lower = upper - 1;
+    const size_t lower = upper - 1;
     *out = interpolate_two_samples(table->samples[lower], table->samples[upper], jd_utc);
     return true;
 }
@@ -181,11 +197,7 @@ bool derive_earth_orientation_rates(
         || days_between_split_jd_and_double(jd_utc, table->samples[table->count - 1].jd_utc) < 0.0) {
         return false;
     }
-    size_t upper = 0;
-    while (upper < table->count
-        && days_between_split_jd_and_double(jd_utc, table->samples[upper].jd_utc) < 0.0) {
-        ++upper;
-    }
+    const size_t upper = first_eop_sample_at_or_after(*table, jd_utc);
     size_t a_idx;
     size_t b_idx;
     if (upper == table->count) {

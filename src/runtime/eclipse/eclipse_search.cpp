@@ -1165,6 +1165,21 @@ void init_route_row(SolarEclipseRouteRow* out) noexcept {
     out->sun_azimuth_deg = std::nan("");
 }
 
+void init_solar_eclipse_where(SolarEclipseWhere* out) noexcept {
+    out->jd_tt = invalid_jd();
+    out->jd_ut = invalid_jd();
+    init_path_point(&out->center_line);
+    init_path_point(&out->penumbral_north_limit);
+    init_path_point(&out->penumbral_south_limit);
+    init_path_point(&out->north_limit);
+    init_path_point(&out->south_limit);
+    out->magnitude = std::nan("");
+    out->obscuration = std::nan("");
+    out->center_separation_deg = std::nan("");
+    out->sun_angular_radius_deg = std::nan("");
+    out->moon_angular_radius_deg = std::nan("");
+}
+
 void init_route_product_summary(SolarEclipseRouteProductSummary* out) noexcept {
     if (!out) return;
     out->flags = 0;
@@ -1444,6 +1459,7 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
     double vx_per_day,
     double vy_per_day,
     bool compute_metrics,
+    bool include_half_magnitude_limits,
     SolarEclipseRouteRow* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -1536,21 +1552,23 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
         e.l1, -1, ROUTE_LIMB_CONTOUR_OUTER, false, &out->penumbral_south_limit);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    const double half_mag_radius = 0.5 * (e.l1 + e.l2);
-    st = fill_boundary(
-        half_mag_radius,
-        +1,
-        ROUTE_LIMB_CONTOUR_HALF_MAGNITUDE,
-        false,
-        &out->half_magnitude_north_limit);
-    if (st != TAIYIN_STATUS_OK) return st;
-    st = fill_boundary(
-        half_mag_radius,
-        -1,
-        ROUTE_LIMB_CONTOUR_HALF_MAGNITUDE,
-        false,
-        &out->half_magnitude_south_limit);
-    if (st != TAIYIN_STATUS_OK) return st;
+    if (include_half_magnitude_limits) {
+        const double half_mag_radius = 0.5 * (e.l1 + e.l2);
+        st = fill_boundary(
+            half_mag_radius,
+            +1,
+            ROUTE_LIMB_CONTOUR_HALF_MAGNITUDE,
+            false,
+            &out->half_magnitude_north_limit);
+        if (st != TAIYIN_STATUS_OK) return st;
+        st = fill_boundary(
+            half_mag_radius,
+            -1,
+            ROUTE_LIMB_CONTOUR_HALF_MAGNITUDE,
+            false,
+            &out->half_magnitude_south_limit);
+        if (st != TAIYIN_STATUS_OK) return st;
+    }
 
     double core_radius = NAN;
     RouteBoundaryPoint north{};
@@ -1572,26 +1590,38 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
         std::swap(north, south);
     }
     if (north.valid) {
-        st = fill_route_path_point_rad(
-            context,
-            jd_tt,
-            flags,
-            north.longitude_rad,
-            north.latitude_rad,
-            &out->north_limit,
-            diagnostic);
-        if (st != TAIYIN_STATUS_OK) return st;
+        if (compute_metrics) {
+            st = fill_route_path_point_rad(
+                context,
+                jd_tt,
+                flags,
+                north.longitude_rad,
+                north.latitude_rad,
+                &out->north_limit,
+                diagnostic);
+            if (st != TAIYIN_STATUS_OK) return st;
+        } else {
+            fill_geodetic_path_point_rad(
+                jd_tt, out->jd_ut, north.longitude_rad, north.latitude_rad,
+                &out->north_limit);
+        }
     }
     if (south.valid) {
-        st = fill_route_path_point_rad(
-            context,
-            jd_tt,
-            flags,
-            south.longitude_rad,
-            south.latitude_rad,
-            &out->south_limit,
-            diagnostic);
-        if (st != TAIYIN_STATUS_OK) return st;
+        if (compute_metrics) {
+            st = fill_route_path_point_rad(
+                context,
+                jd_tt,
+                flags,
+                south.longitude_rad,
+                south.latitude_rad,
+                &out->south_limit,
+                diagnostic);
+            if (st != TAIYIN_STATUS_OK) return st;
+        } else {
+            fill_geodetic_path_point_rad(
+                jd_tt, out->jd_ut, south.longitude_rad, south.latitude_rad,
+                &out->south_limit);
+        }
     }
 
     if (compute_metrics && center.valid && std::isfinite(out->center_line.latitude_deg)) {
@@ -1705,7 +1735,7 @@ static Status compute_solar_eclipse_route_row_tt_impl(
     const double vx_per_day = ((-after.x) - (-before.x)) / (2.0 * velocity_step_days);
     const double vy_per_day = (after.y - before.y) / (2.0 * velocity_step_days);
     st = compute_solar_eclipse_route_row_from_elements_tt(
-        context, jd_tt, flags, e, vx_per_day, vy_per_day, true, out, diagnostic);
+        context, jd_tt, flags, e, vx_per_day, vy_per_day, true, true, out, diagnostic);
     if (st != TAIYIN_STATUS_OK || !refine_closed_path_width
         || !std::isfinite(out->center_line.latitude_deg)
         || !(out->sun_altitude_deg < 12.0)) {
@@ -1757,6 +1787,84 @@ Status compute_solar_eclipse_route_row_tt(
 ) noexcept {
     return compute_solar_eclipse_route_row_tt_impl(
         context, jd_tt, flags, true, out, diagnostic);
+}
+
+Status compute_solar_eclipse_where_tt(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    uint64_t flags,
+    SolarEclipseWhere* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out || !split_julian_date_is_finite(jd_tt)
+        || !valid_solar_eclipse_route_flags(flags)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    init_solar_eclipse_where(out);
+
+    SolarBesselianElements elements;
+    Status st = compute_solar_besselian_elements_tt_with_corrections(
+        context, jd_tt, 0.0, flags, nullptr, &elements, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    const double velocity_step_days = 0.04;
+    SolarBesselianElements before;
+    SolarBesselianElements after;
+    st = compute_solar_besselian_elements_tt_with_corrections(
+        context, jd_tt - velocity_step_days, 0.0, flags, nullptr, &before, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+    st = compute_solar_besselian_elements_tt_with_corrections(
+        context, jd_tt + velocity_step_days, 0.0, flags, nullptr, &after, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    const double vx_per_day = ((-after.x) - (-before.x)) / (2.0 * velocity_step_days);
+    const double vy_per_day = (after.y - before.y) / (2.0 * velocity_step_days);
+    SolarEclipseRouteRow geometry;
+    st = compute_solar_eclipse_route_row_from_elements_tt(
+        context, jd_tt, flags, elements, vx_per_day, vy_per_day, false, false, &geometry, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    out->jd_tt = geometry.jd_tt;
+    out->jd_ut = geometry.jd_ut;
+    out->center_line = geometry.center_line;
+    out->penumbral_north_limit = geometry.penumbral_north_limit;
+    out->penumbral_south_limit = geometry.penumbral_south_limit;
+    out->north_limit = geometry.north_limit;
+    out->south_limit = geometry.south_limit;
+
+    if (std::isfinite(out->center_line.longitude_deg)
+        && std::isfinite(out->center_line.latitude_deg)) {
+        LocalSolarEclipseCircumstances circumstances;
+        st = compute_local_solar_circumstances_tt_with_options(
+            context, jd_tt, out->center_line.longitude_deg, out->center_line.latitude_deg,
+            0.0, flags, nullptr, &circumstances, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+        out->center_line.sun_altitude_deg = circumstances.sun_altitude_deg;
+        out->center_line.sun_azimuth_deg = circumstances.sun_azimuth_deg;
+        out->magnitude = circumstances.magnitude;
+        out->obscuration = circumstances.obscuration;
+        out->center_separation_deg = circumstances.center_separation_deg;
+        out->sun_angular_radius_deg = circumstances.sun_angular_radius_deg;
+        out->moon_angular_radius_deg = circumstances.moon_angular_radius_deg;
+    }
+    return TAIYIN_STATUS_OK;
+}
+
+Status compute_solar_eclipse_where_ut(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_ut,
+    uint64_t flags,
+    SolarEclipseWhere* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out || !split_julian_date_is_finite(jd_ut)
+        || !valid_solar_eclipse_route_flags(flags)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    SplitJulianDate jd_tt;
+    const Status st = eclipse_ut_to_tt(*context, jd_ut, &jd_tt, nullptr, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+    return compute_solar_eclipse_where_tt(context, jd_tt, flags, out, diagnostic);
 }
 
 Status compute_solar_eclipse_route_row_ut(

@@ -391,6 +391,25 @@ void copy_route_row(
     out->sun_azimuth_deg = source.sun_azimuth_deg;
 }
 
+void copy_where(
+    const taiyin::runtime::SolarEclipseWhere& source,
+    taiyin_solar_eclipse_where* out
+) noexcept {
+    out->struct_size = sizeof(*out);
+    taiyin_c_internal::from_cpp_split_jd(source.jd_tt, &out->jd_tt);
+    taiyin_c_internal::from_cpp_split_jd(source.jd_ut, &out->jd_ut);
+    copy_path(source.center_line, &out->center_line);
+    copy_path(source.penumbral_north_limit, &out->penumbral_north_limit);
+    copy_path(source.penumbral_south_limit, &out->penumbral_south_limit);
+    copy_path(source.north_limit, &out->north_limit);
+    copy_path(source.south_limit, &out->south_limit);
+    out->magnitude = source.magnitude;
+    out->obscuration = source.obscuration;
+    out->center_separation_deg = source.center_separation_deg;
+    out->sun_angular_radius_deg = source.sun_angular_radius_deg;
+    out->moon_angular_radius_deg = source.moon_angular_radius_deg;
+}
+
 void copy_curve_point(
     const taiyin::runtime::SolarEclipseRouteCurvePoint& source,
     taiyin_solar_eclipse_route_curve_point* out
@@ -541,6 +560,20 @@ void TAIYIN_C_CALL taiyin_solar_eclipse_route_row_init(
         sizeof(value->half_magnitude_north_limit);
     value->half_magnitude_south_limit.struct_size =
         sizeof(value->half_magnitude_south_limit);
+}
+
+void TAIYIN_C_CALL taiyin_solar_eclipse_where_init(
+    taiyin_solar_eclipse_where* value
+) {
+    init_struct(value);
+    if (!value) return;
+    value->center_line.struct_size = sizeof(value->center_line);
+    value->penumbral_north_limit.struct_size =
+        sizeof(value->penumbral_north_limit);
+    value->penumbral_south_limit.struct_size =
+        sizeof(value->penumbral_south_limit);
+    value->north_limit.struct_size = sizeof(value->north_limit);
+    value->south_limit.struct_size = sizeof(value->south_limit);
 }
 
 void TAIYIN_C_CALL taiyin_solar_besselian_polynomial_init(
@@ -1045,6 +1078,40 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_ut(
                 &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_route_row);
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_tt(
+    const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
+    uint64_t flags,
+    taiyin_solar_eclipse_where* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+) {
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    return run_result<taiyin::runtime::SolarEclipseWhere>(
+        context, out, diagnostic,
+        [&](taiyin::runtime::SolarEclipseWhere* cpp_out,
+            taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
+            return taiyin::runtime::compute_solar_eclipse_where_tt(
+                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                flags, cpp_out, cpp_diagnostic);
+        }, copy_where);
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_ut(
+    const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
+    uint64_t flags,
+    taiyin_solar_eclipse_where* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+) {
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    return run_result<taiyin::runtime::SolarEclipseWhere>(
+        context, out, diagnostic,
+        [&](taiyin::runtime::SolarEclipseWhere* cpp_out,
+            taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
+            return taiyin::runtime::compute_solar_eclipse_where_ut(
+                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                flags, cpp_out, cpp_diagnostic);
+        }, copy_where);
 }
 
 taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_tt(
