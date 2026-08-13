@@ -14,8 +14,8 @@ SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). Windows includes the ABI in the
 runtime and import-library name, for example `taiyin-8.dll` and `taiyin-8.lib`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
-the independent semantic library version; the current core baseline is
-`1.0.0`. `taiyin_get_library_codename()` reports the major-release codename;
+the independent semantic library version; the current preview is
+`1.0.0-preview.1`. `taiyin_get_library_codename()` reports the major-release codename;
 Taiyin `1.x.x` is **Singularity**. The returned version and codename strings
 have static library lifetime and must not be freed. `taiyin_get_capabilities()`
 reports the functional modules and feature-level extensions present in the
