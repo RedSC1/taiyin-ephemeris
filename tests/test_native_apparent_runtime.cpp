@@ -320,10 +320,18 @@ void test_observed_utc_requires_time_tables(int* failures) {
             0,
             &observed,
             &diagnostic),
-        TAIYIN_ERROR_UNSUPPORTED,
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
         "observed UTC requires global EOP",
         failures);
-    expect_status(diagnostic.status, TAIYIN_ERROR_UNSUPPORTED, "missing table diagnostic", failures);
+    expect_status(
+        diagnostic.status,
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
+        "missing table diagnostic",
+        failures);
+    expect_true(
+        diagnostic.time_scale_fallback_reason == TimeScaleFallbackNullEopTable,
+        "missing table fallback reason",
+        failures);
 
     internal::EarthOrientationSample samples[3];
     internal::EarthOrientationTable eop_table;
@@ -367,10 +375,123 @@ void test_observed_utc_requires_eop_coverage(int* failures) {
             0,
             &observed,
             &diagnostic),
-        TAIYIN_ERROR_UNSUPPORTED,
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
         "observed UTC requires EOP coverage at UTC",
         failures);
-    expect_status(diagnostic.status, TAIYIN_ERROR_UNSUPPORTED, "stale EOP diagnostic", failures);
+    expect_status(
+        diagnostic.status,
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
+        "stale EOP diagnostic",
+        failures);
+    expect_true(
+        diagnostic.time_scale_fallback_reason == TimeScaleFallbackEopOutOfRange,
+        "stale EOP fallback reason",
+        failures);
+}
+
+void test_utc_position_apis_propagate_time_failures(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    expect_true(set_global_earth_orientation_table(nullptr), "clear global EOP", failures);
+
+    const int body_ids[] = {TAIYIN_BODY_SUN, TAIYIN_BODY_MARS_BARYCENTER};
+    double position[6];
+    double positions[12];
+    CartesianState state;
+    EphemerisEvalDiagnostic diagnostic;
+    EphemerisEvalDiagnostic diagnostics[2];
+
+    expect_status(
+        calc_position_utc(
+            &context, body_ids[0], UTC_SAMPLE, 0, position, &diagnostic),
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
+        "position UTC propagates missing EOP",
+        failures);
+    expect_true(
+        diagnostic.time_scale_fallback_reason == TimeScaleFallbackNullEopTable,
+        "position UTC missing EOP reason",
+        failures);
+
+    expect_status(
+        calc_positions_utc(
+            &context, body_ids, 2, UTC_SAMPLE, 0, positions, diagnostics),
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
+        "position UTC batch propagates missing EOP",
+        failures);
+    expect_true(
+        diagnostics[0].time_scale_fallback_reason == TimeScaleFallbackNullEopTable
+            && diagnostics[1].time_scale_fallback_reason == TimeScaleFallbackNullEopTable,
+        "position UTC batch missing EOP reasons",
+        failures);
+
+    expect_status(
+        calc_state_utc(
+            &context, body_ids[0], UTC_SAMPLE, 0, &state, &diagnostic),
+        TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE,
+        "state UTC propagates missing EOP",
+        failures);
+    expect_true(
+        diagnostic.time_scale_fallback_reason == TimeScaleFallbackNullEopTable,
+        "state UTC missing EOP reason",
+        failures);
+
+    expect_status(
+        native_context_set_allow_utc_out_of_range_estimate(&context, true),
+        TAIYIN_STATUS_OK,
+        "enable UTC out-of-range estimate",
+        failures);
+    expect_status(
+        calc_position_utc(
+            &context, body_ids[0], UTC_SAMPLE, 0, position, &diagnostic),
+        TAIYIN_STATUS_OK,
+        "position UTC estimates when EOP is missing",
+        failures);
+    expect_true(
+        diagnostic.time_scale_route == TimeScaleRouteEstimatedDeltaT
+            && diagnostic.time_scale_fallback_reason
+                == TimeScaleFallbackNullEopTable
+            && (diagnostic.time_scale_flags
+                & TAIYIN_TIME_DIAGNOSTIC_USED_DELTA_T_MODEL) != 0,
+        "position UTC estimated-route diagnostic",
+        failures);
+    expect_status(
+        native_context_set_allow_utc_out_of_range_estimate(&context, false),
+        TAIYIN_STATUS_OK,
+        "disable UTC out-of-range estimate",
+        failures);
+
+    const CalendarDateTime before_leap_seconds = {1900, 1, 1, 0, 0, 0.0};
+    internal::EarthOrientationSample samples[3];
+    internal::EarthOrientationTable eop_table;
+    make_eop_table_around(
+        julian_day(before_leap_seconds),
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        samples,
+        &eop_table);
+    expect_true(set_global_earth_orientation_table(&eop_table), "set historical EOP", failures);
+    expect_status(
+        calc_position_utc(
+            &context,
+            body_ids[0],
+            before_leap_seconds,
+            0,
+            position,
+            &diagnostic),
+        TAIYIN_TIME_ERROR_LEAP_SECOND_UNAVAILABLE,
+        "position UTC propagates missing leap seconds",
+        failures);
+    expect_true(
+        diagnostic.time_scale_fallback_reason
+            == TimeScaleFallbackLeapSecondUnavailable,
+        "position UTC missing leap-second reason",
+        failures);
 }
 
 void test_observed_utc_geocentric_matches_native_utc(int* failures) {
@@ -680,7 +801,7 @@ void test_calc_position_utc_matches_manual_precise_scales_and_cpo(int* failures)
     utc_context.apparent_options.output_frame_id = TAIYIN_APPARENT_FRAME_CIRS;
 
     TimeScaleOptions options;
-    options.policy = TimeScalePrecise;
+    options.allow_utc_out_of_range_estimate = false;
     options.tdb_model_id = utc_context.model_context.tdb_model_id;
     options.delta_t_model_id = utc_context.delta_t_model_id;
     options.ephemeris_family_id = utc_context.ephemeris_family_id;
@@ -783,7 +904,7 @@ void test_precise_topocentric_observer_matches_erfa_baked_oracle(int* failures) 
     expect_true(set_global_earth_orientation_table(&eop_table), "set ERFA oracle global EOP", failures);
 
     TimeScaleOptions options;
-    options.policy = TimeScalePrecise;
+    options.allow_utc_out_of_range_estimate = false;
     options.tdb_model_id = context.model_context.tdb_model_id;
     options.delta_t_model_id = context.delta_t_model_id;
     options.ephemeris_family_id = context.ephemeris_family_id;
@@ -974,6 +1095,7 @@ int main() {
         test_major_body_apparent_batch(&failures);
         test_observed_utc_requires_time_tables(&failures);
         test_observed_utc_requires_eop_coverage(&failures);
+        test_utc_position_apis_propagate_time_failures(&failures);
         test_observed_utc_geocentric_matches_native_utc(&failures);
         test_observed_utc_topocentric_uses_eop(&failures);
         test_observed_utc_topocentric_uses_dut1_and_polar_motion(&failures);

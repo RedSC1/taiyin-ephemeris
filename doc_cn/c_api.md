@@ -11,7 +11,7 @@ Rust 等绑定层使用。统一入口为：
 
 在支持版本化 SONAME 的平台，安装后的动态库名为 `taiyin`（Linux 为
 `libtaiyin.so`，macOS 为 `libtaiyin.dylib`）。Windows 的 DLL 和 import
-library 名称带 ABI 号，例如 `taiyin-7.dll` 和 `taiyin-7.lib`。动态加载时先检查
+library 名称带 ABI 号，例如 `taiyin-8.dll` 和 `taiyin-8.lib`。动态加载时先检查
 `taiyin_get_c_abi_version()`；`taiyin_get_library_version()` 返回与 ABI
 版本独立的库语义版本，当前 core baseline 为 `1.0.0`；
 `taiyin_get_library_codename()` 返回大版本代号，Taiyin `1.x.x` 的代号为
@@ -80,10 +80,11 @@ cmake --install build --prefix /your/prefix
 安装结果和 CPack 二进制压缩包有意不携带 OPM2、TSC1、TLL1 或其他 runtime 数据包。
 部署时应把选定的数据根目录放在应用旁，或在运行时注册单独分发的数据文件。
 
-C ABI 当前版本为 `7`。版本 3 将标量儒略日参数和结果时间字段替换为
+C ABI 当前版本为 `8`。版本 3 将标量儒略日参数和结果时间字段替换为
 `taiyin_split_julian_date`；版本 5 扩展了 `taiyin_bazi_context_config`，加入
 起运与大运策略；版本 7 为行星中天搜索加入 flags 参数，并确立 observed flags
-“低 32 位 position / 高 32 位 option”的分层。使用更早 ABI 头文件构建的调用方必须
+“低 32 位 position / 高 32 位 option”的分层。版本 8 将三态时间尺度策略替换为
+显式 UTC 超范围估算开关，并将 `*_ut` 入口固定为 UT1 语义。使用更早 ABI 头文件构建的调用方必须
 重新编译。库版本遵循语义化版本：兼容性新增不改变 ABI major；
 删除或改变已有 C symbol / struct contract 时必须提升 ABI major。
 共享库实体文件独立使用 `ABI.0.0` 版本号，避免安装新 ABI 时覆盖旧 SONAME
@@ -119,7 +120,7 @@ C ABI 当前版本为 `7`。版本 3 将标量儒略日参数和结果时间字�
 ## Context 配置
 
 `taiyin_context` 持有位置和事件 API 使用的计算策略。除了观测者位置、大气、
-时间尺度和星历路线，C ABI 还提供：
+显式 UTC 回退开关和星历路线，C ABI 还提供：
 
 - `taiyin_astro_model_config`：选择 TDB、岁差、章动、黄赤交角和 frame route；
 - `taiyin_apparent_config`：选择视位置修正、输出参考系、光行时迭代、光行差、
@@ -131,6 +132,22 @@ C ABI 当前版本为 `7`。版本 3 将标量儒略日参数和结果时间字�
 修改 `taiyin_apparent_config` 时不会清掉这两类已安装状态。
 
 未知的视位置 flag、Delta-T 模型或星历族 ID 会返回非法参数，不会静默选择回退。
+
+UTC 和 UT1 入口的语义是固定的。`*_ut` 将 split JD 解释为 UT1，使用
+context 的 Delta-T 模型得到 TT/TDB，不查 EOP。`*_utc` 将民用日历值解释为
+UTC，默认要求闰秒和 EOP 覆盖该日期。EOP 缺失或超出范围返回
+`TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE`；闰秒数据不可用返回
+`TAIYIN_TIME_ERROR_LEAP_SECOND_UNAVAILABLE`。诊断中的 fallback reason 可继续区分
+“未加载 EOP”和“EOP 超出范围”。
+
+明确接受低精度回退的应用可在 context 初始化时开启：
+
+```c
+taiyin_context_set_allow_utc_out_of_range_estimate(context, 1);
+```
+
+当精密 UTC 解析不可用时，该回退会将输入的民用时间近似解释为 UT1，再应用
+已配置的 Delta-T 模型。该开关不会改变任何 `*_ut` 函数的语义或路线。
 
 ## 拆分儒略日
 

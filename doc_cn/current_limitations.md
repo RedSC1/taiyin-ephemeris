@@ -46,7 +46,7 @@ calc_observed_ut
 calc_observed_utc
 ```
 
-当前 apparent/observed 链路支持 light-time、annual aberration、solar/multi-body gravitational deflection、topocentric observer、horizontal az/alt、refraction、frame selection、UTC/EOP/UT1/polar motion/CPO 等组合。EOP、leap-second 与月缘数据由全局 runtime 持有；用户位置、气象参数、时间策略、模型 ID 和 route rule 放在 `NativeCalcContext` 上，开关通过 flags 控制。Observed API 统一使用 `uint64_t` 分层：低 32 位仅接受真正实现的计算语义（`SPEED`、`TRUEPOS`、`NO_ABERR`、`NO_GDEFL`、`ASTROMETRIC`、`TOPOCENTRIC`、`ALLOW_BARYCENTER_APPROX`），高 32 位用于 horizontal、refraction、meteorology 等 observed 自身选项。输出形状或 frame selector（`XYZ`、`EQUATORIAL`、`RADIANS`、`NONUT`）会返回 `TAIYIN_ERROR_UNSUPPORTED`，不会被静默忽略。
+当前 apparent/observed 链路支持 light-time、annual aberration、solar/multi-body gravitational deflection、topocentric observer、horizontal az/alt、refraction、frame selection、UTC/EOP/UT1/polar motion/CPO 等组合。EOP、leap-second 与月缘数据由全局 runtime 持有；用户位置、气象参数、显式 UTC 超范围回退开关、模型 ID 和 route rule 放在 `NativeCalcContext` 上，计算开关通过 flags 控制。Observed API 统一使用 `uint64_t` 分层：低 32 位仅接受真正实现的计算语义（`SPEED`、`TRUEPOS`、`NO_ABERR`、`NO_GDEFL`、`ASTROMETRIC`、`TOPOCENTRIC`、`ALLOW_BARYCENTER_APPROX`），高 32 位用于 horizontal、refraction、meteorology 等 observed 自身选项。输出形状或 frame selector（`XYZ`、`EQUATORIAL`、`RADIANS`、`NONUT`）会返回 `TAIYIN_ERROR_UNSUPPORTED`，不会被静默忽略。
 
 ### 组合星体和数据 fallback
 
@@ -196,7 +196,7 @@ deflector velocity/c^2 项未建模
 
 ### TT/TDB 和时间尺度模型仍需更多端到端验证
 
-项目中已有 fast periodic TDB、SOFA-style full TDB、Delta T policy、leap-second table 和 EOP table 路线。普通主星和 observed 计算可用，但不同外部系统的 TDB/TT/UT1 convention 会造成细小差异。端到端 oracle 不应过早压到微角秒级。
+项目中已有 fast periodic TDB、SOFA-style full TDB、可配置 Delta-T 模型、leap-second table 和 EOP table 路线。普通主星和 observed 计算可用，但不同外部系统的 TDB/TT/UT1 convention 会造成细小差异。端到端 oracle 不应过早压到微角秒级。
 
 ### Eclipse/visibility 仍有模型约定差异
 

@@ -3,6 +3,7 @@
 #include "runtime/core/native_context_checks.h"
 #include "runtime/core/native_position_policy.h"
 #include "runtime/core/runtime_state_block_adapter.h"
+#include "runtime/core/time_scale_diagnostic.h"
 
 #include "taiyin/angle.h"
 #include "taiyin/apparent_position.h"
@@ -900,12 +901,10 @@ Status calc_position_utc(
     }
 
     const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-    if (!eop_table) {
-        return fail_position(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, target_id, ctx.observer_id, julian_day(datetime_utc));
-    }
 
     TimeScaleOptions options;
-    options.policy = TimeScalePrecise;
+    options.allow_utc_out_of_range_estimate =
+        ctx.allow_utc_out_of_range_estimate;
     options.tdb_model_id = ctx.model_context.tdb_model_id;
     options.delta_t_model_id = ctx.delta_t_model_id;
     options.ephemeris_family_id = ctx.ephemeris_family_id;
@@ -913,13 +912,17 @@ Status calc_position_utc(
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
     if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        return fail_position(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, target_id, ctx.observer_id, julian_day(datetime_utc));
+        const Status status = precise_time_failure_status(time_diagnostic);
+        fail_position(out, diagnostic, status, target_id, ctx.observer_id, julian_day(datetime_utc));
+        copy_time_scale_diagnostic(diagnostic, time_diagnostic);
+        return status;
     }
     NativeCalcContext scratch = ctx;
     const SplitJulianDate resolved_jd_tdb = scales.jd_tdb;
     const SplitJulianDate resolved_jd_tt = scales.jd_tt;
-    const Status cpo_status = apply_celestial_pole_offset_from_eop(
-        &scratch, scales.jd_utc);
+    const Status cpo_status = time_diagnostic.used_eop
+        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
+        : TAIYIN_STATUS_OK;
     if (cpo_status != TAIYIN_STATUS_OK) {
         return fail_position(
             out,
@@ -929,7 +932,7 @@ Status calc_position_utc(
             ctx.observer_id,
             resolved_jd_tdb);
     }
-    return calc_position_tdb(
+    const Status status = calc_position_tdb(
         &scratch,
         target_id,
         resolved_jd_tdb,
@@ -937,6 +940,8 @@ Status calc_position_utc(
         flags,
         out,
         diagnostic);
+    copy_time_scale_diagnostic(diagnostic, time_diagnostic);
+    return status;
 }
 
 Status calc_positions_tdb(
@@ -1176,18 +1181,10 @@ Status calc_positions_utc(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-    if (!eop_table) {
-        for (size_t i = 0; i < target_count; ++i) {
-            clear_position_out(out + i * 6);
-            if (diagnostics) {
-                set_diagnostic(diagnostics + i, TAIYIN_ERROR_UNSUPPORTED, target_ids[i], ctx.observer_id, jd_utc);
-            }
-        }
-        return TAIYIN_ERROR_UNSUPPORTED;
-    }
 
     TimeScaleOptions options;
-    options.policy = TimeScalePrecise;
+    options.allow_utc_out_of_range_estimate =
+        ctx.allow_utc_out_of_range_estimate;
     options.tdb_model_id = ctx.model_context.tdb_model_id;
     options.delta_t_model_id = ctx.delta_t_model_id;
     options.ephemeris_family_id = ctx.ephemeris_family_id;
@@ -1195,19 +1192,22 @@ Status calc_positions_utc(
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
     if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
+        const Status status = precise_time_failure_status(time_diagnostic);
         for (size_t i = 0; i < target_count; ++i) {
             clear_position_out(out + i * 6);
             if (diagnostics) {
-                set_diagnostic(diagnostics + i, TAIYIN_ERROR_UNSUPPORTED, target_ids[i], ctx.observer_id, jd_utc);
+                set_diagnostic(diagnostics + i, status, target_ids[i], ctx.observer_id, jd_utc);
+                copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
             }
         }
-        return TAIYIN_ERROR_UNSUPPORTED;
+        return status;
     }
     NativeCalcContext scratch = ctx;
     const SplitJulianDate resolved_jd_tdb = scales.jd_tdb;
     const SplitJulianDate resolved_jd_tt = scales.jd_tt;
-    const Status cpo_status = apply_celestial_pole_offset_from_eop(
-        &scratch, scales.jd_utc);
+    const Status cpo_status = time_diagnostic.used_eop
+        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
+        : TAIYIN_STATUS_OK;
     if (cpo_status != TAIYIN_STATUS_OK) {
         for (size_t i = 0; i < target_count; ++i) {
             clear_position_out(out + i * 6);
@@ -1222,7 +1222,7 @@ Status calc_positions_utc(
         }
         return cpo_status;
     }
-    return calc_positions_tdb(
+    const Status status = calc_positions_tdb(
         &scratch,
         target_ids,
         target_count,
@@ -1231,6 +1231,10 @@ Status calc_positions_utc(
         flags,
         out,
         diagnostics);
+    for (size_t i = 0; diagnostics && i < target_count; ++i) {
+        copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
+    }
+    return status;
 }
 
 Status calc_state_tdb(
@@ -1512,12 +1516,10 @@ Status calc_state_utc(
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_utc);
     }
     const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-    if (!eop_table) {
-        return fail_state(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, target_id, ctx.observer_id, jd_utc);
-    }
 
     TimeScaleOptions options;
-    options.policy = TimeScalePrecise;
+    options.allow_utc_out_of_range_estimate =
+        ctx.allow_utc_out_of_range_estimate;
     options.tdb_model_id = ctx.model_context.tdb_model_id;
     options.delta_t_model_id = ctx.delta_t_model_id;
     options.ephemeris_family_id = ctx.ephemeris_family_id;
@@ -1525,13 +1527,17 @@ Status calc_state_utc(
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
     if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        return fail_state(out, diagnostic, TAIYIN_ERROR_UNSUPPORTED, target_id, ctx.observer_id, jd_utc);
+        const Status status = precise_time_failure_status(time_diagnostic);
+        fail_state(out, diagnostic, status, target_id, ctx.observer_id, jd_utc);
+        copy_time_scale_diagnostic(diagnostic, time_diagnostic);
+        return status;
     }
     NativeCalcContext scratch = ctx;
     const SplitJulianDate resolved_jd_tdb = scales.jd_tdb;
     const SplitJulianDate resolved_jd_tt = scales.jd_tt;
-    const Status cpo_status = apply_celestial_pole_offset_from_eop(
-        &scratch, scales.jd_utc);
+    const Status cpo_status = time_diagnostic.used_eop
+        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
+        : TAIYIN_STATUS_OK;
     if (cpo_status != TAIYIN_STATUS_OK) {
         return fail_state(
             out,
@@ -1541,7 +1547,7 @@ Status calc_state_utc(
             ctx.observer_id,
             resolved_jd_tdb);
     }
-    return calc_state_tdb(
+    const Status status = calc_state_tdb(
         &scratch,
         target_id,
         resolved_jd_tdb,
@@ -1549,6 +1555,8 @@ Status calc_state_utc(
         flags,
         out,
         diagnostic);
+    copy_time_scale_diagnostic(diagnostic, time_diagnostic);
+    return status;
 }
 
 Status calc_default_position_tdb(

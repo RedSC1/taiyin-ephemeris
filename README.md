@@ -78,7 +78,7 @@ requested physical planet unless the caller explicitly enables that fallback.
   BaZi/Ganzhi support.
 - **Application integration:** a versioned C99 API with opaque contexts,
   diagnostics, capability queries, and FFI-friendly ownership rules. C ABI
-  version 7 is the application compatibility boundary; the C++ API is not a
+  version 8 is the application compatibility boundary; the C++ API is not a
   stable binary ABI.
 
 ### Observer Scope in 1.0

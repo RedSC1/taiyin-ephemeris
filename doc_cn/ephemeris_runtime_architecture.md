@@ -181,7 +181,9 @@ strict_discovery
 `get_global_registered_data_sources()` 会把成功发布的数据 inventory 以结构化记录暴露给调用方。星历 descriptor 按物理 source 与 format 聚合，EOP/TLL1 是单独 source kind。报告的 JD 区间只是 source 覆盖 envelope，不保证其中每条 route 每个时刻都存在；内置/内存 source 使用稳定标签和 flags，不伪装成文件路径。runtime replacement 是事务式的，初始化失败时旧 catalog 及其 inventory 保持不变。
 
 `eop_path` 指向 finals2000A 文本并优先于 `load_builtin_eop`；二者都未设置时，
-精密 UTC 路线没有 EOP，`TimeScaleAuto` 可按既有策略回退到 Delta T。
+UTC 计算默认报错。调用者可显式开启 `allow_utc_out_of_range_estimate`：当 EOP
+或闰秒数据不可用时，将 UTC 民用时间近似解释为 UT1，再用已配置的
+Delta T 模型继续计算。
 `lunar_limb_path` 为空时不加载月缘。setup 阶段也可用
 `set_global_earth_orientation_table()` 安装一份深拷贝，或用
 `load_global_lunar_limb_model()` 替换 mmap；这些操作不得与计算并发。

@@ -1,6 +1,7 @@
 #include "taiyin/runtime/observed_position.h"
 
 #include "runtime/core/native_context_checks.h"
+#include "runtime/core/time_scale_diagnostic.h"
 
 #include "taiyin/angle.h"
 #include "taiyin/dispatch.h"
@@ -562,13 +563,10 @@ Status calc_observed_utc(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-    if (!eop_table) {
-        set_diagnostics(diagnostics, body_count, body_ids, TAIYIN_ERROR_UNSUPPORTED, context->observer_id, jd_utc);
-        return TAIYIN_ERROR_UNSUPPORTED;
-    }
 
     TimeScaleOptions options;
-    options.policy = TimeScalePrecise;
+    options.allow_utc_out_of_range_estimate =
+        context->allow_utc_out_of_range_estimate;
     options.tdb_model_id = context->model_context.tdb_model_id;
     options.delta_t_model_id = context->delta_t_model_id;
     options.ephemeris_family_id = context->ephemeris_family_id;
@@ -576,14 +574,25 @@ Status calc_observed_utc(
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
     if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        set_diagnostics(diagnostics, body_count, body_ids, TAIYIN_ERROR_UNSUPPORTED, context->observer_id, jd_utc);
-        return TAIYIN_ERROR_UNSUPPORTED;
+        const Status status = precise_time_failure_status(time_diagnostic);
+        set_diagnostics(
+            diagnostics,
+            body_count,
+            body_ids,
+            status,
+            context->observer_id,
+            jd_utc);
+        for (size_t i = 0; diagnostics && i < body_count; ++i) {
+            copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
+        }
+        return status;
     }
 
     NativeCalcContext scratch = *context;
     scratch.apparent_options.model_context = &scratch.model_context;
-    const Status cpo_status = apply_celestial_pole_offset_from_eop(
-        &scratch, scales.jd_utc);
+    const Status cpo_status = time_diagnostic.used_eop
+        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
+        : TAIYIN_STATUS_OK;
     if (cpo_status != TAIYIN_STATUS_OK) {
         set_diagnostics(
             diagnostics,
@@ -595,19 +604,23 @@ Status calc_observed_utc(
         return cpo_status;
     }
 
-    return calc_observed_resolved_scales(
+    const Status status = calc_observed_resolved_scales(
         &scratch,
         scales.jd_utc,
         scales.jd_ut1,
         scales.jd_tt,
         scales.jd_tdb,
-        true,
+        time_diagnostic.used_eop,
         scales.jd_utc,
         body_ids,
         body_count,
         flags,
         out,
         diagnostics);
+    for (size_t i = 0; diagnostics && i < body_count; ++i) {
+        copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
+    }
+    return status;
 }
 
 }  // namespace runtime

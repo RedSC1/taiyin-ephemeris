@@ -350,17 +350,16 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_route_rule(
         : taiyin_c_internal::invalid_argument();
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_time_scale_policy(
+taiyin_status TAIYIN_C_CALL
+taiyin_context_set_allow_utc_out_of_range_estimate(
     taiyin_context* context,
-    int32_t policy
+    taiyin_bool allow
 ) {
-    if (!context || policy < TAIYIN_TIME_SCALE_AUTO
-        || policy > TAIYIN_TIME_SCALE_ESTIMATED) {
+    if (!context) {
         return taiyin_c_internal::invalid_argument();
     }
-    return taiyin::runtime::native_context_set_time_scale_policy(
-        &context->value,
-        static_cast<taiyin::TimeScalePolicy>(policy));
+    return taiyin::runtime::native_context_set_allow_utc_out_of_range_estimate(
+        &context->value, allow != 0u);
 }
 
 taiyin_status TAIYIN_C_CALL taiyin_context_set_delta_t_model(

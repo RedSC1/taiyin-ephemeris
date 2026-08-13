@@ -221,7 +221,7 @@ ELP series is already slightly more accurate in the modern subrange.
 
 These figures describe the frozen base state model, not the final apparent or
 topocentric output. Light time, aberration, deflection, precession/nutation,
-observer geometry, and time-scale policy are applied by the normal runtime
+observer geometry, and explicit UTC/time-scale conversion are applied by the normal runtime
 layers selected by the caller.
 
 ## Provenance

@@ -63,7 +63,8 @@ struct NativeCalcContext {
     FieldSet fields;
     AstroModelContext model_context;
     ApparentOptions apparent_options;
-    TimeScalePolicy time_scale_policy;
+    // Affects UTC entry points only; UT entry points always interpret input as UT1.
+    bool allow_utc_out_of_range_estimate;
     int delta_t_model_id;
     int ephemeris_family_id;
     int observer_id;
@@ -133,7 +134,10 @@ Status native_context_set_delta_t_model(
     int ephemeris_family_id
 ) noexcept;
 Status native_context_set_tdb_model(NativeCalcContext* context, int tdb_model_id) noexcept;
-Status native_context_set_time_scale_policy(NativeCalcContext* context, TimeScalePolicy policy) noexcept;
+Status native_context_set_allow_utc_out_of_range_estimate(
+    NativeCalcContext* context,
+    bool allow
+) noexcept;
 Status native_context_set_route_rule(NativeCalcContext* context, uint64_t route_rule_id) noexcept;
 
 Status native_context_set_celestial_pole_offset(

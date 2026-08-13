@@ -11,7 +11,7 @@ not consume the C++ API. Include the umbrella header:
 
 The installed shared library is named `taiyin` on platforms with versioned
 SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). Windows includes the ABI in the
-runtime and import-library name, for example `taiyin-7.dll` and `taiyin-7.lib`.
+runtime and import-library name, for example `taiyin-8.dll` and `taiyin-8.lib`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
 the independent semantic library version; the current core baseline is
@@ -92,11 +92,13 @@ The install and CPack binary archives deliberately do not include OPM2, TSC1,
 TLL1, or other runtime data packs. Deploy a selected data root beside the
 application, or register separately distributed data files at runtime.
 
-The C ABI version is `7`. Version 3 replaced scalar Julian-day arguments and
+The C ABI version is `8`. Version 3 replaced scalar Julian-day arguments and
 time-bearing result fields with `taiyin_split_julian_date`. Version 5 enlarged
 `taiyin_bazi_context_config` for qi-yun and da-yun policy. Version 7 adds the
 planet-transit flag word and establishes the low-position/high-option layering
-for observed flags. Callers compiled against an earlier ABI must be
+for observed flags. Version 8 replaces the three-state time-scale policy with
+an explicit UTC out-of-range estimate flag; `*_ut` entry points now have fixed
+UT1 semantics. Callers compiled against an earlier ABI must be
 rebuilt. Taiyin follows semantic versioning
 for the library: compatible additions retain the ABI major, while removing or
 changing an existing C symbol or structure contract requires a new ABI major.
@@ -144,8 +146,8 @@ modular build, astrology remains part of the base `taiyin` library, so
 ## Context Configuration
 
 `taiyin_context` owns the calculation policy used by position and event APIs.
-In addition to observer location, atmosphere, time-scale policy, and ephemeris
-route, the C ABI exposes:
+In addition to observer location, atmosphere, the explicit UTC fallback flag,
+and ephemeris route, the C ABI exposes:
 
 - `taiyin_astro_model_config` for TDB, precession, nutation, obliquity, and
   frame-route selection;
@@ -162,6 +164,26 @@ apparent options.
 
 Unknown apparent flags, Delta-T model IDs, and ephemeris-family IDs are rejected
 instead of silently selecting a fallback.
+
+UTC and UT1 entry points have fixed meanings. A `*_ut` entry interprets its
+split Julian date as UT1 and uses the context's Delta-T model to derive TT/TDB;
+it does not consult EOP data. A `*_utc` entry interprets a civil calendar
+value as UTC and, by default, requires leap-second and EOP coverage. Missing or
+out-of-range EOP returns `TAIYIN_TIME_ERROR_EOP_OUT_OF_RANGE`; unavailable
+leap-second data returns `TAIYIN_TIME_ERROR_LEAP_SECOND_UNAVAILABLE`. The
+diagnostic fallback reason distinguishes a missing EOP table from an
+out-of-range table.
+
+Applications that explicitly accept a lower-precision fallback may enable it
+during context setup:
+
+```c
+taiyin_context_set_allow_utc_out_of_range_estimate(context, 1);
+```
+
+When precise UTC resolution is unavailable, this treats the supplied civil
+value as approximate UT1 and applies the configured Delta-T model. The flag
+never changes the meaning or route of a `*_ut` function.
 
 ## Split Julian Dates
 

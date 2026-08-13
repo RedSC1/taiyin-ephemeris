@@ -429,28 +429,24 @@ int main() {
         expect_true(time_diag.used_eop, "routed precise uses eop", &failures);
         expect_true(!time_diag.used_delta_t_model, "routed precise skips delta t model", &failures);
 
-        taiyin::TimeScaleOptions estimated_options = taiyin::default_time_scale_options();
-        expect_true(estimated_options.tdb_model_id == taiyin::dispatch::TDB_FAST_PERIODIC, "default tdb model", &failures);
-        expect_true(estimated_options.delta_t_model_id == taiyin::dispatch::DELTA_T_ESTIMATED_DEFAULT, "default delta t model", &failures);
-        expect_true(estimated_options.ephemeris_family_id == taiyin::dispatch::EPHEMERIS_FAMILY_UNKNOWN, "default ephemeris family", &failures);
-        estimated_options.policy = taiyin::TimeScalePolicy::TimeScaleEstimated;
-        expect_true(taiyin::make_time_scales_from_utc(sample, &eop_table, &estimated_options, &routed, &time_diag), "estimated route succeeds", &failures);
-        expect_true(time_diag.route == taiyin::TimeScaleRoute::TimeScaleRouteEstimatedDeltaT, "estimated route id", &failures);
-        expect_true(time_diag.used_delta_t_model, "estimated route uses delta t model", &failures);
-        expect_true(!time_diag.used_eop, "estimated route skips eop", &failures);
-        expect_split_near(routed.jd_ut1, sample_split, 0.0, "estimated treats input as ut1", &failures);
-        expect_split_near(routed.jd_tt, add_split_seconds(routed.jd_ut1, routed.delta_t_seconds), 0.0, "estimated routed tt", &failures);
-        expect_split_near(routed.jd_tdb, split_tt_to_tdb(routed.jd_tt), 0.0, "estimated routed default tdb", &failures);
+        taiyin::TimeScaleOptions strict_options = taiyin::default_time_scale_options();
+        expect_true(strict_options.tdb_model_id == taiyin::dispatch::TDB_FAST_PERIODIC, "default tdb model", &failures);
+        expect_true(strict_options.delta_t_model_id == taiyin::dispatch::DELTA_T_ESTIMATED_DEFAULT, "default delta t model", &failures);
+        expect_true(strict_options.ephemeris_family_id == taiyin::dispatch::EPHEMERIS_FAMILY_UNKNOWN, "default ephemeris family", &failures);
+        expect_true(!strict_options.allow_utc_out_of_range_estimate, "default UTC resolution is strict", &failures);
+        expect_true(!taiyin::make_time_scales_from_utc(sample, 0, &strict_options, &routed, &time_diag), "strict UTC route requires EOP", &failures);
+        expect_true(time_diag.fallback_reason == taiyin::TimeScaleFallbackReason::TimeScaleFallbackNullEopTable, "strict UTC missing EOP reason", &failures);
 
-        taiyin::TimeScaleOptions precise_options = taiyin::default_time_scale_options();
-        precise_options.policy = taiyin::TimeScalePolicy::TimeScalePrecise;
-        expect_true(!taiyin::make_time_scales_from_utc(sample, 0, &precise_options, &routed, &time_diag), "precise route requires eop", &failures);
-        expect_true(time_diag.fallback_reason == taiyin::TimeScaleFallbackReason::TimeScaleFallbackNullEopTable, "precise missing eop reason", &failures);
-
-        expect_true(taiyin::make_time_scales_from_utc(sample, 0, 0, &routed, &time_diag), "auto falls back without eop", &failures);
-        expect_true(time_diag.route == taiyin::TimeScaleRoute::TimeScaleRouteEstimatedDeltaT, "auto fallback route", &failures);
-        expect_true(time_diag.fallback_reason == taiyin::TimeScaleFallbackReason::TimeScaleFallbackNullEopTable, "auto fallback reason", &failures);
-        expect_split_near(routed.jd_tdb, split_tt_to_tdb(routed.jd_tt, taiyin::TdbModel::FastPeriodic), 0.0, "auto fallback default fast tdb", &failures);
+        taiyin::TimeScaleOptions fallback_options = strict_options;
+        fallback_options.allow_utc_out_of_range_estimate = true;
+        expect_true(taiyin::make_time_scales_from_utc(sample, 0, &fallback_options, &routed, &time_diag), "UTC out-of-range estimate succeeds", &failures);
+        expect_true(time_diag.route == taiyin::TimeScaleRoute::TimeScaleRouteEstimatedDeltaT, "UTC estimate route", &failures);
+        expect_true(time_diag.used_delta_t_model, "UTC estimate uses delta t model", &failures);
+        expect_true(!time_diag.used_eop, "UTC estimate has no EOP", &failures);
+        expect_true(time_diag.fallback_reason == taiyin::TimeScaleFallbackReason::TimeScaleFallbackNullEopTable, "UTC estimate fallback reason", &failures);
+        expect_split_near(routed.jd_ut1, sample_split, 0.0, "UTC estimate treats input as UT1", &failures);
+        expect_split_near(routed.jd_tt, add_split_seconds(routed.jd_ut1, routed.delta_t_seconds), 0.0, "UTC estimate TT", &failures);
+        expect_split_near(routed.jd_tdb, split_tt_to_tdb(routed.jd_tt), 0.0, "UTC estimate TDB", &failures);
 
         taiyin::LeapSecondEntry custom_leaps[] = {
             { 2000, 1, 1, 40.0 },

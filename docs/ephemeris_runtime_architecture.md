@@ -230,8 +230,10 @@ Because runtime replacement is transactional, a failed initialization leaves
 both the prior catalog and its reported inventory intact.
 
 `eop_path` names a finals2000A text file and takes precedence over
-`load_builtin_eop`. When neither is set, precise UTC has no EOP and
-`TimeScaleAuto` may fall back to Delta T under its existing policy. An empty
+`load_builtin_eop`. When neither is set, UTC calculations fail by default.
+Callers may explicitly enable `allow_utc_out_of_range_estimate` to treat a UTC
+civil value as an approximate UT1 value and continue with the configured Delta
+T model when EOP or leap-second data are unavailable. An empty
 `lunar_limb_path` loads no limb model. Setup code may also install a deep EOP
 copy through `set_global_earth_orientation_table()` or replace the limb mapping
 through `load_global_lunar_limb_model()`; neither operation may run concurrently

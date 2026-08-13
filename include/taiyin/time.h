@@ -58,12 +58,6 @@ enum TdbModel {
     SofaFull,
 };
 
-enum TimeScalePolicy {
-    TimeScaleAuto,
-    TimeScalePrecise,
-    TimeScaleEstimated,
-};
-
 enum TimeScaleRoute {
     TimeScaleRouteNone,
     TimeScaleRoutePreciseUtcEop,
@@ -89,7 +83,9 @@ struct PreciseTimeScales {
 };
 
 struct TimeScaleOptions {
-    TimeScalePolicy policy;
+    // Strict by default. When enabled, an unresolved UTC civil instant is
+    // treated as approximate UT1 and converted with the Delta-T model.
+    bool allow_utc_out_of_range_estimate;
     int tdb_model_id;
     int delta_t_model_id;
     int ephemeris_family_id;

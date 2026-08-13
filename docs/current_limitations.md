@@ -45,7 +45,7 @@ calc_observed_ut
 calc_observed_utc
 ```
 
-The current apparent/observed chain supports combinations of light-time, annual aberration, solar/multi-body gravitational deflection, topocentric observer, horizontal az/alt, refraction, frame selection, UTC/EOP/UT1/polar motion/CPO, and related options. The global runtime owns EOP, leap-second, and lunar-limb data. User location, atmosphere, time policy, model IDs, and route rule live on `NativeCalcContext`; flags control switches. Observed APIs use a `uint64_t` layering convention: their low 32 bits accept only calculation semantics (`SPEED`, `TRUEPOS`, `NO_ABERR`, `NO_GDEFL`, `ASTROMETRIC`, `TOPOCENTRIC`, and `ALLOW_BARYCENTER_APPROX`), while horizontal/refraction/meteorology options occupy the high 32 bits. Output-shape and frame-selector flags (`XYZ`, `EQUATORIAL`, `RADIANS`, and `NONUT`) return `TAIYIN_ERROR_UNSUPPORTED`, rather than being silently ignored.
+The current apparent/observed chain supports combinations of light-time, annual aberration, solar/multi-body gravitational deflection, topocentric observer, horizontal az/alt, refraction, frame selection, UTC/EOP/UT1/polar motion/CPO, and related options. The global runtime owns EOP, leap-second, and lunar-limb data. User location, atmosphere, the explicit UTC out-of-range fallback flag, model IDs, and route rule live on `NativeCalcContext`; flags control calculation switches. Observed APIs use a `uint64_t` layering convention: their low 32 bits accept only calculation semantics (`SPEED`, `TRUEPOS`, `NO_ABERR`, `NO_GDEFL`, `ASTROMETRIC`, `TOPOCENTRIC`, and `ALLOW_BARYCENTER_APPROX`), while horizontal/refraction/meteorology options occupy the high 32 bits. Output-shape and frame-selector flags (`XYZ`, `EQUATORIAL`, `RADIANS`, and `NONUT`) return `TAIYIN_ERROR_UNSUPPORTED`, rather than being silently ignored.
 
 ### Composite Bodies And Data Fallback
 
@@ -205,7 +205,7 @@ spacecraft ranging or high-precision occultation work needs a stronger model
 
 ### TT/TDB And Timescale Models Need More End-To-End Verification
 
-The project has fast periodic TDB, SOFA-style full TDB, Delta T policy, leap-second tables, and EOP-table routes. Ordinary main-body and observed calculations are usable, but different external systems' TDB/TT/UT1 conventions can cause small differences. End-to-end oracles should not be tightened to microarcsecond levels too early.
+The project has fast periodic TDB, SOFA-style full TDB, a configurable Delta-T model, leap-second tables, and EOP-table routes. Ordinary main-body and observed calculations are usable, but different external systems' TDB/TT/UT1 conventions can cause small differences. End-to-end oracles should not be tightened to microarcsecond levels too early.
 
 ### Eclipse/Visibility Models Have Convention Differences
 

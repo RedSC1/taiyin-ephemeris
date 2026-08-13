@@ -1972,7 +1972,7 @@ EstimatedTimeScales make_estimated_time_scales_from_ut(
 
 TimeScaleOptions default_time_scale_options() noexcept {
     const TimeScaleOptions options = {
-        TimeScalePolicy::TimeScaleAuto,
+        false,
         dispatch::TDB_FAST_PERIODIC,
         dispatch::DELTA_T_ESTIMATED_DEFAULT,
         dispatch::EPHEMERIS_FAMILY_UNKNOWN,
@@ -2007,7 +2007,7 @@ bool make_time_scales_from_utc(
         diagnostic->delta_t_seconds = 0.0;
     }
 
-    if (active_options.policy != TimeScalePolicy::TimeScaleEstimated) {
+    {
         TimeScaleFallbackReason precise_failure = TimeScaleFallbackReason::TimeScaleFallbackNone;
         double tai_minus_utc = 0.0;
         internal::EarthOrientationSample eop_sample;
@@ -2064,7 +2064,7 @@ bool make_time_scales_from_utc(
             return true;
         }
 
-        if (active_options.policy == TimeScalePolicy::TimeScalePrecise) {
+        if (!active_options.allow_utc_out_of_range_estimate) {
             if (diagnostic) {
                 diagnostic->fallback_reason = precise_failure;
             }

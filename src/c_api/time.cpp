@@ -617,7 +617,8 @@ taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_utc(
         return taiyin_c_internal::invalid_argument();
     }
     taiyin::TimeScaleOptions options = taiyin::default_time_scale_options();
-    options.policy = context->value.time_scale_policy;
+    options.allow_utc_out_of_range_estimate =
+        context->value.allow_utc_out_of_range_estimate;
     options.tdb_model_id = context->value.model_context.tdb_model_id;
     options.delta_t_model_id = context->value.delta_t_model_id;
     options.ephemeris_family_id = context->value.ephemeris_family_id;
@@ -648,7 +649,8 @@ taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
         return taiyin_c_internal::invalid_argument();
     }
     taiyin::TimeScaleOptions options = taiyin::default_time_scale_options();
-    options.policy = context->value.time_scale_policy;
+    options.allow_utc_out_of_range_estimate =
+        context->value.allow_utc_out_of_range_estimate;
     options.tdb_model_id = context->value.model_context.tdb_model_id;
     options.delta_t_model_id = context->value.delta_t_model_id;
     options.ephemeris_family_id = context->value.ephemeris_family_id;

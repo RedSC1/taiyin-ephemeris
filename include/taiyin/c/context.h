@@ -9,12 +9,6 @@ extern "C" {
 
 typedef struct taiyin_context taiyin_context;
 
-enum taiyin_time_scale_policy {
-    TAIYIN_TIME_SCALE_AUTO = 0,
-    TAIYIN_TIME_SCALE_PRECISE = 1,
-    TAIYIN_TIME_SCALE_ESTIMATED = 2
-};
-
 enum taiyin_atmosphere_policy_flags {
     TAIYIN_ATMOSPHERE_ALLOW_STANDARD_FALLBACK = 1u << 0
 };
@@ -232,9 +226,15 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_route_rule(
     taiyin_context* context,
     uint64_t route_rule_id
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_time_scale_policy(
+/*
+ * UTC entry points are strict by default. When enabled, missing or
+ * out-of-range UTC/EOP data may fall back to approximate UT1 plus Delta-T.
+ * This setting never changes the semantics of a *_ut entry point.
+ */
+TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+taiyin_context_set_allow_utc_out_of_range_estimate(
     taiyin_context* context,
-    int32_t policy
+    taiyin_bool allow
 );
 TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_delta_t_model(
     taiyin_context* context,

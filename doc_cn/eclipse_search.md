@@ -17,7 +17,7 @@ Eclipse API 覆盖：
 - 地理观测者的地方日食情况；
 - 日食 Besselian elements、route rows、route curves 和地方 boundary helpers。
 
-所有入口都使用调用方的 `NativeCalcContext`，所以结果依赖同一个 context 中配置的 ephemeris routes、apparent-position options、time-scale policy、Delta T model、eclipse shadow/radius models。调用这些 API 前，全局 ephemeris runtime 必须已经用覆盖请求日期范围的数据初始化。
+所有入口都使用调用方的 `NativeCalcContext`，所以结果依赖同一个 context 中配置的 ephemeris routes、apparent-position options、Delta-T model、eclipse shadow/radius models。调用这些 API 前，全局 ephemeris runtime 必须已经用覆盖请求日期范围的数据初始化。
 
 ## 来源和算法
 
@@ -392,7 +392,10 @@ polygon 为空属于正常结果。
 时刻会分别转换成 TT 再计算星历几何，因此区间内 Delta T 的微小变化不会在
 终点附近额外产生一条近乎重复的记录。
 
-内部星历位置通过 context 的 TDB model 从 TT instant 计算。UT 版本通过 context 的 Delta T policy 转换。和 ephemeris-time 表对比时用 TT；面向民用时钟应用时用 UT。
+内部星历位置通过 context 的 TDB model 从 TT instant 计算。当前所有
+`*_at_ut` 日月食入口都将输入和输出固定解释为 UT1，使用 context 的 Delta-T
+模型转换；不会因为加载了 EOP 就改成 UTC。和 ephemeris-time 表对比时用
+TT；需要地球自转时角的结果用 UT1。未来如果增加 UTC 入口，必须在函数名中明确标出，不改变现有契约。
 
 ## Flags
 
@@ -419,7 +422,7 @@ Eclipse-specific options 在高 32 位：
 月缘修正必须显式开启，并要求全局 runtime 已加载模型。加载方式、生命周期、覆盖范围与接触语义见
 [`lunar_limb_model.md`](lunar_limb_model.md)。
 
-默认情况下，eclipse calculation 使用内置 apparent-position 路线。也就是说，light-time、annual aberration、gravitational deflection、Shapiro delay、frame model、TDB/Delta T policy 等设置会进入 Sun/Moon 几何、Besselian seed、correction window 和 contact refinement。默认 context 应使用推荐的 apparent-position 口径；这是和公开历书、PMO/NASA/Swiss-style oracle 对比时应优先说明的配置。
+默认情况下，eclipse calculation 使用内置 apparent-position 路线。也就是说，light-time、annual aberration、gravitational deflection、Shapiro delay、frame model、TDB model、Delta-T model 等设置会进入 Sun/Moon 几何、Besselian seed、correction window 和 contact refinement。默认 context 应使用推荐的 apparent-position 口径；这是和公开历书、PMO/NASA/Swiss-style oracle 对比时应优先说明的配置。
 
 `TAIYIN_ECLIPSE_TRUEPOS` 不是“更高精度”开关，而是模型切换。设置后，eclipse geometry 使用 geometric true positions，并关闭 light-time、aberration、deflection 和 Shapiro delay 等 apparent 修正。它适合模型实验、debug 和 regression tests；通常公开历书应使用默认 apparent-position 路线。
 
@@ -659,7 +662,7 @@ Swiss Ephemeris 对比可作为兼容性或模型差异分析，但不是 licens
 ## 当前边界
 
 - 首个 release 前 public API 尚未冻结，结构体字段和 flags 仍可能随验证结果调整。
-- Eclipse 结果依赖 `NativeCalcContext` 中的星历路线、apparent options、time-scale policy、Delta T model、shadow model 和 Moon-radius model。比较结果时需要同时说明这些设置。
+- Eclipse 结果依赖 `NativeCalcContext` 中的星历路线、apparent options、TDB/Delta-T model、shadow model 和 Moon-radius model。比较结果时需要同时说明这些设置。当前 `_at_ut` 日月食 API 始终表示 UT1。
 - Solar route curves 是数值 map/path products，下游通常还需要做投影、抽稀、分段和地图渲染处理。
 - 地方日食 API 计算几何可见性和接触情况，不建模天气、云量、地形遮挡、观测设备或人眼视觉效果。
 - 月食 contact、duration 和 magnitude 强依赖 shadow model 与 Moon-radius model。没有说明模型时，不应把不同来源的秒级或百分比差异直接当作误差。

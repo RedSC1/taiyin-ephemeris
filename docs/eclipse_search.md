@@ -17,7 +17,7 @@ The eclipse API covers:
 - local solar-eclipse circumstances for a geographic observer;
 - solar Besselian elements, route rows, route curves, and local boundary helpers.
 
-All entry points use the caller's `NativeCalcContext`, so results depend on the ephemeris routes, apparent-position options, timescale policy, Delta T model, eclipse shadow model, and radius models configured in that context. Before calling these APIs, the global ephemeris runtime must be initialized with data that covers the requested date range.
+All entry points use the caller's `NativeCalcContext`, so results depend on the ephemeris routes, apparent-position options, Delta-T model, eclipse shadow model, and radius models configured in that context. Before calling these APIs, the global ephemeris runtime must be initialized with data that covers the requested date range.
 
 ## Sources And Algorithms
 
@@ -476,7 +476,7 @@ epochs are converted individually to TT for ephemeris geometry, so a small
 change in Delta T across the interval cannot create a second near-duplicate end
 row.
 
-Internal ephemeris positions are computed for TT instants by deriving TDB through the context's TDB model. UT variants use the context's Delta T policy for conversion. Use TT when comparing against ephemeris-time tables; use UT for civil-clock applications.
+Internal ephemeris positions are computed for TT instants by deriving TDB through the context's TDB model. Every current `*_at_ut` eclipse variant interprets its input and output as UT1 and uses the context's Delta-T model for conversion; it never switches to UTC merely because EOP data are loaded. Use TT when comparing against ephemeris-time tables and UT1 for Earth-rotation-facing results. A future UTC-specific entry point must be named explicitly rather than changing this contract.
 
 ## Flags
 
@@ -504,7 +504,7 @@ Lunar-limb correction is opt-in and requires a globally loaded model. See
 [`lunar_limb_model.md`](lunar_limb_model.md) for loading, lifetime, coverage,
 and corrected-contact semantics.
 
-By default, eclipse calculation uses the built-in apparent-position route. Light-time, annual aberration, gravitational deflection, Shapiro delay, frame model, TDB/Delta T policy, and related settings are therefore part of Sun/Moon geometry, Besselian seeds, correction windows, and contact refinement. The default context should use the recommended apparent-position convention; this is the configuration to state first when comparing against public almanacs, PMO/NASA material, or Swiss-style oracles.
+By default, eclipse calculation uses the built-in apparent-position route. Light-time, annual aberration, gravitational deflection, Shapiro delay, frame model, TDB model, Delta-T model, and related settings are therefore part of Sun/Moon geometry, Besselian seeds, correction windows, and contact refinement. The default context should use the recommended apparent-position convention; this is the configuration to state first when comparing against public almanacs, PMO/NASA material, or Swiss-style oracles.
 
 `TAIYIN_ECLIPSE_TRUEPOS` is not a "more accurate" switch; it changes the model convention. When set, eclipse geometry uses geometric true positions and disables apparent corrections such as light-time, aberration, deflection, and Shapiro delay. It is useful for model experiments, debugging, and regression tests. Public almanac comparisons should usually use the default apparent-position route.
 
@@ -753,7 +753,7 @@ Swiss Ephemeris comparisons can be useful for compatibility or model-difference 
 ## Current Boundaries
 
 - Public API is not frozen before the first release; struct fields and flags may still change as validation proceeds.
-- Eclipse results depend on the ephemeris route, apparent options, timescale policy, Delta T model, shadow model, and Moon-radius model in `NativeCalcContext`. Comparisons should report those settings.
+- Eclipse results depend on the ephemeris route, apparent options, TDB and Delta-T models, shadow model, and Moon-radius model in `NativeCalcContext`. Comparisons should report those settings. Current `_at_ut` eclipse APIs always mean UT1.
 - Solar route curves are numeric map/path products. Downstream users usually still need projection, thinning, segmentation, and map rendering.
 - Local solar-eclipse APIs compute geometric visibility and contact circumstances. They do not model weather, clouds, terrain obstruction, equipment, or human visual effects.
 - Lunar-eclipse contacts, durations, and magnitudes depend strongly on shadow model and Moon-radius model. Without stating the model, second-level or percentage differences between sources should not be treated directly as errors.

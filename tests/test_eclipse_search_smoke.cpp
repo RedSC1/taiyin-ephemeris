@@ -334,41 +334,30 @@ int main() {
     EphemerisEvalDiagnostic diag = {};
     const uint64_t flags = TAIYIN_ECLIPSE_INCLUDE_CONTACTS;
 
-    // UT-facing eclipse APIs honor the context time-scale policy: Auto may
-    // fallback to estimated Delta T when EOP is absent, while Precise must not.
+    // UT1-facing eclipse APIs always interpret their input and output as UT1.
+    // UTC fallback settings and the presence of EOP data must not change that
+    // contract.
     {
-        EphemerisEvalDiagnostic auto_diag = {};
+        if (!set_global_earth_orientation_table(nullptr)) {
+            return fail("failed to clear global EOP before UT1 contract test");
+        }
+        EphemerisEvalDiagnostic no_eop_diag = {};
         SolarEclipseResultUt result;
         if (expect_status(
-                solve_solar_eclipse_at_ut(&ctx, split_jd(2460409.0), 0, &result, &auto_diag),
-                "auto solar UT without EOP")) {
+                solve_solar_eclipse_at_ut(
+                    &ctx, split_jd(2460409.0), 0, &result, &no_eop_diag),
+                "solar UT1 without EOP")) {
             return 1;
         }
-        if (auto_diag.time_scale_route != TimeScaleRouteEstimatedDeltaT
-            || auto_diag.time_scale_fallback_reason != TimeScaleFallbackNullEopTable
-            || (auto_diag.time_scale_flags & TAIYIN_TIME_DIAGNOSTIC_USED_DELTA_T_MODEL) == 0) {
+        if (no_eop_diag.time_scale_route != TimeScaleRouteEstimatedDeltaT
+            || no_eop_diag.time_scale_fallback_reason != TimeScaleFallbackNone
+            || (no_eop_diag.time_scale_flags
+                & TAIYIN_TIME_DIAGNOSTIC_USED_DELTA_T_MODEL) == 0) {
             std::printf(
-                "FAIL: auto solar UT diagnostic route=%u fallback=%u flags=%u\n",
-                static_cast<unsigned>(auto_diag.time_scale_route),
-                static_cast<unsigned>(auto_diag.time_scale_fallback_reason),
-                static_cast<unsigned>(auto_diag.time_scale_flags));
-            return 1;
-        }
-
-        if (!set_global_earth_orientation_table(nullptr)) {
-            return fail("failed to clear global EOP table before precise rejection test");
-        }
-        NativeCalcContext precise_ctx = ctx;
-        native_context_set_time_scale_policy(&precise_ctx, TimeScalePrecise);
-        EphemerisEvalDiagnostic precise_diag = {};
-        const Status status = solve_solar_eclipse_at_ut(
-            &precise_ctx, split_jd(2460409.0), 0, &result, &precise_diag);
-        if (status != TAIYIN_ERROR_INVALID_ARGUMENT) {
-            std::printf("FAIL: precise solar UT without EOP status=%d expected invalid argument\n", status);
-            return 1;
-        }
-        if (precise_diag.time_scale_fallback_reason != TimeScaleFallbackNullEopTable) {
-            std::printf("FAIL: precise solar UT without EOP fallback=%u\n", static_cast<unsigned>(precise_diag.time_scale_fallback_reason));
+                "FAIL: solar UT1 diagnostic route=%u fallback=%u flags=%u\n",
+                static_cast<unsigned>(no_eop_diag.time_scale_route),
+                static_cast<unsigned>(no_eop_diag.time_scale_fallback_reason),
+                static_cast<unsigned>(no_eop_diag.time_scale_flags));
             return 1;
         }
     }
@@ -377,35 +366,37 @@ int main() {
         if (!taiyin::internal::load_builtin_eop_table(&eop)) {
             return fail("failed to load builtin EOP table");
         }
-        NativeCalcContext precise_ctx = ctx;
         if (!set_global_earth_orientation_table(&eop)) {
             taiyin::internal::destroy_earth_orientation_table(&eop);
             return fail("failed to install global EOP table");
         }
-        native_context_set_time_scale_policy(&precise_ctx, TimeScalePrecise);
+        NativeCalcContext fallback_ctx = ctx;
+        native_context_set_allow_utc_out_of_range_estimate(
+            &fallback_ctx, true);
         SolarEclipseResultUt result;
-        EphemerisEvalDiagnostic precise_diag = {};
+        EphemerisEvalDiagnostic eop_diag = {};
         const Status status = solve_solar_eclipse_at_ut(
-            &precise_ctx, split_jd(2460409.0), 0, &result, &precise_diag);
+            &fallback_ctx, split_jd(2460409.0), 0, &result, &eop_diag);
         taiyin::internal::destroy_earth_orientation_table(&eop);
         if (status != TAIYIN_STATUS_OK) {
-            std::printf("FAIL: precise solar UT with EOP status=%d\n", status);
+            std::printf("FAIL: solar UT1 with EOP status=%d\n", status);
             return 1;
         }
-        if (precise_diag.time_scale_route != TimeScaleRoutePreciseUtcEop
-            || precise_diag.time_scale_fallback_reason != TimeScaleFallbackNone
-            || (precise_diag.time_scale_flags & TAIYIN_TIME_DIAGNOSTIC_USED_EOP) == 0
-            || (precise_diag.time_scale_flags & TAIYIN_TIME_DIAGNOSTIC_USED_LEAP_SECONDS) == 0) {
+        if (eop_diag.time_scale_route != TimeScaleRouteEstimatedDeltaT
+            || eop_diag.time_scale_fallback_reason != TimeScaleFallbackNone
+            || (eop_diag.time_scale_flags
+                & TAIYIN_TIME_DIAGNOSTIC_USED_DELTA_T_MODEL) == 0
+            || (eop_diag.time_scale_flags & TAIYIN_TIME_DIAGNOSTIC_USED_EOP) != 0) {
             std::printf(
-                "FAIL: precise solar UT with EOP diagnostic route=%u fallback=%u flags=%u\n",
-                static_cast<unsigned>(precise_diag.time_scale_route),
-                static_cast<unsigned>(precise_diag.time_scale_fallback_reason),
-                static_cast<unsigned>(precise_diag.time_scale_flags));
+                "FAIL: solar UT1 with EOP diagnostic route=%u fallback=%u flags=%u\n",
+                static_cast<unsigned>(eop_diag.time_scale_route),
+                static_cast<unsigned>(eop_diag.time_scale_fallback_reason),
+                static_cast<unsigned>(eop_diag.time_scale_flags));
             return 1;
         }
         if (!split_julian_date_is_finite(result.maximum_jd_ut)
             || !std::isfinite(result.delta_t_seconds)) {
-            return fail("precise solar UT with EOP should produce finite time scales");
+            return fail("solar UT1 should produce finite time scales");
         }
         if (!set_global_earth_orientation_table(nullptr)) {
             return fail("failed to clear global EOP table after precise eclipse test");

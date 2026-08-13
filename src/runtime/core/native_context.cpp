@@ -207,7 +207,7 @@ NativeCalcContext::NativeCalcContext() noexcept
     : fields(),
       model_context(),
       apparent_options(),
-      time_scale_policy(TimeScaleAuto),
+      allow_utc_out_of_range_estimate(false),
       delta_t_model_id(dispatch::DELTA_T_ESTIMATED_DEFAULT),
       ephemeris_family_id(dispatch::EPHEMERIS_FAMILY_UNKNOWN),
       observer_id(TAIYIN_BODY_EARTH),
@@ -555,11 +555,14 @@ Status native_context_set_tdb_model(NativeCalcContext* context, int tdb_model_id
     return TAIYIN_STATUS_OK;
 }
 
-Status native_context_set_time_scale_policy(NativeCalcContext* context, TimeScalePolicy policy) noexcept {
+Status native_context_set_allow_utc_out_of_range_estimate(
+    NativeCalcContext* context,
+    bool allow
+) noexcept {
     if (!context) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    context->time_scale_policy = policy;
+    context->allow_utc_out_of_range_estimate = allow;
     return TAIYIN_STATUS_OK;
 }
 
