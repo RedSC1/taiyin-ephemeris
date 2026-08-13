@@ -59,6 +59,7 @@ uint64_t fast_correction_series_identity(
     hash = mix_u64(hash, static_cast<uint64_t>(static_cast<uint32_t>(body_1_id)));
     hash = mix_u64(hash, static_cast<uint64_t>(static_cast<int>(options.frame)));
     hash = mix_u64(hash, options.with_velocity ? 1u : 0u);
+    hash = mix_u64(hash, options.include_output_frame_velocity ? 1u : 0u);
     hash = mix_u64(hash, options.true_position ? 1u : 0u);
     hash = mix_u64(hash, static_cast<uint64_t>(apparent.flags));
     hash = mix_u64(hash, static_cast<uint64_t>(static_cast<uint32_t>(apparent.output_frame_id)));
@@ -179,7 +180,12 @@ bool eval_block_state_for_fast_apparent(
         && (!need_acceleration_for_fast_apparent(flags) || finite_vector(out->acceleration_au_per_day2));
 }
 
-bool eval_fast_apparent_target_position_direct(
+// This is the scalar counterpart to calc_apparent_batch_with_matrix().  It
+// deliberately supports position and velocity, but not acceleration or the
+// Shapiro-delay solvers.  The latter still use the general path below.  In
+// particular, all ordinary apparent-position flags remain caller controlled;
+// this function only avoids allocating and filling the batch-only products.
+bool eval_fast_apparent_target_state_direct(
     const SplitJulianDate& jd_tdb,
     int target_id,
     const internal::CompiledEphemerisBlock* target_block,
@@ -198,16 +204,18 @@ bool eval_fast_apparent_target_position_direct(
     int max_light_time_iterations,
     double light_time_tolerance_days,
     const Matrix3x3& output_matrix,
-    Vector3* out_position
+    const Matrix3x3& output_matrix_dot,
+    CartesianState* out_state
 ) noexcept {
-    if (!out_position || !target_block || !target_block->data || !target_block->position) {
+    if (!out_state || !target_block || !target_block->data || !target_block->position) {
         return false;
     }
     if (light_time_method_id != 0 || shapiro_delay_model_id != 0
         || !valid_deflection_model_id_for_fast_apparent(deflection_model_id)
-        || need_velocity_for_fast_apparent(flags) || need_acceleration_for_fast_apparent(flags)) {
+        || need_acceleration_for_fast_apparent(flags)) {
         return false;
     }
+    const bool with_velocity = need_velocity_for_fast_apparent(flags);
 
     CartesianState target;
     if (target_id == TAIYIN_BODY_SUN) {
@@ -218,6 +226,9 @@ bool eval_fast_apparent_target_position_direct(
 
     const Vector3 geometric = vector3_subtract(target.position_au, observer.position_au);
     Vector3 position = geometric;
+    Vector3 velocity = with_velocity
+        ? vector3_subtract(target.velocity_au_per_day, observer.velocity_au_per_day)
+        : zero_vector();
     if (!finite_vector(geometric) || vector3_norm(geometric) == 0.0) {
         return false;
     }
@@ -225,17 +236,38 @@ bool eval_fast_apparent_target_position_direct(
     if ((flags & TAIYIN_APPARENT_LIGHT_TIME) != 0u) {
         Vector3 retarded_position;
         double light_time_days = 0.0;
-        if (!solve_light_time_position(
-                jd_tdb,
-                observer.position_au,
-                target_block->position,
-                target_block->data,
-                TAIYIN_LIGHT_TIME_DAYS_PER_AU,
-                max_light_time_iterations,
-                light_time_tolerance_days,
-                &position,
-                &light_time_days,
-                &retarded_position)) {
+        if (with_velocity) {
+            Vector3 retarded_velocity;
+            double light_time_rate = 0.0;
+            if (!solve_light_time_velocity(
+                    jd_tdb,
+                    observer.position_au,
+                    observer.velocity_au_per_day,
+                    target_block->position,
+                    target_block->velocity,
+                    target_block->data,
+                    TAIYIN_LIGHT_TIME_DAYS_PER_AU,
+                    max_light_time_iterations,
+                    light_time_tolerance_days,
+                    &position,
+                    &velocity,
+                    &light_time_days,
+                    &light_time_rate,
+                    &retarded_position,
+                    &retarded_velocity)) {
+                return false;
+            }
+        } else if (!solve_light_time_position(
+                       jd_tdb,
+                       observer.position_au,
+                       target_block->position,
+                       target_block->data,
+                       TAIYIN_LIGHT_TIME_DAYS_PER_AU,
+                       max_light_time_iterations,
+                       light_time_tolerance_days,
+                       &position,
+                       &light_time_days,
+                       &retarded_position)) {
             return false;
         }
     }
@@ -251,13 +283,13 @@ bool eval_fast_apparent_target_position_direct(
             Vector3 next_velocity;
             if (!apply_gravitational_deflection_from_body_with_model(
                     position,
-                    zero_vector(),
+                    velocity,
                     observer.position_au,
-                    zero_vector(),
+                    with_velocity ? observer.velocity_au_per_day : zero_vector(),
                     solar.position_au,
-                    zero_vector(),
+                    with_velocity ? solar.velocity_au_per_day : zero_vector(),
                     position,
-                    zero_vector(),
+                    velocity,
                     deflector_schwarzschild_radius_au[solar_deflector_index],
                     deflector_limit[solar_deflector_index],
                     deflection_model_id,
@@ -266,6 +298,7 @@ bool eval_fast_apparent_target_position_direct(
                 return false;
             }
             position = next_position;
+            velocity = with_velocity ? next_velocity : zero_vector();
         }
     }
 
@@ -277,10 +310,12 @@ bool eval_fast_apparent_target_position_direct(
         }
         const dispatch::AberrationDispatchData aberration_data = {
             position,
-            zero_vector(),
+            with_velocity ? velocity : zero_vector(),
             zero_vector(),
             vector3_subtract(observer.position_au, solar.position_au),
-            zero_vector(),
+            with_velocity
+                ? vector3_subtract(observer.velocity_au_per_day, solar.velocity_au_per_day)
+                : zero_vector(),
             zero_vector(),
             observer.velocity_au_per_day,
             zero_vector(),
@@ -288,7 +323,7 @@ bool eval_fast_apparent_target_position_direct(
             deflector_schwarzschild_radius_au[solar_deflector_index],
             false,
         };
-        Vector3 aberrated_velocity;
+        Vector3 aberrated_velocity = zero_vector();
         Vector3 aberrated_acceleration;
         if (!dispatch::eval_selected_aberration(
                 aberration_model_id,
@@ -298,15 +333,26 @@ bool eval_fast_apparent_target_position_direct(
                 &aberrated_acceleration)) {
             return false;
         }
+        velocity = with_velocity ? aberrated_velocity : zero_vector();
     }
 
+    const Vector3 unrotated_position = position;
     if ((flags & TAIYIN_APPARENT_USE_MATRIX) != 0u) {
         position = transform_position_with_matrix(position, output_matrix);
+        if (with_velocity) {
+            velocity = transform_velocity_with_matrix(
+                unrotated_position,
+                velocity,
+                output_matrix,
+                output_matrix_dot);
+        }
     }
-    if (!finite_vector(position)) {
+    if (!finite_vector(position) || (with_velocity && !finite_vector(velocity))) {
         return false;
     }
-    *out_position = position;
+    out_state->position_au = position;
+    out_state->velocity_au_per_day = with_velocity ? velocity : zero_vector();
+    out_state->acceleration_au_per_day2 = zero_vector();
     return true;
 }
 
@@ -1356,9 +1402,18 @@ Status eval_fast_apparent_body_2_tdb(
             output_matrix[i] = options.correction_sample->matrix[i];
             output_matrix_dot[i] = options.correction_sample->matrix_dot[i];
         }
-    } else if (!calc_apparent_matrices(
+    } else {
+        // Some event solvers differentiate a very short local interval in a
+        // fixed true-of-date frame.  They still use the caller-selected frame
+        // and its precession/nutation model, but do not need a finite-difference
+        // derivative of that frame matrix.
+        uint32_t matrix_flags = apparent_options.flags;
+        if (options.with_velocity && !options.include_output_frame_velocity) {
+            matrix_flags &= ~TAIYIN_APPARENT_VELOCITY;
+        }
+        if (!calc_apparent_matrices(
             jd_tt,
-            apparent_options.flags,
+            matrix_flags,
             apparent_options.output_frame_id,
             context->model_context.precession_model_id,
             context->model_context.nutation_model_id,
@@ -1380,11 +1435,12 @@ Status eval_fast_apparent_body_2_tdb(
             nullptr,
             apparent_options.custom_output_frame_evaluator,
             apparent_options.custom_output_frame_data)) {
-        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+            return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        }
     }
 
-    if (use_correction_sample || (!options.with_velocity
-        && (apparent_options.flags & TAIYIN_APPARENT_SHAPIRO_DELAY) == 0u)) {
+    if (use_correction_sample
+        || (apparent_options.flags & TAIYIN_APPARENT_SHAPIRO_DELAY) == 0u) {
         uint32_t observer_eval_flags = apparent_options.flags;
         if ((apparent_options.flags & TAIYIN_APPARENT_ABERRATION) != 0u) {
             observer_eval_flags |= TAIYIN_APPARENT_VELOCITY;
@@ -1421,15 +1477,11 @@ Status eval_fast_apparent_body_2_tdb(
 
         const Matrix3x3 matrix = matrix_from_array9(output_matrix);
         const Matrix3x3 matrix_dot = matrix_from_array9(output_matrix_dot);
-        Vector3 body_0_position;
-        Vector3 body_1_position;
-        Vector3 body_0_velocity = zero_vector();
-        Vector3 body_1_velocity = zero_vector();
+        CartesianState body_0_state = zero_state();
+        CartesianState body_1_state = zero_state();
         if (use_correction_sample) {
             FastApparentCorrectionBodySample body_0_current;
             FastApparentCorrectionBodySample body_1_current;
-            CartesianState body_0_state;
-            CartesianState body_1_state;
             if (!eval_fast_apparent_target_geometric_sample(
                     jd_tdb,
                     body_0_id,
@@ -1471,11 +1523,7 @@ Status eval_fast_apparent_body_2_tdb(
             if (!corrected) {
                 return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
             }
-            body_0_position = body_0_state.position_au;
-            body_1_position = body_1_state.position_au;
-            body_0_velocity = body_0_state.velocity_au_per_day;
-            body_1_velocity = body_1_state.velocity_au_per_day;
-        } else if (!eval_fast_apparent_target_position_direct(
+        } else if (!eval_fast_apparent_target_state_direct(
                 jd_tdb,
                 body_0_id,
                 &target_blocks_storage[0],
@@ -1494,8 +1542,9 @@ Status eval_fast_apparent_body_2_tdb(
                 apparent_options.max_light_time_iterations,
                 apparent_options.light_time_tolerance_days,
                 matrix,
-                &body_0_position)
-            || !eval_fast_apparent_target_position_direct(
+                matrix_dot,
+                &body_0_state)
+            || !eval_fast_apparent_target_state_direct(
                 jd_tdb,
                 body_1_id,
                 &target_blocks_storage[1],
@@ -1514,7 +1563,8 @@ Status eval_fast_apparent_body_2_tdb(
                 apparent_options.max_light_time_iterations,
                 apparent_options.light_time_tolerance_days,
                 matrix,
-                &body_1_position)) {
+                matrix_dot,
+                &body_1_state)) {
             const Status status = body_2_failure_status(target_data, 2, diagnostic);
             if (status == TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED) {
                 set_fast_apparent_diagnostic(diagnostic, status, 0, context->observer_id, jd_tdb);
@@ -1522,12 +1572,8 @@ Status eval_fast_apparent_body_2_tdb(
             return status;
         }
 
-        out->body_0.position_au = body_0_position;
-        out->body_1.position_au = body_1_position;
-        if (options.with_velocity) {
-            out->body_0.velocity_au_per_day = body_0_velocity;
-            out->body_1.velocity_au_per_day = body_1_velocity;
-        }
+        out->body_0 = body_0_state;
+        out->body_1 = body_1_state;
         set_fast_apparent_diagnostic(diagnostic, TAIYIN_STATUS_OK, 0, context->observer_id, jd_tdb);
         return TAIYIN_STATUS_OK;
     }
@@ -1729,9 +1775,14 @@ Status eval_fast_apparent_body_tdb(
             output_matrix[i] = options.correction_sample->matrix[i];
             output_matrix_dot[i] = options.correction_sample->matrix_dot[i];
         }
-    } else if (!calc_apparent_matrices(
+    } else {
+        uint32_t matrix_flags = apparent_options.flags;
+        if (options.with_velocity && !options.include_output_frame_velocity) {
+            matrix_flags &= ~TAIYIN_APPARENT_VELOCITY;
+        }
+        if (!calc_apparent_matrices(
             jd_tt,
-            apparent_options.flags,
+            matrix_flags,
             apparent_options.output_frame_id,
             context->model_context.precession_model_id,
             context->model_context.nutation_model_id,
@@ -1753,7 +1804,8 @@ Status eval_fast_apparent_body_tdb(
             nullptr,
             apparent_options.custom_output_frame_evaluator,
             apparent_options.custom_output_frame_data)) {
-        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+            return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        }
     }
 
     uint32_t observer_eval_flags = apparent_options.flags;
@@ -1820,9 +1872,7 @@ Status eval_fast_apparent_body_tdb(
         if (!corrected) {
             return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
         }
-    } else {
-        Vector3 position;
-        if (!eval_fast_apparent_target_position_direct(
+    } else if (!eval_fast_apparent_target_state_direct(
                 jd_tdb,
                 body_id,
                 &target_block,
@@ -1841,14 +1891,13 @@ Status eval_fast_apparent_body_tdb(
                 apparent_options.max_light_time_iterations,
                 apparent_options.light_time_tolerance_days,
                 matrix,
-                &position)) {
+                matrix_dot,
+                out)) {
             const Status status = target_data.evaluated && target_data.last_status != TAIYIN_STATUS_OK
                 ? target_data.last_status
                 : TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
             set_fast_apparent_diagnostic(diagnostic, status, body_id, context->observer_id, jd_tdb);
             return status;
-        }
-        out->position_au = position;
     }
     set_fast_apparent_diagnostic(diagnostic, TAIYIN_STATUS_OK, body_id, context->observer_id, jd_tdb);
     return TAIYIN_STATUS_OK;

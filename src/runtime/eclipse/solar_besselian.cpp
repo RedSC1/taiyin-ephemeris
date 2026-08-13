@@ -1,6 +1,7 @@
 #include "taiyin/runtime/eclipse_search.h"
 
 #include "runtime/eclipse/eclipse_time.h"
+#include "runtime/eclipse/solar_apparent_snapshot.h"
 #include "runtime/apparent/fast_apparent.h"
 
 #include "taiyin/body_id.h"
@@ -157,6 +158,84 @@ Status eval_solar_equatorial_vectors_km(
     return TAIYIN_STATUS_OK;
 }
 
+Status eval_solar_equatorial_states_km(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    double moon_km[3],
+    double sun_km[3],
+    double moon_velocity_km_per_day[3],
+    double sun_velocity_km_per_day[3],
+    SolarApparentSnapshot* out_snapshot,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !moon_km || !sun_km || !moon_velocity_km_per_day || !sun_velocity_km_per_day) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    const double tdb_minus_tt = dispatch::eval_tdb(
+        context->model_context.tdb_model_id, jd_tt, 0);
+    SplitJulianDate jd_tdb = jd_tt;
+    if (!add_seconds_to_split_jd(jd_tdb, tdb_minus_tt, &jd_tdb)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    FastApparentOptions pair_options;
+    pair_options.frame = FAST_APPARENT_TRUE_EQUATOR_OF_DATE;
+    pair_options.with_velocity = true;
+    // Besselian x/y rates are a local shadow-geometry derivative.  One
+    // caller-selected true-of-date matrix is sufficient for that interval;
+    // requesting its central finite-difference rate would otherwise rebuild
+    // the same precession/nutation matrix three times.
+    pair_options.include_output_frame_velocity = false;
+    pair_options.true_position = (flags & TAIYIN_ECLIPSE_TRUEPOS) != 0;
+    FastApparentCorrectionEpochSample correction_sample;
+    if (corrections) {
+        FastApparentCorrectionConfig correction_config;
+        Status correction_status =
+            get_fast_correction(
+                context,
+                TAIYIN_BODY_MOON,
+                TAIYIN_BODY_SUN,
+                pair_options,
+                correction_config,
+                jd_tt,
+                corrections,
+                diagnostic,
+                &correction_sample);
+        if (correction_status != TAIYIN_STATUS_OK) return correction_status;
+        pair_options.correction_sample = &correction_sample;
+    }
+    FastApparentBody2State pair;
+    Status st = eval_fast_apparent_body_2_tdb(
+        context, jd_tdb, jd_tt, TAIYIN_BODY_MOON, TAIYIN_BODY_SUN, pair_options, &pair, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    moon_km[0] = pair.body_0.position_au.x * kAuKm;
+    moon_km[1] = pair.body_0.position_au.y * kAuKm;
+    moon_km[2] = pair.body_0.position_au.z * kAuKm;
+    sun_km[0] = pair.body_1.position_au.x * kAuKm;
+    sun_km[1] = pair.body_1.position_au.y * kAuKm;
+    sun_km[2] = pair.body_1.position_au.z * kAuKm;
+    moon_velocity_km_per_day[0] = pair.body_0.velocity_au_per_day.x * kAuKm;
+    moon_velocity_km_per_day[1] = pair.body_0.velocity_au_per_day.y * kAuKm;
+    moon_velocity_km_per_day[2] = pair.body_0.velocity_au_per_day.z * kAuKm;
+    sun_velocity_km_per_day[0] = pair.body_1.velocity_au_per_day.x * kAuKm;
+    sun_velocity_km_per_day[1] = pair.body_1.velocity_au_per_day.y * kAuKm;
+    sun_velocity_km_per_day[2] = pair.body_1.velocity_au_per_day.z * kAuKm;
+    if (out_snapshot) {
+        out_snapshot->jd_tt = jd_tt;
+        out_snapshot->eclipse_flags = flags;
+        for (int i = 0; i < 3; ++i) {
+            out_snapshot->moon_km[i] = moon_km[i];
+            out_snapshot->sun_km[i] = sun_km[i];
+            out_snapshot->moon_velocity_km_per_day[i] = moon_velocity_km_per_day[i];
+            out_snapshot->sun_velocity_km_per_day[i] = sun_velocity_km_per_day[i];
+        }
+    }
+    return TAIYIN_STATUS_OK;
+}
+
 Status compute_solar_besselian_elements_tt_impl(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
@@ -225,6 +304,130 @@ Status compute_solar_besselian_elements_tt_impl(
     out->tan_f1 = tan_f1;
     out->tan_f2 = tan_f2;
     out->gamma = std::hypot(x, y);
+    return TAIYIN_STATUS_OK;
+}
+
+Status compute_solar_besselian_elements_and_velocity_tt_impl(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    double t_hours,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    SolarBesselianElements* out,
+    double* out_x_velocity_per_day,
+    double* out_y_velocity_per_day,
+    SolarApparentSnapshot* out_snapshot,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (context == nullptr || out == nullptr || out_x_velocity_per_day == nullptr
+        || out_y_velocity_per_day == nullptr || !split_julian_date_is_finite(jd_tt)
+        || !std::isfinite(t_hours)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    std::memset(out, 0, sizeof(*out));
+
+    double moon_km[3] = {};
+    double sun_km[3] = {};
+    double moon_velocity_km_per_day[3] = {};
+    double sun_velocity_km_per_day[3] = {};
+    Status st = eval_solar_equatorial_states_km(
+        context, jd_tt, flags, corrections, moon_km, sun_km,
+        moon_velocity_km_per_day, sun_velocity_km_per_day, out_snapshot, diagnostic);
+    if (st != TAIYIN_STATUS_OK) return st;
+
+    double axis_unit[3] = {
+        moon_km[0] - sun_km[0],
+        moon_km[1] - sun_km[1],
+        moon_km[2] - sun_km[2]
+    };
+    const double sun_moon_km = norm3(axis_unit);
+    if (!normalize3(axis_unit) || !(sun_moon_km > 0.0)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+    const double axis_velocity_km_per_day[3] = {
+        moon_velocity_km_per_day[0] - sun_velocity_km_per_day[0],
+        moon_velocity_km_per_day[1] - sun_velocity_km_per_day[1],
+        moon_velocity_km_per_day[2] - sun_velocity_km_per_day[2]
+    };
+    const double radial_axis_velocity = dot3(axis_unit, axis_velocity_km_per_day);
+    const double axis_unit_velocity[3] = {
+        (axis_velocity_km_per_day[0] - axis_unit[0] * radial_axis_velocity) / sun_moon_km,
+        (axis_velocity_km_per_day[1] - axis_unit[1] * radial_axis_velocity) / sun_moon_km,
+        (axis_velocity_km_per_day[2] - axis_unit[2] * radial_axis_velocity) / sun_moon_km
+    };
+
+    const double z_axis[3] = {0.0, 0.0, 1.0};
+    const double x_axis[3] = {1.0, 0.0, 0.0};
+    const double* reference_axis = z_axis;
+    double x_raw[3] = {};
+    cross3(reference_axis, axis_unit, x_raw);
+    if (norm3(x_raw) < 1e-12) {
+        reference_axis = x_axis;
+        cross3(reference_axis, axis_unit, x_raw);
+    }
+    const double x_raw_norm = norm3(x_raw);
+    if (!(x_raw_norm > 0.0) || !std::isfinite(x_raw_norm)) {
+        return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    }
+    const double x_hat[3] = {
+        x_raw[0] / x_raw_norm, x_raw[1] / x_raw_norm, x_raw[2] / x_raw_norm};
+    double x_raw_velocity[3] = {};
+    cross3(reference_axis, axis_unit_velocity, x_raw_velocity);
+    const double x_norm_velocity = dot3(x_hat, x_raw_velocity);
+    const double x_hat_velocity[3] = {
+        (x_raw_velocity[0] - x_hat[0] * x_norm_velocity) / x_raw_norm,
+        (x_raw_velocity[1] - x_hat[1] * x_norm_velocity) / x_raw_norm,
+        (x_raw_velocity[2] - x_hat[2] * x_norm_velocity) / x_raw_norm};
+    double y_hat[3] = {};
+    cross3(axis_unit, x_hat, y_hat);
+    if (!normalize3(y_hat)) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+    double y_hat_velocity[3] = {};
+    double term[3] = {};
+    cross3(axis_unit_velocity, x_hat, y_hat_velocity);
+    cross3(axis_unit, x_hat_velocity, term);
+    y_hat_velocity[0] += term[0];
+    y_hat_velocity[1] += term[1];
+    y_hat_velocity[2] += term[2];
+
+    const double zeta_km = -dot3(moon_km, axis_unit);
+    const double x = dot3(moon_km, x_hat) / TAIYIN_WGS84_A_KM;
+    const double y = dot3(moon_km, y_hat) / TAIYIN_WGS84_A_KM;
+    const double x_velocity = (dot3(moon_velocity_km_per_day, x_hat)
+        + dot3(moon_km, x_hat_velocity)) / TAIYIN_WGS84_A_KM;
+    const double y_velocity = (dot3(moon_velocity_km_per_day, y_hat)
+        + dot3(moon_km, y_hat_velocity)) / TAIYIN_WGS84_A_KM;
+    const double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
+    const double tan_f1 = (kSunRadiusKm + moon_radius) / sun_moon_km;
+    const double tan_f2 = (kSunRadiusKm - moon_radius) / sun_moon_km;
+    const double l1 = (moon_radius + zeta_km * tan_f1) / TAIYIN_WGS84_A_KM;
+    const double l2 = (moon_radius - zeta_km * tan_f2) / TAIYIN_WGS84_A_KM;
+    const double ra_deg = normalize_degrees(std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / M_PI);
+    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / M_PI;
+    SplitJulianDate jd_ut;
+    const Status time_status = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
+    if (time_status != TAIYIN_STATUS_OK) return time_status;
+    double gast_rad = 0.0;
+    if (!context_gast_rad(context, jd_ut, jd_tt, &gast_rad)) return TAIYIN_ERROR_UNSUPPORTED;
+    if (out_snapshot) {
+        out_snapshot->jd_ut = jd_ut;
+        out_snapshot->gast_rad = gast_rad;
+    }
+
+    out->t_hours = t_hours;
+    out->x = x;
+    out->y = y;
+    out->zeta = zeta_km / TAIYIN_WGS84_A_KM;
+    out->d_deg = dec_deg;
+    out->mu_deg = normalize_degrees(gast_rad * 180.0 / M_PI - ra_deg);
+    out->l1 = l1;
+    out->l2 = l2;
+    out->f1_deg = std::atan(tan_f1) * 180.0 / M_PI;
+    out->f2_deg = std::atan(tan_f2) * 180.0 / M_PI;
+    out->tan_f1 = tan_f1;
+    out->tan_f2 = tan_f2;
+    out->gamma = std::hypot(x, y);
+    *out_x_velocity_per_day = x_velocity;
+    *out_y_velocity_per_day = y_velocity;
     return TAIYIN_STATUS_OK;
 }
 
@@ -335,6 +538,23 @@ bool context_gast_rad(
 // ===========================================================================
 // Public API
 // ===========================================================================
+Status compute_solar_besselian_elements_and_velocity_tt_with_corrections(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    double t_hours,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    SolarBesselianElements* out,
+    double* out_x_velocity_per_day,
+    double* out_y_velocity_per_day,
+    SolarApparentSnapshot* out_snapshot,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    return compute_solar_besselian_elements_and_velocity_tt_impl(
+        context, jd_tt, t_hours, flags, corrections, out,
+        out_x_velocity_per_day, out_y_velocity_per_day, out_snapshot, diagnostic);
+}
+
 Status eval_solar_eclipse_equatorial_vectors_km(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,

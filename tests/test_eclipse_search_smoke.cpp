@@ -1383,6 +1383,67 @@ int main() {
         if (expect_close_value(
                 where.center_line.longitude_deg, row.center_line.longitude_deg,
                 0.1, "lightweight route center longitude")) return 1;
+        // ``where`` derives the shadow-axis velocity analytically from the
+        // same apparent Sun/Moon state. Keep its map limits aligned with the
+        // detailed route-row API, so this fast path cannot silently trade
+        // geometry for speed.
+        if (expect_close_value(
+                where.penumbral_north_limit.latitude_deg, row.penumbral_north_limit.latitude_deg,
+                0.001, "lightweight penumbral north latitude")) return 1;
+        if (expect_close_value(
+                where.penumbral_south_limit.latitude_deg, row.penumbral_south_limit.latitude_deg,
+                0.001, "lightweight penumbral south latitude")) return 1;
+        if (expect_close_value(
+                where.north_limit.latitude_deg, row.north_limit.latitude_deg,
+                0.001, "lightweight core north latitude")) return 1;
+        if (expect_close_value(
+                where.south_limit.latitude_deg, row.south_limit.latitude_deg,
+                0.001, "lightweight core south latitude")) return 1;
+
+        // ``where`` reuses the canonical apparent Sun/Moon snapshot produced
+        // for its Besselian geometry.  Its center-point circumstances must be
+        // indistinguishable from an independent public local calculation at
+        // the same TT epoch and observer location.
+        NativeCalcContext where_center_ctx = ctx;
+        if (expect_status(
+                native_context_set_observer_location(
+                    &where_center_ctx,
+                    native_observer_location_degrees(
+                        where.center_line.longitude_deg,
+                        where.center_line.latitude_deg,
+                        0.0)),
+                "set lightweight where center observer")) {
+            return 1;
+        }
+        LocalSolarEclipseCircumstances independent_where_center;
+        if (expect_status(
+                compute_local_solar_circumstances_tt(
+                    &where_center_ctx, where.jd_tt,
+                    &independent_where_center, &diag),
+                "independent lightweight where center circumstances")) {
+            return 1;
+        }
+        if (expect_close_value(
+                where.magnitude, independent_where_center.magnitude,
+                1e-12, "snapshot where center magnitude")) return 1;
+        if (expect_close_value(
+                where.obscuration, independent_where_center.obscuration,
+                1e-12, "snapshot where center obscuration")) return 1;
+        if (expect_close_value(
+                where.center_separation_deg, independent_where_center.center_separation_deg,
+                1e-12, "snapshot where center separation")) return 1;
+        if (expect_close_value(
+                where.sun_angular_radius_deg, independent_where_center.sun_angular_radius_deg,
+                1e-12, "snapshot where center solar radius")) return 1;
+        if (expect_close_value(
+                where.moon_angular_radius_deg, independent_where_center.moon_angular_radius_deg,
+                1e-12, "snapshot where center lunar radius")) return 1;
+        if (expect_close_value(
+                where.center_line.sun_altitude_deg, independent_where_center.sun_altitude_deg,
+                1e-12, "snapshot where center solar altitude")) return 1;
+        if (expect_close_value(
+                where.center_line.sun_azimuth_deg, independent_where_center.sun_azimuth_deg,
+                1e-12, "snapshot where center solar azimuth")) return 1;
 
         NativeCalcContext mean_moon_ctx = ctx;
         mean_moon_ctx.eclipse_moon_radius_model_id =

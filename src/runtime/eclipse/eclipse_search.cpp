@@ -4,6 +4,7 @@
 #include "runtime/apparent/fast_apparent.h"
 #include "runtime/eclipse/solar_shadow_geometry.h"
 #include "runtime/eclipse/solar_route_geometry.h"
+#include "runtime/eclipse/solar_apparent_snapshot.h"
 
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
@@ -60,6 +61,19 @@ Status compute_solar_besselian_elements_tt_with_corrections(
     uint64_t flags,
     FastApparentCorrectionSeries* corrections,
     SolarBesselianElements* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+Status compute_solar_besselian_elements_and_velocity_tt_with_corrections(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    double t_hours,
+    uint64_t flags,
+    FastApparentCorrectionSeries* corrections,
+    SolarBesselianElements* out,
+    double* out_x_velocity_per_day,
+    double* out_y_velocity_per_day,
+    SolarApparentSnapshot* out_snapshot,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept;
 
@@ -1460,6 +1474,7 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
     double vy_per_day,
     bool compute_metrics,
     bool include_half_magnitude_limits,
+    const SolarApparentSnapshot* apparent_snapshot,
     SolarEclipseRouteRow* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
@@ -1469,12 +1484,26 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
 
     init_route_row(out);
     out->jd_tt = jd_tt;
-    Status st = eclipse_tt_to_ut(*context, jd_tt, &out->jd_ut, nullptr, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
+    Status st = TAIYIN_STATUS_OK;
+    if (apparent_snapshot) {
+        out->jd_ut = apparent_snapshot->jd_ut;
+    } else {
+        st = eclipse_tt_to_ut(*context, jd_tt, &out->jd_ut, nullptr, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+    }
 
     solar_route_geometry::Frame I;
-    st = route_frame_from_besselian_elements(context, jd_tt, e, &I, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
+    if (apparent_snapshot) {
+        const double mu = e.mu_deg * M_PI / 180.0;
+        const double dec = e.d_deg * M_PI / 180.0;
+        const double ra = apparent_snapshot->gast_rad - mu;
+        I.right_ascension_offset_rad = ra - M_PI / 2.0;
+        I.pole_rotation_rad = M_PI / 2.0 + dec;
+        I.gast_rad = apparent_snapshot->gast_rad;
+    } else {
+        st = route_frame_from_besselian_elements(context, jd_tt, e, &I, diagnostic);
+        if (st != TAIYIN_STATUS_OK) return st;
+    }
     const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
     RouteLunarLimbGeometry limb_geometry;
     st = prepare_route_lunar_limb_geometry(
@@ -1719,23 +1748,15 @@ static Status compute_solar_eclipse_route_row_tt_impl(
     }
 
     SolarBesselianElements e;
-    Status st = compute_solar_besselian_elements_tt_with_corrections(
-        context, jd_tt, 0.0, flags, nullptr, &e, diagnostic);
+    double x_velocity_per_day = 0.0;
+    double y_velocity_per_day = 0.0;
+    Status st = compute_solar_besselian_elements_and_velocity_tt_with_corrections(
+        context, jd_tt, 0.0, flags, nullptr, &e,
+        &x_velocity_per_day, &y_velocity_per_day, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-
-    const double velocity_step_days = 0.04;
-    SolarBesselianElements before;
-    SolarBesselianElements after;
-    st = compute_solar_besselian_elements_tt_with_corrections(
-        context, jd_tt - velocity_step_days, 0.0, flags, nullptr, &before, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
-    st = compute_solar_besselian_elements_tt_with_corrections(
-        context, jd_tt + velocity_step_days, 0.0, flags, nullptr, &after, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
-    const double vx_per_day = ((-after.x) - (-before.x)) / (2.0 * velocity_step_days);
-    const double vy_per_day = (after.y - before.y) / (2.0 * velocity_step_days);
     st = compute_solar_eclipse_route_row_from_elements_tt(
-        context, jd_tt, flags, e, vx_per_day, vy_per_day, true, true, out, diagnostic);
+        context, jd_tt, flags, e, -x_velocity_per_day, y_velocity_per_day,
+        true, true, nullptr, out, diagnostic);
     if (st != TAIYIN_STATUS_OK || !refine_closed_path_width
         || !std::isfinite(out->center_line.latitude_deg)
         || !(out->sun_altitude_deg < 12.0)) {
@@ -1803,25 +1824,17 @@ Status compute_solar_eclipse_where_tt(
     init_solar_eclipse_where(out);
 
     SolarBesselianElements elements;
-    Status st = compute_solar_besselian_elements_tt_with_corrections(
-        context, jd_tt, 0.0, flags, nullptr, &elements, diagnostic);
+    SolarApparentSnapshot apparent_snapshot;
+    double x_velocity_per_day = 0.0;
+    double y_velocity_per_day = 0.0;
+    Status st = compute_solar_besselian_elements_and_velocity_tt_with_corrections(
+        context, jd_tt, 0.0, flags, nullptr, &elements,
+        &x_velocity_per_day, &y_velocity_per_day, &apparent_snapshot, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
-
-    const double velocity_step_days = 0.04;
-    SolarBesselianElements before;
-    SolarBesselianElements after;
-    st = compute_solar_besselian_elements_tt_with_corrections(
-        context, jd_tt - velocity_step_days, 0.0, flags, nullptr, &before, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
-    st = compute_solar_besselian_elements_tt_with_corrections(
-        context, jd_tt + velocity_step_days, 0.0, flags, nullptr, &after, diagnostic);
-    if (st != TAIYIN_STATUS_OK) return st;
-
-    const double vx_per_day = ((-after.x) - (-before.x)) / (2.0 * velocity_step_days);
-    const double vy_per_day = (after.y - before.y) / (2.0 * velocity_step_days);
     SolarEclipseRouteRow geometry;
     st = compute_solar_eclipse_route_row_from_elements_tt(
-        context, jd_tt, flags, elements, vx_per_day, vy_per_day, false, false, &geometry, diagnostic);
+        context, jd_tt, flags, elements, -x_velocity_per_day, y_velocity_per_day,
+        false, false, &apparent_snapshot, &geometry, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
     out->jd_tt = geometry.jd_tt;
@@ -1835,9 +1848,10 @@ Status compute_solar_eclipse_where_tt(
     if (std::isfinite(out->center_line.longitude_deg)
         && std::isfinite(out->center_line.latitude_deg)) {
         LocalSolarEclipseCircumstances circumstances;
-        st = compute_local_solar_circumstances_tt_with_options(
-            context, jd_tt, out->center_line.longitude_deg, out->center_line.latitude_deg,
-            0.0, flags, nullptr, &circumstances, diagnostic);
+        st = compute_local_solar_circumstances_from_apparent_snapshot_tt(
+            context, apparent_snapshot,
+            out->center_line.longitude_deg, out->center_line.latitude_deg,
+            0.0, &circumstances, diagnostic);
         if (st != TAIYIN_STATUS_OK) return st;
         out->center_line.sun_altitude_deg = circumstances.sun_altitude_deg;
         out->center_line.sun_azimuth_deg = circumstances.sun_azimuth_deg;

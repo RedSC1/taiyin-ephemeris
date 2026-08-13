@@ -22,12 +22,17 @@ struct FastApparentCorrectionEpochSample;
 struct FastApparentOptions {
     FastApparentFrame frame;
     bool with_velocity;
+    // Whether output velocities include the instantaneous derivative of the
+    // requested output-frame matrix.  Event geometry can intentionally keep
+    // one frame matrix fixed while differentiating a short local interval.
+    bool include_output_frame_velocity;
     bool true_position;
     const FastApparentCorrectionEpochSample* correction_sample;
 
     FastApparentOptions() noexcept
         : frame(FAST_APPARENT_TRUE_EQUATOR_OF_DATE),
           with_velocity(false),
+          include_output_frame_velocity(true),
           true_position(false),
           correction_sample(nullptr) {}
 };

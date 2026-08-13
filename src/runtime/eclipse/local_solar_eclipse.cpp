@@ -1,6 +1,7 @@
 #include "taiyin/runtime/eclipse_search.h"
 
 #include "runtime/eclipse/eclipse_time.h"
+#include "runtime/eclipse/solar_apparent_snapshot.h"
 #include "runtime/eclipse/solar_route_geometry.h"
 #include "runtime/apparent/fast_apparent.h"
 
@@ -334,6 +335,77 @@ double angular_separation_rad(const double a[3], const double b[3]) noexcept {
     return std::acos(cos_sep);
 }
 
+Status eval_local_topocentric_geometry_from_vectors(
+    const NativeCalcContext* context,
+    SplitJulianDate jd_tt,
+    const double moon_km[3],
+    const double sun_km[3],
+    const double* known_gast_rad,
+    double longitude_rad,
+    double latitude_rad,
+    double height_m,
+    double* out_separation_deg,
+    double* out_sun_radius_deg,
+    double* out_moon_radius_deg,
+    double* out_sun_altitude_deg,
+    double* out_sun_azimuth_deg,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !moon_km || !sun_km
+        || !out_separation_deg || !out_sun_radius_deg || !out_moon_radius_deg
+        || !out_sun_altitude_deg || !out_sun_azimuth_deg) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    double sidereal_rad = 0.0;
+    double observer_km[3] = {};
+    if (known_gast_rad) {
+        if (!std::isfinite(*known_gast_rad)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        sidereal_rad = *known_gast_rad;
+        const Vector3 ecef_m = geodetic_to_ecef_m(longitude_rad, latitude_rad, height_m);
+        const Vector3 equatorial_m = rotate_z(ecef_m, sidereal_rad);
+        observer_km[0] = equatorial_m.x / 1000.0;
+        observer_km[1] = equatorial_m.y / 1000.0;
+        observer_km[2] = equatorial_m.z / 1000.0;
+    } else {
+        SplitJulianDate jd_ut;
+        Status time_status = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
+        if (time_status != TAIYIN_STATUS_OK) return time_status;
+        if (!context_observer_true_equator_km(
+                context, jd_ut, jd_tt, longitude_rad, latitude_rad, height_m,
+                observer_km, &sidereal_rad)) {
+            return TAIYIN_ERROR_UNSUPPORTED;
+        }
+    }
+
+    const double topo_sun[3] = {
+        sun_km[0] - observer_km[0],
+        sun_km[1] - observer_km[1],
+        sun_km[2] - observer_km[2]
+    };
+    const double topo_moon[3] = {
+        moon_km[0] - observer_km[0],
+        moon_km[1] - observer_km[1],
+        moon_km[2] - observer_km[2]
+    };
+    const double sun_dist_km = norm3(topo_sun);
+    const double moon_dist_km = norm3(topo_moon);
+    const double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
+
+    *out_separation_deg = angular_separation_rad(topo_sun, topo_moon) * 180.0 / M_PI;
+    *out_sun_radius_deg = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / M_PI;
+    *out_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / M_PI;
+
+    const Vector3 topo_sun_au = {
+        topo_sun[0] / kAuKm, topo_sun[1] / kAuKm, topo_sun[2] / kAuKm};
+    const double lst_rad = sidereal_rad + longitude_rad;
+    const HorizontalCoordinates horiz = topocentric_position_to_horizontal(
+        topo_sun_au, lst_rad, latitude_rad);
+    *out_sun_altitude_deg = horiz.altitude_rad * 180.0 / M_PI;
+    *out_sun_azimuth_deg = horiz.azimuth_rad * 180.0 / M_PI;
+    return TAIYIN_STATUS_OK;
+}
+
 Status eval_local_topocentric_geometry(
     const NativeCalcContext* context,
     SplitJulianDate jd_tt,
@@ -360,48 +432,11 @@ Status eval_local_topocentric_geometry(
         context, jd_tt, flags, corrections, moon_km, sun_km, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
 
-    SplitJulianDate jd_ut;
-    Status time_status = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
-    if (time_status != TAIYIN_STATUS_OK) return time_status;
-    double sidereal_rad = 0.0;
-    double observer_km[3] = {};
-    if (!context_observer_true_equator_km(
-            context,
-            jd_ut,
-            jd_tt,
-            longitude_rad,
-            latitude_rad,
-            height_m,
-            observer_km,
-            &sidereal_rad)) {
-        return TAIYIN_ERROR_UNSUPPORTED;
-    }
-
-    double topo_sun[3] = {
-        sun_km[0] - observer_km[0],
-        sun_km[1] - observer_km[1],
-        sun_km[2] - observer_km[2]
-    };
-    double topo_moon[3] = {
-        moon_km[0] - observer_km[0],
-        moon_km[1] - observer_km[1],
-        moon_km[2] - observer_km[2]
-    };
-    const double sun_dist_km = norm3(topo_sun);
-    const double moon_dist_km = norm3(topo_moon);
-    const double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
-
-    *out_separation_deg = angular_separation_rad(topo_sun, topo_moon) * 180.0 / M_PI;
-    *out_sun_radius_deg = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / M_PI;
-    *out_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / M_PI;
-
-    Vector3 topo_sun_au = {topo_sun[0] / kAuKm, topo_sun[1] / kAuKm, topo_sun[2] / kAuKm};
-    const double lst_rad = sidereal_rad + longitude_rad;
-    HorizontalCoordinates horiz = topocentric_position_to_horizontal(
-        topo_sun_au, lst_rad, latitude_rad);
-    *out_sun_altitude_deg = horiz.altitude_rad * 180.0 / M_PI;
-    *out_sun_azimuth_deg = horiz.azimuth_rad * 180.0 / M_PI;
-    return TAIYIN_STATUS_OK;
+    return eval_local_topocentric_geometry_from_vectors(
+        context, jd_tt, moon_km, sun_km, nullptr,
+        longitude_rad, latitude_rad, height_m,
+        out_separation_deg, out_sun_radius_deg, out_moon_radius_deg,
+        out_sun_altitude_deg, out_sun_azimuth_deg, diagnostic);
 }
 
 Status eval_local_topocentric_separation_radii(
@@ -520,6 +555,49 @@ double solar_obscuration(double separation_deg, double sun_radius_deg, double mo
             (-d + r_sun + r_moon) * (d + r_sun - r_moon)
             * (d - r_sun + r_moon) * (d + r_sun + r_moon)));
     return lens / (M_PI * r_sun * r_sun);
+}
+
+Status compute_local_solar_circumstances_from_apparent_snapshot_tt(
+    const NativeCalcContext* context,
+    const SolarApparentSnapshot& snapshot,
+    double longitude_deg,
+    double latitude_deg,
+    double height_m,
+    LocalSolarEclipseCircumstances* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (!context || !out || !split_julian_date_is_finite(snapshot.jd_tt)
+        || !std::isfinite(longitude_deg) || !std::isfinite(latitude_deg)
+        || !std::isfinite(height_m)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    std::memset(out, 0, sizeof(*out));
+    out->jd_tt = snapshot.jd_tt;
+    Status status = eval_local_topocentric_geometry_from_vectors(
+        context,
+        snapshot.jd_tt,
+        snapshot.moon_km,
+        snapshot.sun_km,
+        &snapshot.gast_rad,
+        longitude_deg * M_PI / 180.0,
+        latitude_deg * M_PI / 180.0,
+        height_m,
+        &out->center_separation_deg,
+        &out->sun_angular_radius_deg,
+        &out->moon_angular_radius_deg,
+        &out->sun_altitude_deg,
+        &out->sun_azimuth_deg,
+        diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    out->magnitude = solar_magnitude(
+        out->center_separation_deg,
+        out->sun_angular_radius_deg,
+        out->moon_angular_radius_deg);
+    out->obscuration = solar_obscuration(
+        out->center_separation_deg,
+        out->sun_angular_radius_deg,
+        out->moon_angular_radius_deg);
+    return TAIYIN_STATUS_OK;
 }
 
 void init_local_solar_contacts(LocalSolarEclipseResult* out) noexcept {
