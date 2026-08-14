@@ -22,13 +22,17 @@ namespace taiyin {
 namespace runtime {
 namespace {
 
+const size_t kInlineNativeDeflectorCapacity = 4u;
+
 struct ResolvedNativeCalcContext {
     ApparentOptions options;
     FieldSet fields;
     AstroModelContext models;
     dispatch::PrecessionModelEntry precession;
     dispatch::NutationModelEntry nutation;
-    std::vector<ApparentDeflector> deflectors;
+    ApparentDeflector inline_deflectors[kInlineNativeDeflectorCapacity];
+    std::vector<ApparentDeflector> overflow_deflectors;
+    size_t deflector_count;
     int solar_deflector_index;
 
     ResolvedNativeCalcContext() noexcept
@@ -37,8 +41,18 @@ struct ResolvedNativeCalcContext {
           models(),
           precession(),
           nutation(),
-          deflectors(),
+          inline_deflectors(),
+          overflow_deflectors(),
+          deflector_count(0u),
           solar_deflector_index(-1) {}
+
+    bool deflectors_empty() const noexcept { return deflector_count == 0u; }
+
+    const ApparentDeflector& deflector(size_t index) const noexcept {
+        return deflector_count <= kInlineNativeDeflectorCapacity
+            ? inline_deflectors[index]
+            : overflow_deflectors[index];
+    }
 };
 
 const uint32_t SUPPORTED_NATIVE_APPARENT_FLAGS =
@@ -148,18 +162,25 @@ Status copy_deflectors(
     const ApparentDeflector* deflectors,
     size_t deflector_count,
     int solar_deflector_index,
-    std::vector<ApparentDeflector>* out
+    ResolvedNativeCalcContext* out
 ) noexcept {
     if (!out || (!deflectors && deflector_count > 0) || !valid_solar_deflector_index(deflector_count, solar_deflector_index)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    try {
-        out->clear();
+    out->deflector_count = 0u;
+    out->overflow_deflectors.clear();
+    if (deflector_count <= kInlineNativeDeflectorCapacity) {
         for (size_t i = 0; i < deflector_count; ++i) {
-            out->push_back(deflectors[i]);
+            out->inline_deflectors[i] = deflectors[i];
         }
+        out->deflector_count = deflector_count;
+        return TAIYIN_STATUS_OK;
+    }
+    try {
+        out->overflow_deflectors.assign(deflectors, deflectors + deflector_count);
+        out->deflector_count = deflector_count;
     } catch (...) {
-        out->clear();
+        out->overflow_deflectors.clear();
         return TAIYIN_ERROR_OUT_OF_MEMORY;
     }
     return TAIYIN_STATUS_OK;
@@ -173,7 +194,9 @@ Status resolve_context(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
-    *out = ResolvedNativeCalcContext();
+    out->overflow_deflectors.clear();
+    out->deflector_count = 0u;
+    out->solar_deflector_index = -1;
     out->models = context.model_context;
     out->fields = context.fields;
     out->options = context.apparent_options;
@@ -185,7 +208,7 @@ Status resolve_context(
             context.apparent_options.deflectors,
             context.apparent_options.deflector_count,
             context.apparent_options.solar_deflector_index,
-            &out->deflectors);
+            out);
         if (deflector_status != TAIYIN_STATUS_OK) {
             return deflector_status;
         }
@@ -358,6 +381,137 @@ uint32_t runtime_observer_components_for_apparent_flags(uint32_t flags) noexcept
     return components;
 }
 
+uint32_t apparent_matrix_derivative_flags(uint32_t flags) noexcept {
+    return flags & (TAIYIN_APPARENT_VELOCITY | TAIYIN_APPARENT_ACCELERATION);
+}
+
+bool same_apparent_matrix_cache_key(
+    const NativeApparentMatrixCache& cache,
+    uint64_t dispatch_generation,
+    const SplitJulianDate& jd_tt,
+    uint32_t derivative_flags,
+    int output_frame_id,
+    int precession_model_id,
+    int nutation_model_id,
+    int obliquity_model_id,
+    int frame_route_id,
+    const ApparentOptions& options
+) noexcept {
+    return cache.valid
+        && cache.dispatch_generation == dispatch_generation
+        && cache.jd_tt == jd_tt
+        && cache.derivative_flags == derivative_flags
+        && cache.output_frame_id == output_frame_id
+        && cache.precession_model_id == precession_model_id
+        && cache.nutation_model_id == nutation_model_id
+        && cache.obliquity_model_id == obliquity_model_id
+        && cache.frame_route_id == frame_route_id
+        && cache.celestial_pole_offset_dx_rad == options.celestial_pole_offset_dx_rad
+        && cache.celestial_pole_offset_dy_rad == options.celestial_pole_offset_dy_rad
+        && cache.celestial_pole_offset_dx_rate_rad_per_day
+            == options.celestial_pole_offset_dx_rate_rad_per_day
+        && cache.celestial_pole_offset_dy_rate_rad_per_day
+            == options.celestial_pole_offset_dy_rate_rad_per_day
+        && cache.matrix_derivative_step_days == options.matrix_derivative_step_days;
+}
+
+void copy_matrix9(const double source[9], double destination[9]) noexcept {
+    for (int i = 0; i < 9; ++i) {
+        destination[i] = source[i];
+    }
+}
+
+bool prepare_apparent_matrices(
+    const NativeCalcContext& context,
+    const ResolvedNativeCalcContext& resolved,
+    const SplitJulianDate& jd_tt,
+    uint32_t apparent_flags,
+    int output_frame_id,
+    double output_matrix[9],
+    double output_matrix_dot[9],
+    double output_matrix_ddot[9]
+) noexcept {
+    if (output_frame_id == TAIYIN_APPARENT_FRAME_ICRF
+        && resolved.models.obliquity_model_id != 0) {
+        return false;
+    }
+
+    const uint32_t derivative_flags = apparent_matrix_derivative_flags(apparent_flags);
+    NativeApparentMatrixCache& cache = context.apparent_matrix_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    const bool cacheable = output_frame_id != TAIYIN_APPARENT_FRAME_CUSTOM
+        && resolved.options.custom_output_frame_evaluator == 0;
+    if (cacheable && same_apparent_matrix_cache_key(
+            cache,
+            dispatch_generation,
+            jd_tt,
+            derivative_flags,
+            output_frame_id,
+            resolved.precession.model_id,
+            resolved.nutation.model_id,
+            resolved.models.obliquity_model_id,
+            resolved.models.frame_route_id,
+            resolved.options)) {
+        copy_matrix9(cache.output_matrix, output_matrix);
+        copy_matrix9(cache.output_matrix_dot, output_matrix_dot);
+        copy_matrix9(cache.output_matrix_ddot, output_matrix_ddot);
+        return true;
+    }
+
+    double precession_matrix[9];
+    double nutation_matrix[9];
+    if (!calc_apparent_matrices(
+            jd_tt,
+            derivative_flags,
+            output_frame_id,
+            resolved.precession.model_id,
+            resolved.nutation.model_id,
+            resolved.models.obliquity_model_id,
+            resolved.models.frame_route_id,
+            resolved.options.celestial_pole_offset_dx_rad,
+            resolved.options.celestial_pole_offset_dy_rad,
+            resolved.options.celestial_pole_offset_dx_rate_rad_per_day,
+            resolved.options.celestial_pole_offset_dy_rate_rad_per_day,
+            resolved.options.matrix_derivative_step_days,
+            precession_matrix,
+            nutation_matrix,
+            output_matrix,
+            output_matrix_dot,
+            output_matrix_ddot,
+            0,
+            0,
+            0,
+            0,
+            resolved.options.custom_output_frame_evaluator,
+            resolved.options.custom_output_frame_data)) {
+        return false;
+    }
+
+    if (cacheable) {
+        cache.valid = true;
+        cache.dispatch_generation = dispatch_generation;
+        cache.jd_tt = jd_tt;
+        cache.derivative_flags = derivative_flags;
+        cache.output_frame_id = output_frame_id;
+        cache.precession_model_id = resolved.precession.model_id;
+        cache.nutation_model_id = resolved.nutation.model_id;
+        cache.obliquity_model_id = resolved.models.obliquity_model_id;
+        cache.frame_route_id = resolved.models.frame_route_id;
+        cache.celestial_pole_offset_dx_rad = resolved.options.celestial_pole_offset_dx_rad;
+        cache.celestial_pole_offset_dy_rad = resolved.options.celestial_pole_offset_dy_rad;
+        cache.celestial_pole_offset_dx_rate_rad_per_day
+            = resolved.options.celestial_pole_offset_dx_rate_rad_per_day;
+        cache.celestial_pole_offset_dy_rate_rad_per_day
+            = resolved.options.celestial_pole_offset_dy_rate_rad_per_day;
+        cache.matrix_derivative_step_days = resolved.options.matrix_derivative_step_days;
+        copy_matrix9(output_matrix, cache.output_matrix);
+        copy_matrix9(output_matrix_dot, cache.output_matrix_dot);
+        copy_matrix9(output_matrix_ddot, cache.output_matrix_ddot);
+    }
+    return true;
+}
+
 Status fail_position(
     double out[6],
     EphemerisEvalDiagnostic* diagnostic,
@@ -418,13 +572,192 @@ Status resolve_tt_to_tdb(
     if (!out_jd_tdb || !split_julian_date_is_finite(jd_tt)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.tt_valid
+        && cache.tt_dispatch_generation == dispatch_generation
+        && cache.jd_tt == jd_tt
+        && cache.tdb_model_id == context.model_context.tdb_model_id) {
+        *out_jd_tdb = cache.jd_tdb;
+        return TAIYIN_STATUS_OK;
+    }
     const double tdb_minus_tt_seconds = dispatch::eval_tdb(context.model_context.tdb_model_id, jd_tt, 0);
     SplitJulianDate jd_tdb;
     if (!std::isfinite(tdb_minus_tt_seconds)
         || !add_seconds_to_split_jd(jd_tt, tdb_minus_tt_seconds, &jd_tdb)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
+    cache.tt_valid = true;
+    cache.tt_dispatch_generation = dispatch_generation;
+    cache.jd_tt = jd_tt;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.jd_tdb = jd_tdb;
     *out_jd_tdb = jd_tdb;
+    return TAIYIN_STATUS_OK;
+}
+
+Status resolve_ut1_time_scales(
+    const NativeCalcContext& context,
+    const SplitJulianDate& jd_ut1,
+    double* out_delta_t_seconds,
+    SplitJulianDate* out_jd_tt,
+    SplitJulianDate* out_jd_tdb
+) noexcept {
+    if (!out_delta_t_seconds || !out_jd_tt || !out_jd_tdb
+        || !split_julian_date_is_finite(jd_ut1)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.ut1_valid
+        && cache.ut1_dispatch_generation == dispatch_generation
+        && cache.jd_ut1 == jd_ut1
+        && cache.delta_t_model_id == context.delta_t_model_id
+        && cache.ephemeris_family_id == context.ephemeris_family_id
+        && cache.tdb_model_id == context.model_context.tdb_model_id) {
+        *out_delta_t_seconds = cache.delta_t_seconds;
+        *out_jd_tt = cache.ut1_jd_tt;
+        *out_jd_tdb = cache.ut1_jd_tdb;
+        return TAIYIN_STATUS_OK;
+    }
+
+    const double delta_t_seconds = dispatch::eval_delta_t_with_ephemeris_correction(
+        context.delta_t_model_id,
+        context.ephemeris_family_id,
+        jd_ut1,
+        0,
+        0);
+    SplitJulianDate jd_tt;
+    if (!std::isfinite(delta_t_seconds)
+        || !ut1_to_tt_split_jd(jd_ut1, delta_t_seconds, &jd_tt)) {
+        return TAIYIN_ERROR_UNSUPPORTED;
+    }
+    SplitJulianDate jd_tdb;
+    const Status status = resolve_tt_to_tdb(context, jd_tt, &jd_tdb);
+    if (status != TAIYIN_STATUS_OK) {
+        return status;
+    }
+    cache.ut1_valid = true;
+    cache.ut1_dispatch_generation = dispatch_generation;
+    cache.jd_ut1 = jd_ut1;
+    cache.delta_t_model_id = context.delta_t_model_id;
+    cache.ephemeris_family_id = context.ephemeris_family_id;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.delta_t_seconds = delta_t_seconds;
+    cache.ut1_jd_tt = jd_tt;
+    cache.ut1_jd_tdb = jd_tdb;
+    *out_delta_t_seconds = delta_t_seconds;
+    *out_jd_tt = jd_tt;
+    *out_jd_tdb = jd_tdb;
+    return TAIYIN_STATUS_OK;
+}
+
+bool same_calendar_datetime(
+    const CalendarDateTime& lhs,
+    const CalendarDateTime& rhs
+) noexcept {
+    return lhs.year == rhs.year
+        && lhs.month == rhs.month
+        && lhs.day == rhs.day
+        && lhs.hour == rhs.hour
+        && lhs.minute == rhs.minute
+        && lhs.second == rhs.second;
+}
+
+Status resolve_utc_time_scales(
+    const NativeCalcContext& context,
+    const CalendarDateTime& datetime_utc,
+    PreciseTimeScales* out_scales,
+    TimeScaleDiagnostic* out_diagnostic,
+    NativeCalcContext* out_scratch
+) noexcept {
+    if (!out_scales || !out_diagnostic || !out_scratch) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.utc_valid
+        && cache.utc_dispatch_generation == dispatch_generation
+        && same_calendar_datetime(cache.datetime_utc, datetime_utc)
+        && cache.allow_utc_out_of_range_estimate == context.allow_utc_out_of_range_estimate
+        && cache.utc_tdb_model_id == context.model_context.tdb_model_id
+        && cache.utc_delta_t_model_id == context.delta_t_model_id
+        && cache.utc_ephemeris_family_id == context.ephemeris_family_id
+        && cache.eop_table == eop_table) {
+        *out_scales = cache.utc_scales;
+        *out_diagnostic = cache.utc_diagnostic;
+        *out_scratch = context;
+        if (cache.has_celestial_pole_offset) {
+            out_scratch->apparent_options.celestial_pole_offset_dx_rad =
+                cache.celestial_pole_offset_dx_rad;
+            out_scratch->apparent_options.celestial_pole_offset_dy_rad =
+                cache.celestial_pole_offset_dy_rad;
+            out_scratch->apparent_options.celestial_pole_offset_dx_rate_rad_per_day =
+                cache.celestial_pole_offset_dx_rate_rad_per_day;
+            out_scratch->apparent_options.celestial_pole_offset_dy_rate_rad_per_day =
+                cache.celestial_pole_offset_dy_rate_rad_per_day;
+        }
+        return TAIYIN_STATUS_OK;
+    }
+
+    TimeScaleOptions options;
+    options.allow_utc_out_of_range_estimate = context.allow_utc_out_of_range_estimate;
+    options.tdb_model_id = context.model_context.tdb_model_id;
+    options.delta_t_model_id = context.delta_t_model_id;
+    options.ephemeris_family_id = context.ephemeris_family_id;
+    options.leap_second_table = builtin_leap_second_table();
+    PreciseTimeScales scales;
+    TimeScaleDiagnostic time_diagnostic;
+    if (!make_time_scales_from_utc(
+            datetime_utc,
+            eop_table,
+            &options,
+            &scales,
+            &time_diagnostic)) {
+        *out_diagnostic = time_diagnostic;
+        return precise_time_failure_status(time_diagnostic);
+    }
+
+    *out_scratch = context;
+    const Status cpo_status = time_diagnostic.used_eop
+        ? apply_celestial_pole_offset_from_eop(out_scratch, scales.jd_utc)
+        : TAIYIN_STATUS_OK;
+    if (cpo_status != TAIYIN_STATUS_OK) {
+        return cpo_status;
+    }
+
+    cache.utc_valid = true;
+    cache.utc_dispatch_generation = dispatch_generation;
+    cache.datetime_utc = datetime_utc;
+    cache.allow_utc_out_of_range_estimate = context.allow_utc_out_of_range_estimate;
+    cache.utc_tdb_model_id = context.model_context.tdb_model_id;
+    cache.utc_delta_t_model_id = context.delta_t_model_id;
+    cache.utc_ephemeris_family_id = context.ephemeris_family_id;
+    cache.eop_table = eop_table;
+    cache.utc_scales = scales;
+    cache.utc_diagnostic = time_diagnostic;
+    cache.has_celestial_pole_offset = time_diagnostic.used_eop;
+    if (cache.has_celestial_pole_offset) {
+        cache.celestial_pole_offset_dx_rad =
+            out_scratch->apparent_options.celestial_pole_offset_dx_rad;
+        cache.celestial_pole_offset_dy_rad =
+            out_scratch->apparent_options.celestial_pole_offset_dy_rad;
+        cache.celestial_pole_offset_dx_rate_rad_per_day =
+            out_scratch->apparent_options.celestial_pole_offset_dx_rate_rad_per_day;
+        cache.celestial_pole_offset_dy_rate_rad_per_day =
+            out_scratch->apparent_options.celestial_pole_offset_dy_rate_rad_per_day;
+    }
+    cache.tt_valid = true;
+    cache.tt_dispatch_generation = dispatch_generation;
+    cache.jd_tt = scales.jd_tt;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.jd_tdb = scales.jd_tdb;
+    *out_scales = scales;
+    *out_diagnostic = time_diagnostic;
     return TAIYIN_STATUS_OK;
 }
 
@@ -495,15 +828,15 @@ Status calc_position_tdb_once(
         TAIYIN_APPARENT_ABERRATION
         | TAIYIN_APPARENT_DEFLECTION
         | TAIYIN_APPARENT_SHAPIRO_DELAY)) != 0u;
-    if (needs_deflectors && resolved.deflectors.empty()) {
+    if (needs_deflectors && resolved.deflectors_empty()) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_tdb);
     }
     if (needs_deflectors
         && (resolved.solar_deflector_index < 0
-            || static_cast<size_t>(resolved.solar_deflector_index) >= resolved.deflectors.size())) {
+            || static_cast<size_t>(resolved.solar_deflector_index) >= resolved.deflector_count)) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_tdb);
     }
-    if (resolved.deflectors.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    if (resolved.deflector_count > static_cast<size_t>(std::numeric_limits<int>::max())) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_tdb);
     }
     if ((apparent_flags & TAIYIN_APPARENT_TOPOCENTRIC) != 0u
@@ -526,45 +859,77 @@ Status calc_position_tdb_once(
     eval_context.use_global = true;
     eval_context.route_rule_id = ctx.route_rule_id;
     eval_context.route_rules = ctx.route_rules;
+    eval_context.epoch_state_cache = &ctx.ephemeris_state_cache;
+    eval_context.epoch_jd_tdb = jd_tdb;
+
+    const int ephemeris_origin_id = ctx.center_id;
 
     RuntimeCompiledBlockData target_data;
     target_data.context = eval_context;
     target_data.body_id = target_id;
-    target_data.center_id = ctx.center_id;
+    target_data.center_id = ephemeris_origin_id;
     target_data.preferred_components = runtime_components_for_apparent_flags(apparent_flags);
     RuntimeCompiledBlockData observer_data;
     observer_data.context = eval_context;
     observer_data.body_id = ctx.observer_id;
-    observer_data.center_id = ctx.center_id;
+    observer_data.center_id = ephemeris_origin_id;
     observer_data.preferred_components = runtime_observer_components_for_apparent_flags(apparent_flags);
     internal::CompiledEphemerisBlock target_block = make_runtime_compiled_block(&target_data);
     internal::CompiledEphemerisBlock observer_block = make_runtime_compiled_block(&observer_data);
 
-    std::vector<RuntimeCompiledBlockData> deflector_data;
-    std::vector<internal::CompiledEphemerisBlock> deflector_blocks;
-    std::vector<const internal::CompiledEphemerisBlock*> deflector_block_ptrs;
-    std::vector<int> deflector_ids;
-    std::vector<double> deflector_schwarzschild_radius_au;
-    std::vector<double> deflector_limit;
+    RuntimeCompiledBlockData inline_deflector_data[kInlineNativeDeflectorCapacity];
+    internal::CompiledEphemerisBlock inline_deflector_blocks[kInlineNativeDeflectorCapacity];
+    const internal::CompiledEphemerisBlock* inline_deflector_block_ptrs[kInlineNativeDeflectorCapacity];
+    int inline_deflector_ids[kInlineNativeDeflectorCapacity];
+    double inline_deflector_schwarzschild_radius_au[kInlineNativeDeflectorCapacity];
+    double inline_deflector_limit[kInlineNativeDeflectorCapacity];
+
+    std::vector<RuntimeCompiledBlockData> overflow_deflector_data;
+    std::vector<internal::CompiledEphemerisBlock> overflow_deflector_blocks;
+    std::vector<const internal::CompiledEphemerisBlock*> overflow_deflector_block_ptrs;
+    std::vector<int> overflow_deflector_ids;
+    std::vector<double> overflow_deflector_schwarzschild_radius_au;
+    std::vector<double> overflow_deflector_limit;
+
+    RuntimeCompiledBlockData* deflector_data = inline_deflector_data;
+    internal::CompiledEphemerisBlock* deflector_blocks = inline_deflector_blocks;
+    const internal::CompiledEphemerisBlock** deflector_block_ptrs =
+        inline_deflector_block_ptrs;
+    int* deflector_ids = inline_deflector_ids;
+    double* deflector_schwarzschild_radius_au =
+        inline_deflector_schwarzschild_radius_au;
+    double* deflector_limit = inline_deflector_limit;
     try {
-        deflector_data.reserve(resolved.deflectors.size());
-        deflector_blocks.reserve(resolved.deflectors.size());
-        deflector_block_ptrs.reserve(resolved.deflectors.size());
-        deflector_ids.reserve(resolved.deflectors.size());
-        deflector_schwarzschild_radius_au.reserve(resolved.deflectors.size());
-        deflector_limit.reserve(resolved.deflectors.size());
-        for (size_t i = 0; i < resolved.deflectors.size(); ++i) {
+        if (resolved.deflector_count > kInlineNativeDeflectorCapacity) {
+            overflow_deflector_data.resize(resolved.deflector_count);
+            overflow_deflector_blocks.resize(resolved.deflector_count);
+            overflow_deflector_block_ptrs.resize(resolved.deflector_count);
+            overflow_deflector_ids.resize(resolved.deflector_count);
+            overflow_deflector_schwarzschild_radius_au.resize(resolved.deflector_count);
+            overflow_deflector_limit.resize(resolved.deflector_count);
+            deflector_data = overflow_deflector_data.data();
+            deflector_blocks = overflow_deflector_blocks.data();
+            deflector_block_ptrs = overflow_deflector_block_ptrs.data();
+            deflector_ids = overflow_deflector_ids.data();
+            deflector_schwarzschild_radius_au =
+                overflow_deflector_schwarzschild_radius_au.data();
+            deflector_limit = overflow_deflector_limit.data();
+        }
+        for (size_t i = 0; i < resolved.deflector_count; ++i) {
+            const ApparentDeflector& deflector = resolved.deflector(i);
             RuntimeCompiledBlockData block_data;
             block_data.context = eval_context;
-            block_data.body_id = resolved.deflectors[i].body_id;
-            block_data.center_id = ctx.center_id;
+            block_data.body_id = deflector.body_id;
+            block_data.center_id = ephemeris_origin_id;
             block_data.preferred_components = runtime_components_for_apparent_flags(apparent_flags);
-            deflector_data.push_back(block_data);
-            deflector_blocks.push_back(make_runtime_compiled_block(&deflector_data.back()));
-            deflector_block_ptrs.push_back(&deflector_blocks.back());
-            deflector_ids.push_back(resolved.deflectors[i].body_id);
-            deflector_schwarzschild_radius_au.push_back(resolved.deflectors[i].schwarzschild_radius_au);
-            deflector_limit.push_back(resolved.deflectors[i].limit);
+            deflector_data[i] = block_data;
+            deflector_blocks[i] =
+                make_runtime_compiled_block(&deflector_data[i]);
+            deflector_block_ptrs[i] = &deflector_blocks[i];
+            deflector_ids[i] = deflector.body_id;
+            deflector_schwarzschild_radius_au[i] =
+                deflector.schwarzschild_radius_au;
+            deflector_limit[i] = deflector.limit;
         }
     } catch (...) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_OUT_OF_MEMORY, target_id, ctx.observer_id, jd_tdb);
@@ -599,9 +964,33 @@ Status calc_position_tdb_once(
     double light_time_acceleration = 0.0;
     int light_time_iterations = 0;
 
-    const bool ok = calc_apparent(
+    double output_matrix[9];
+    double output_matrix_dot[9];
+    double output_matrix_ddot[9];
+    if (!prepare_apparent_matrices(
+            ctx,
+            resolved,
+            resolved_jd_tt,
+            apparent_flags,
+            output_frame_id,
+            output_matrix,
+            output_matrix_dot,
+            output_matrix_ddot)) {
+        return fail_position(
+            out,
+            diagnostic,
+            TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED,
+            target_id,
+            ctx.observer_id,
+            jd_tdb);
+    }
+    uint32_t core_apparent_flags = apparent_flags & ~TAIYIN_APPARENT_USE_MATRIX;
+    if (output_frame_id != TAIYIN_APPARENT_FRAME_ICRF) {
+        core_apparent_flags |= TAIYIN_APPARENT_USE_MATRIX;
+    }
+
+    const bool ok = calc_apparent_with_matrix(
         jd_tdb,
-        resolved_jd_tt,
         target_id,
         &target_block,
         ctx.observer_id,
@@ -609,29 +998,22 @@ Status calc_position_tdb_once(
         observer_offset_pos,
         observer_offset_vel,
         observer_offset_acc,
-        static_cast<int>(resolved.deflectors.size()),
+        static_cast<int>(resolved.deflector_count),
         resolved.solar_deflector_index,
-        deflector_ids.empty() ? 0 : deflector_ids.data(),
-        deflector_block_ptrs.empty() ? 0 : deflector_block_ptrs.data(),
-        deflector_schwarzschild_radius_au.empty() ? 0 : deflector_schwarzschild_radius_au.data(),
-        deflector_limit.empty() ? 0 : deflector_limit.data(),
-        apparent_flags,
-        output_frame_id,
+        resolved.deflector_count == 0u ? 0 : deflector_ids,
+        resolved.deflector_count == 0u ? 0 : deflector_block_ptrs,
+        resolved.deflector_count == 0u ? 0 : deflector_schwarzschild_radius_au,
+        resolved.deflector_count == 0u ? 0 : deflector_limit,
+        core_apparent_flags,
         resolved.options.light_time_method_id,
         resolved.options.shapiro_delay_model_id,
         resolved.options.aberration_model_id,
         resolved.options.deflection_model_id,
-        resolved.precession.model_id,
-        resolved.nutation.model_id,
-        resolved.models.obliquity_model_id,
-        resolved.models.frame_route_id,
-        resolved.options.celestial_pole_offset_dx_rad,
-        resolved.options.celestial_pole_offset_dy_rad,
-        resolved.options.celestial_pole_offset_dx_rate_rad_per_day,
-        resolved.options.celestial_pole_offset_dy_rate_rad_per_day,
         resolved.options.max_light_time_iterations,
         resolved.options.light_time_tolerance_days,
-        resolved.options.matrix_derivative_step_days,
+        output_matrix,
+        output_matrix_dot,
+        output_matrix_ddot,
         geometric_pos,
         geometric_vel,
         geometric_acc,
@@ -659,9 +1041,7 @@ Status calc_position_tdb_once(
         &light_time_days,
         &light_time_rate,
         &light_time_acceleration,
-        &light_time_iterations,
-        resolved.options.custom_output_frame_evaluator,
-        resolved.options.custom_output_frame_data);
+        &light_time_iterations);
 
     if (!ok) {
         EphemerisEvalDiagnostic failure_diagnostic;
@@ -678,7 +1058,7 @@ Status calc_position_tdb_once(
             failure_status = observer_data.last_status;
             failure_diagnostic = observer_data.last_diagnostic;
         } else {
-            for (size_t i = 0; i < deflector_data.size(); ++i) {
+            for (size_t i = 0; i < resolved.deflector_count; ++i) {
                 if (deflector_data[i].evaluated && deflector_data[i].last_status != TAIYIN_STATUS_OK) {
                     failure_status = deflector_data[i].last_status;
                     failure_diagnostic = deflector_data[i].last_diagnostic;
@@ -867,20 +1247,22 @@ Status calc_position_ut(
     if (!out || !split_julian_date_is_finite(jd_ut)) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_ut);
     }
-    const double delta_t_seconds = dispatch::eval_delta_t_with_ephemeris_correction(
-        ctx.delta_t_model_id,
-        ctx.ephemeris_family_id,
+    double delta_t_seconds = 0.0;
+    SplitJulianDate jd_tt;
+    SplitJulianDate jd_tdb;
+    const Status time_status = resolve_ut1_time_scales(
+        ctx,
         jd_ut,
-        0,
-        0);
-    return calc_position_ut_delta_t(
-        context,
-        target_id,
-        jd_ut,
-        delta_t_seconds,
-        flags,
-        out,
-        diagnostic);
+        &delta_t_seconds,
+        &jd_tt,
+        &jd_tdb);
+    (void)delta_t_seconds;
+    if (time_status != TAIYIN_STATUS_OK) {
+        return fail_position(
+            out, diagnostic, time_status, target_id, ctx.observer_id, jd_ut);
+    }
+    return calc_position_tdb(
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
 }
 
 Status calc_position_utc(
@@ -900,38 +1282,19 @@ Status calc_position_utc(
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, julian_day(datetime_utc));
     }
 
-    const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-
-    TimeScaleOptions options;
-    options.allow_utc_out_of_range_estimate =
-        ctx.allow_utc_out_of_range_estimate;
-    options.tdb_model_id = ctx.model_context.tdb_model_id;
-    options.delta_t_model_id = ctx.delta_t_model_id;
-    options.ephemeris_family_id = ctx.ephemeris_family_id;
-    options.leap_second_table = builtin_leap_second_table();
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
-    if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        const Status status = precise_time_failure_status(time_diagnostic);
+    NativeCalcContext scratch;
+    const Status time_status = resolve_utc_time_scales(
+        ctx, datetime_utc, &scales, &time_diagnostic, &scratch);
+    if (time_status != TAIYIN_STATUS_OK) {
+        const Status status = time_status;
         fail_position(out, diagnostic, status, target_id, ctx.observer_id, julian_day(datetime_utc));
         copy_time_scale_diagnostic(diagnostic, time_diagnostic);
         return status;
     }
-    NativeCalcContext scratch = ctx;
     const SplitJulianDate resolved_jd_tdb = scales.jd_tdb;
     const SplitJulianDate resolved_jd_tt = scales.jd_tt;
-    const Status cpo_status = time_diagnostic.used_eop
-        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
-        : TAIYIN_STATUS_OK;
-    if (cpo_status != TAIYIN_STATUS_OK) {
-        return fail_position(
-            out,
-            diagnostic,
-            cpo_status,
-            target_id,
-            ctx.observer_id,
-            resolved_jd_tdb);
-    }
     const Status status = calc_position_tdb(
         &scratch,
         target_id,
@@ -940,6 +1303,8 @@ Status calc_position_utc(
         flags,
         out,
         diagnostic);
+    ctx.apparent_matrix_cache = scratch.apparent_matrix_cache;
+    ctx.ephemeris_state_cache = scratch.ephemeris_state_cache;
     copy_time_scale_diagnostic(diagnostic, time_diagnostic);
     return status;
 }
@@ -1130,21 +1495,30 @@ Status calc_positions_ut(
         }
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    const double delta_t_seconds = dispatch::eval_delta_t_with_ephemeris_correction(
-        ctx.delta_t_model_id,
-        ctx.ephemeris_family_id,
+    double delta_t_seconds = 0.0;
+    SplitJulianDate jd_tt;
+    SplitJulianDate jd_tdb;
+    const Status time_status = resolve_ut1_time_scales(
+        ctx,
         jd_ut,
-        0,
-        0);
-    return calc_positions_ut_delta_t(
-        context,
-        target_ids,
-        target_count,
-        jd_ut,
-        delta_t_seconds,
-        flags,
-        out,
-        diagnostics);
+        &delta_t_seconds,
+        &jd_tt,
+        &jd_tdb);
+    (void)delta_t_seconds;
+    if (time_status != TAIYIN_STATUS_OK) {
+        for (size_t i = 0; i < target_count; ++i) {
+            clear_position_out(out + i * 6);
+            if (diagnostics) {
+                set_diagnostic(
+                    diagnostics + i, time_status, target_ids[i],
+                    ctx.observer_id, jd_ut);
+            }
+        }
+        return time_status;
+    }
+    return calc_positions_tdb(
+        context, target_ids, target_count, jd_tdb, jd_tt,
+        flags, out, diagnostics);
 }
 
 Status calc_positions_utc(
@@ -1180,19 +1554,13 @@ Status calc_positions_utc(
         }
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-
-    TimeScaleOptions options;
-    options.allow_utc_out_of_range_estimate =
-        ctx.allow_utc_out_of_range_estimate;
-    options.tdb_model_id = ctx.model_context.tdb_model_id;
-    options.delta_t_model_id = ctx.delta_t_model_id;
-    options.ephemeris_family_id = ctx.ephemeris_family_id;
-    options.leap_second_table = builtin_leap_second_table();
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
-    if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        const Status status = precise_time_failure_status(time_diagnostic);
+    NativeCalcContext scratch;
+    const Status time_status = resolve_utc_time_scales(
+        ctx, datetime_utc, &scales, &time_diagnostic, &scratch);
+    if (time_status != TAIYIN_STATUS_OK) {
+        const Status status = time_status;
         for (size_t i = 0; i < target_count; ++i) {
             clear_position_out(out + i * 6);
             if (diagnostics) {
@@ -1202,26 +1570,8 @@ Status calc_positions_utc(
         }
         return status;
     }
-    NativeCalcContext scratch = ctx;
     const SplitJulianDate resolved_jd_tdb = scales.jd_tdb;
     const SplitJulianDate resolved_jd_tt = scales.jd_tt;
-    const Status cpo_status = time_diagnostic.used_eop
-        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
-        : TAIYIN_STATUS_OK;
-    if (cpo_status != TAIYIN_STATUS_OK) {
-        for (size_t i = 0; i < target_count; ++i) {
-            clear_position_out(out + i * 6);
-            if (diagnostics) {
-                set_diagnostic(
-                    diagnostics + i,
-                    cpo_status,
-                    target_ids[i],
-                    ctx.observer_id,
-                    resolved_jd_tdb);
-            }
-        }
-        return cpo_status;
-    }
     const Status status = calc_positions_tdb(
         &scratch,
         target_ids,
@@ -1231,6 +1581,8 @@ Status calc_positions_utc(
         flags,
         out,
         diagnostics);
+    ctx.apparent_matrix_cache = scratch.apparent_matrix_cache;
+    ctx.ephemeris_state_cache = scratch.ephemeris_state_cache;
     for (size_t i = 0; diagnostics && i < target_count; ++i) {
         copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
     }
@@ -1488,13 +1840,21 @@ Status calc_state_ut(
     if (!out || !split_julian_date_is_finite(jd_ut)) {
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_ut);
     }
-    const double delta_t_seconds = dispatch::eval_delta_t_with_ephemeris_correction(
-        ctx.delta_t_model_id,
-        ctx.ephemeris_family_id,
+    double delta_t_seconds = 0.0;
+    SplitJulianDate jd_tt;
+    SplitJulianDate jd_tdb;
+    const Status time_status = resolve_ut1_time_scales(
+        ctx,
         jd_ut,
-        0,
-        0);
-    return calc_state_ut_delta_t(context, target_id, jd_ut, delta_t_seconds, flags, out, diagnostic);
+        &delta_t_seconds,
+        &jd_tt,
+        &jd_tdb);
+    (void)delta_t_seconds;
+    if (time_status != TAIYIN_STATUS_OK) {
+        return fail_state(
+            out, diagnostic, time_status, target_id, ctx.observer_id, jd_ut);
+    }
+    return calc_state_tdb(context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
 }
 
 Status calc_state_utc(
@@ -1515,38 +1875,19 @@ Status calc_state_utc(
     if (!out || !has_jd_utc) {
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, ctx.observer_id, jd_utc);
     }
-    const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-
-    TimeScaleOptions options;
-    options.allow_utc_out_of_range_estimate =
-        ctx.allow_utc_out_of_range_estimate;
-    options.tdb_model_id = ctx.model_context.tdb_model_id;
-    options.delta_t_model_id = ctx.delta_t_model_id;
-    options.ephemeris_family_id = ctx.ephemeris_family_id;
-    options.leap_second_table = builtin_leap_second_table();
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
-    if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        const Status status = precise_time_failure_status(time_diagnostic);
+    NativeCalcContext scratch;
+    const Status time_status = resolve_utc_time_scales(
+        ctx, datetime_utc, &scales, &time_diagnostic, &scratch);
+    if (time_status != TAIYIN_STATUS_OK) {
+        const Status status = time_status;
         fail_state(out, diagnostic, status, target_id, ctx.observer_id, jd_utc);
         copy_time_scale_diagnostic(diagnostic, time_diagnostic);
         return status;
     }
-    NativeCalcContext scratch = ctx;
     const SplitJulianDate resolved_jd_tdb = scales.jd_tdb;
     const SplitJulianDate resolved_jd_tt = scales.jd_tt;
-    const Status cpo_status = time_diagnostic.used_eop
-        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
-        : TAIYIN_STATUS_OK;
-    if (cpo_status != TAIYIN_STATUS_OK) {
-        return fail_state(
-            out,
-            diagnostic,
-            cpo_status,
-            target_id,
-            ctx.observer_id,
-            resolved_jd_tdb);
-    }
     const Status status = calc_state_tdb(
         &scratch,
         target_id,
@@ -1555,6 +1896,8 @@ Status calc_state_utc(
         flags,
         out,
         diagnostic);
+    ctx.apparent_matrix_cache = scratch.apparent_matrix_cache;
+    ctx.ephemeris_state_cache = scratch.ephemeris_state_cache;
     copy_time_scale_diagnostic(diagnostic, time_diagnostic);
     return status;
 }

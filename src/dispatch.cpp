@@ -1,6 +1,7 @@
 #include "taiyin/dispatch.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <mutex>
 #include <unordered_map>
@@ -21,6 +22,20 @@ void register_builtin_eclipse_shadow_wrappers();
 void register_builtin_eclipse_moon_radius_wrappers();
 void register_builtin_heliacal_visibility_wrappers();
 }  // namespace wrappers
+
+static std::atomic<uint64_t>& model_registry_generation_counter() noexcept {
+    static std::atomic<uint64_t> generation(1u);
+    return generation;
+}
+
+static void advance_model_registry_generation() noexcept {
+    const uint64_t next = model_registry_generation_counter().fetch_add(
+        1u, std::memory_order_release) + 1u;
+    if (next == 0u) {
+        model_registry_generation_counter().fetch_add(
+            1u, std::memory_order_release);
+    }
+}
 
 static bool& builtin_registration_in_progress() {
     static bool in_progress = false;
@@ -44,6 +59,11 @@ static void register_builtin_wrappers() {
         return true;
     }();
     (void)registered;
+}
+
+uint64_t model_registry_generation() noexcept {
+    register_builtin_wrappers();
+    return model_registry_generation_counter().load(std::memory_order_acquire);
 }
 
 // --- Registry storage ---
@@ -159,6 +179,7 @@ static void register_model(std::unordered_map<int, Fn>& models, int id, Fn fn) {
     if (!fn) return;
     std::lock_guard<std::mutex> lock(dispatch_mutex());
     models[id] = fn;
+    advance_model_registry_generation();
 }
 
 template <typename Fn>
@@ -319,6 +340,7 @@ void register_precession_model(int id, PrecessionFn fn) {
     if (!fn) return;
     std::lock_guard<std::mutex> lock(dispatch_mutex());
     precession_models()[id] = PrecessionModelEntry(id, fn);
+    advance_model_registry_generation();
 }
 
 bool add_precession_model(const PrecessionModelEntry& entry) noexcept {
@@ -336,6 +358,7 @@ bool add_precession_model(const PrecessionModelEntry& entry) noexcept {
     } catch (...) {
         return false;
     }
+    advance_model_registry_generation();
     return true;
 }
 
@@ -366,7 +389,10 @@ bool set_precession_priority_order(const int* model_ids, size_t count) noexcept 
             return false;
         }
     }
-    return set_priority_order_locked(precession_priority_order(), model_ids, count);
+    const bool changed = set_priority_order_locked(
+        precession_priority_order(), model_ids, count);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool push_precession_priority_model(int id) noexcept {
@@ -377,7 +403,9 @@ bool push_precession_priority_model(int id) noexcept {
     if (precession_models().find(id) == precession_models().end()) {
         return false;
     }
-    return push_priority_model_locked(precession_priority_order(), id);
+    const bool changed = push_priority_model_locked(precession_priority_order(), id);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool insert_precession_priority_model(size_t index, int id) noexcept {
@@ -388,7 +416,10 @@ bool insert_precession_priority_model(size_t index, int id) noexcept {
     if (precession_models().find(id) == precession_models().end()) {
         return false;
     }
-    return insert_priority_model_locked(precession_priority_order(), index, id);
+    const bool changed = insert_priority_model_locked(
+        precession_priority_order(), index, id);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool remove_precession_priority_model(int id) noexcept {
@@ -396,7 +427,9 @@ bool remove_precession_priority_model(int id) noexcept {
         register_builtin_wrappers();
     }
     std::lock_guard<std::mutex> lock(dispatch_mutex());
-    return remove_priority_model_locked(precession_priority_order(), id);
+    const bool changed = remove_priority_model_locked(precession_priority_order(), id);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool select_precession_model(int requested_id, PrecessionModelEntry* out) noexcept {
@@ -448,6 +481,7 @@ void register_nutation_model(int id, NutationFn fn) {
     if (!fn) return;
     std::lock_guard<std::mutex> lock(dispatch_mutex());
     nutation_models()[id] = NutationModelEntry(id, fn);
+    advance_model_registry_generation();
 }
 
 bool add_nutation_model(const NutationModelEntry& entry) noexcept {
@@ -465,6 +499,7 @@ bool add_nutation_model(const NutationModelEntry& entry) noexcept {
     } catch (...) {
         return false;
     }
+    advance_model_registry_generation();
     return true;
 }
 
@@ -495,7 +530,10 @@ bool set_nutation_priority_order(const int* model_ids, size_t count) noexcept {
             return false;
         }
     }
-    return set_priority_order_locked(nutation_priority_order(), model_ids, count);
+    const bool changed = set_priority_order_locked(
+        nutation_priority_order(), model_ids, count);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool push_nutation_priority_model(int id) noexcept {
@@ -506,7 +544,9 @@ bool push_nutation_priority_model(int id) noexcept {
     if (nutation_models().find(id) == nutation_models().end()) {
         return false;
     }
-    return push_priority_model_locked(nutation_priority_order(), id);
+    const bool changed = push_priority_model_locked(nutation_priority_order(), id);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool insert_nutation_priority_model(size_t index, int id) noexcept {
@@ -517,7 +557,10 @@ bool insert_nutation_priority_model(size_t index, int id) noexcept {
     if (nutation_models().find(id) == nutation_models().end()) {
         return false;
     }
-    return insert_priority_model_locked(nutation_priority_order(), index, id);
+    const bool changed = insert_priority_model_locked(
+        nutation_priority_order(), index, id);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool remove_nutation_priority_model(int id) noexcept {
@@ -525,7 +568,9 @@ bool remove_nutation_priority_model(int id) noexcept {
         register_builtin_wrappers();
     }
     std::lock_guard<std::mutex> lock(dispatch_mutex());
-    return remove_priority_model_locked(nutation_priority_order(), id);
+    const bool changed = remove_priority_model_locked(nutation_priority_order(), id);
+    if (changed) advance_model_registry_generation();
+    return changed;
 }
 
 bool select_nutation_model(int requested_id, NutationModelEntry* out) noexcept {
@@ -604,6 +649,7 @@ void register_delta_t_model(int id, DeltaTFn fn) {
     if (!fn) return;
     std::lock_guard<std::mutex> lock(dispatch_mutex());
     delta_t_models()[id] = DeltaTModelEntry(id, fn);
+    advance_model_registry_generation();
 }
 
 bool add_delta_t_model(const DeltaTModelEntry& entry) noexcept {
@@ -621,6 +667,7 @@ bool add_delta_t_model(const DeltaTModelEntry& entry) noexcept {
     } catch (...) {
         return false;
     }
+    advance_model_registry_generation();
     return true;
 }
 
@@ -875,6 +922,7 @@ void register_delta_t_ephemeris_correction(int correction_id, DeltaTEphemerisCor
     if (!fn) return;
     std::lock_guard<std::mutex> lock(dispatch_mutex());
     delta_t_ephemeris_corrections()[correction_id] = DeltaTEphemerisCorrectionEntry(correction_id, fn);
+    advance_model_registry_generation();
 }
 
 bool add_delta_t_ephemeris_correction(const DeltaTEphemerisCorrectionEntry& entry) noexcept {
@@ -892,6 +940,7 @@ bool add_delta_t_ephemeris_correction(const DeltaTEphemerisCorrectionEntry& entr
     } catch (...) {
         return false;
     }
+    advance_model_registry_generation();
     return true;
 }
 
@@ -933,6 +982,7 @@ bool bind_delta_t_ephemeris_correction(
     } catch (...) {
         return false;
     }
+    advance_model_registry_generation();
     return true;
 }
 

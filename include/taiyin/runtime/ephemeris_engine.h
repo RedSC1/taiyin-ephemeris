@@ -17,6 +17,8 @@
 namespace taiyin {
 namespace runtime {
 
+struct NativeEphemerisStateCache;
+
 const uint8_t TAIYIN_TIME_DIAGNOSTIC_USED_LEAP_SECONDS = 1u << 0;
 const uint8_t TAIYIN_TIME_DIAGNOSTIC_USED_EOP = 1u << 1;
 const uint8_t TAIYIN_TIME_DIAGNOSTIC_USED_DELTA_T_MODEL = 1u << 2;
@@ -29,6 +31,9 @@ struct EphemerisRequest {
     uint32_t components;
     uint64_t route_rule_id;
     const internal::EphemerisRouteRuleTable* route_rules;
+    NativeEphemerisStateCache* epoch_state_cache;
+    SplitJulianDate epoch_jd_tdb;
+    uint64_t runtime_generation;
     bool include_descriptor;
 
     EphemerisRequest()
@@ -39,6 +44,9 @@ struct EphemerisRequest {
           components(internal::EPHEMERIS_BLOCK_COMPONENT_STATE),
           route_rule_id(0),
           route_rules(0),
+          epoch_state_cache(0),
+          epoch_jd_tdb(),
+          runtime_generation(0u),
           include_descriptor(true) {}
 };
 

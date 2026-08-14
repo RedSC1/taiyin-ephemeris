@@ -2,6 +2,7 @@
 
 #include "runtime/core/native_context_checks.h"
 
+#include "taiyin/runtime/native_context.h"
 #include "taiyin/runtime/runtime.h"
 
 #include <cmath>
@@ -156,7 +157,12 @@ bool runtime_block_state(const SplitJulianDate& jd_tdb, const void* data, Cartes
 }  // namespace
 
 RuntimeStateEvalContext::RuntimeStateEvalContext() noexcept
-    : service(0), use_global(true), route_rule_id(0), route_rules(0) {}
+    : service(0),
+      use_global(true),
+      route_rule_id(0),
+      route_rules(0),
+      epoch_state_cache(0),
+      epoch_jd_tdb() {}
 
 RuntimeCompiledBlockData::RuntimeCompiledBlockData() noexcept
     : context(),
@@ -240,11 +246,11 @@ Status eval_runtime_body_state(
     EphemerisResult* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    return eval_runtime_state_in_context(
-        context,
-        make_runtime_state_request(body_id, center_id, jd_tdb, components, route_rule_id, route_rules),
-        out,
-        diagnostic);
+    EphemerisRequest request = make_runtime_state_request(
+        body_id, center_id, jd_tdb, components, route_rule_id, route_rules);
+    request.epoch_state_cache = context.epoch_state_cache;
+    request.epoch_jd_tdb = context.epoch_jd_tdb;
+    return eval_runtime_state_in_context(context, request, out, diagnostic);
 }
 
 internal::CompiledEphemerisBlock make_runtime_compiled_block(RuntimeCompiledBlockData* data) noexcept {

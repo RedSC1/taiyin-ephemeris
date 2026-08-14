@@ -298,11 +298,26 @@ Status resolve_tt_to_tdb(
     if (!out_jd_tdb || !split_julian_date_is_finite(jd_tt)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.tt_valid
+        && cache.tt_dispatch_generation == dispatch_generation
+        && cache.jd_tt == jd_tt
+        && cache.tdb_model_id == context.model_context.tdb_model_id) {
+        *out_jd_tdb = cache.jd_tdb;
+        return TAIYIN_STATUS_OK;
+    }
     const double tdb_minus_tt_seconds = dispatch::eval_tdb(context.model_context.tdb_model_id, jd_tt, 0);
     SplitJulianDate jd_tdb;
     if (!add_seconds_to_split_jd(jd_tt, tdb_minus_tt_seconds, &jd_tdb)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
+    cache.tt_valid = true;
+    cache.tt_dispatch_generation = dispatch_generation;
+    cache.jd_tt = jd_tt;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.jd_tdb = jd_tdb;
     *out_jd_tdb = jd_tdb;
     return TAIYIN_STATUS_OK;
 }
@@ -315,6 +330,19 @@ Status resolve_ut_to_tdb_tt(
 ) noexcept {
     if (!out_jd_tdb || !out_jd_tt || !split_julian_date_is_finite(jd_ut)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.ut1_valid
+        && cache.ut1_dispatch_generation == dispatch_generation
+        && cache.jd_ut1 == jd_ut
+        && cache.delta_t_model_id == context.delta_t_model_id
+        && cache.ephemeris_family_id == context.ephemeris_family_id
+        && cache.tdb_model_id == context.model_context.tdb_model_id) {
+        *out_jd_tdb = cache.ut1_jd_tdb;
+        *out_jd_tt = cache.ut1_jd_tt;
+        return TAIYIN_STATUS_OK;
     }
     const double delta_t_seconds = dispatch::eval_delta_t_with_ephemeris_correction(
         context.delta_t_model_id,
@@ -331,6 +359,15 @@ Status resolve_ut_to_tdb_tt(
     if (tdb_status != TAIYIN_STATUS_OK) {
         return tdb_status;
     }
+    cache.ut1_valid = true;
+    cache.ut1_dispatch_generation = dispatch_generation;
+    cache.jd_ut1 = jd_ut;
+    cache.delta_t_model_id = context.delta_t_model_id;
+    cache.ephemeris_family_id = context.ephemeris_family_id;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.delta_t_seconds = delta_t_seconds;
+    cache.ut1_jd_tt = jd_tt;
+    cache.ut1_jd_tdb = jd_tdb;
     *out_jd_tdb = jd_tdb;
     *out_jd_tt = jd_tt;
     return TAIYIN_STATUS_OK;
@@ -357,6 +394,8 @@ Status eval_context_relative_state(
     RuntimeStateEvalContext eval_context;
     eval_context.route_rule_id = context.route_rule_id;
     eval_context.route_rules = context.route_rules;
+    eval_context.epoch_state_cache = &context.ephemeris_state_cache;
+    eval_context.epoch_jd_tdb = jd_tdb;
     EphemerisResult result;
     const Status status = eval_runtime_body_state(
         eval_context,

@@ -9,11 +9,15 @@
 namespace taiyin {
 namespace runtime {
 
+struct NativeEphemerisStateCache;
+
 struct RuntimeStateEvalContext {
     EphemerisEngine* service;
     bool use_global;
     uint64_t route_rule_id;
     const internal::EphemerisRouteRuleTable* route_rules;
+    NativeEphemerisStateCache* epoch_state_cache;
+    SplitJulianDate epoch_jd_tdb;
 
     RuntimeStateEvalContext() noexcept;
 };

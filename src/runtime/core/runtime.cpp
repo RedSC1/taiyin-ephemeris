@@ -42,6 +42,19 @@ internal::WriterPreferredRwLock& global_ephemeris_runtime_rwlock() {
     return lock;
 }
 
+uint64_t& global_ephemeris_runtime_generation() noexcept {
+    static uint64_t generation = 1u;
+    return generation;
+}
+
+void advance_global_ephemeris_runtime_generation() noexcept {
+    uint64_t& generation = global_ephemeris_runtime_generation();
+    ++generation;
+    if (generation == 0u) {
+        ++generation;
+    }
+}
+
 bool discover_ephemeris_descriptors_from_file(
     const std::string& path,
     const std::vector<internal::EphemerisDiscoverFileFn>& discoverers,
@@ -1899,11 +1912,13 @@ Runtime& default_runtime() noexcept {
 
 bool initialize_global_ephemeris_runtime(const EphemerisRuntimeConfig& config) noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     return default_runtime().initialize_ephemeris(config);
 }
 
 bool add_global_ephemeris_source_path(const char* path) noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     return default_runtime().add_ephemeris_source_path(path, false);
 }
 
@@ -1912,6 +1927,7 @@ bool set_global_ephemeris_source_priority(
     int priority
 ) noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     return default_runtime().set_ephemeris_source_priority(path_or_basename, priority);
 }
 
@@ -1919,11 +1935,13 @@ bool clear_global_ephemeris_source_priority(
     const char* path_or_basename
 ) noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     return default_runtime().clear_ephemeris_source_priority(path_or_basename);
 }
 
 void clear_all_global_ephemeris_source_priorities() noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     default_runtime().clear_all_ephemeris_source_priorities();
 }
 
@@ -1933,11 +1951,15 @@ Status eval_global_ephemeris_state(
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     internal::ReadLockGuard lock(global_ephemeris_runtime_rwlock());
-    return default_runtime().eval_ephemeris_state(request, out, diagnostic);
+    EphemerisRequest resolved_request = request;
+    resolved_request.runtime_generation = global_ephemeris_runtime_generation();
+    return default_runtime().eval_ephemeris_state(
+        resolved_request, out, diagnostic);
 }
 
 bool add_global_ephemeris_descriptor(const internal::EphemerisBlockDescriptor& descriptor) noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     if (!default_runtime().ephemeris_catalog().add(descriptor)) {
         return false;
     }
@@ -1960,6 +1982,7 @@ bool add_global_custom_ephemeris_method(
     }
 
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     internal::EphemerisBlockDescriptor descriptor;
     if (!internal::register_custom_ephemeris_method(definition, &descriptor)) {
         return false;
@@ -1999,6 +2022,7 @@ bool add_global_custom_ephemeris_file_method(
     }
 
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     internal::EphemerisBlockDescriptor descriptor;
     if (!internal::register_custom_ephemeris_file_method(definition, &descriptor)) {
         return false;
@@ -2032,6 +2056,7 @@ bool register_global_ephemeris_route_rule(
     const internal::EphemerisRouteRuleTable& table
 ) noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     return default_runtime().register_ephemeris_route_rule(route_rule_id, table);
 }
 
@@ -2087,6 +2112,7 @@ bool get_global_registered_data_sources(
 
 void clear_global_ephemeris_cache() noexcept {
     internal::WriteLockGuard lock(global_ephemeris_runtime_rwlock());
+    advance_global_ephemeris_runtime_generation();
     internal::EphemerisSegmentCache* segment_cache = default_runtime().ephemeris_segment_cache();
     if (segment_cache) {
         segment_cache->clear();

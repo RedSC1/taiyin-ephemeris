@@ -256,7 +256,7 @@ void check_de441_mars_horizons_astrometric_oracle() {
     expect_array3_near(geometric_pos, expected_geometric_array, 1.0e-14, "flat geometric Mars-Earth vector");
     expect_array3_near(apparent_pos, astrometric_pos, 1.0e-15, "flat apparent equals astrometric before corrections");
     expect_true(light_time_days > 0.0, "flat Mars light-time positive");
-    expect_true(light_time_iterations == -1, "flat Mars light-time iteration count reserved");
+    expect_true(light_time_iterations > 0, "flat Mars light-time iteration count reported");
 
     double astrometric_ra_deg = 0.0;
     double astrometric_dec_deg = 0.0;

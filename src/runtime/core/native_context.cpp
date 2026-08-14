@@ -203,6 +203,185 @@ NativeAtmosphere::NativeAtmosphere() noexcept
       relative_humidity(0.0),
       wavelength_micrometer(0.0) {}
 
+NativeApparentMatrixCache::NativeApparentMatrixCache() noexcept
+    : mutex(),
+      valid(false),
+      dispatch_generation(0u),
+      jd_tt(),
+      derivative_flags(0u),
+      output_frame_id(TAIYIN_APPARENT_FRAME_ICRF),
+      precession_model_id(0),
+      nutation_model_id(0),
+      obliquity_model_id(0),
+      frame_route_id(0),
+      celestial_pole_offset_dx_rad(0.0),
+      celestial_pole_offset_dy_rad(0.0),
+      celestial_pole_offset_dx_rate_rad_per_day(0.0),
+      celestial_pole_offset_dy_rate_rad_per_day(0.0),
+      matrix_derivative_step_days(0.0),
+      output_matrix(),
+      output_matrix_dot(),
+      output_matrix_ddot() {}
+
+NativeApparentMatrixCache::NativeApparentMatrixCache(
+    const NativeApparentMatrixCache& other
+) : NativeApparentMatrixCache() {
+    *this = other;
+}
+
+NativeApparentMatrixCache& NativeApparentMatrixCache::operator=(
+    const NativeApparentMatrixCache& other
+) {
+    if (this == &other) return *this;
+    std::unique_lock<std::recursive_mutex> this_lock(mutex, std::defer_lock);
+    std::unique_lock<std::recursive_mutex> other_lock(other.mutex, std::defer_lock);
+    std::lock(this_lock, other_lock);
+    valid = other.valid;
+    dispatch_generation = other.dispatch_generation;
+    jd_tt = other.jd_tt;
+    derivative_flags = other.derivative_flags;
+    output_frame_id = other.output_frame_id;
+    precession_model_id = other.precession_model_id;
+    nutation_model_id = other.nutation_model_id;
+    obliquity_model_id = other.obliquity_model_id;
+    frame_route_id = other.frame_route_id;
+    celestial_pole_offset_dx_rad = other.celestial_pole_offset_dx_rad;
+    celestial_pole_offset_dy_rad = other.celestial_pole_offset_dy_rad;
+    celestial_pole_offset_dx_rate_rad_per_day =
+        other.celestial_pole_offset_dx_rate_rad_per_day;
+    celestial_pole_offset_dy_rate_rad_per_day =
+        other.celestial_pole_offset_dy_rate_rad_per_day;
+    matrix_derivative_step_days = other.matrix_derivative_step_days;
+    for (int i = 0; i < 9; ++i) {
+        output_matrix[i] = other.output_matrix[i];
+        output_matrix_dot[i] = other.output_matrix_dot[i];
+        output_matrix_ddot[i] = other.output_matrix_ddot[i];
+    }
+    return *this;
+}
+
+NativeTimeScaleCache::NativeTimeScaleCache() noexcept
+    : mutex(),
+      tt_dispatch_generation(0u),
+      tt_valid(false),
+      jd_tt(),
+      tdb_model_id(0),
+      jd_tdb(),
+      ut1_dispatch_generation(0u),
+      ut1_valid(false),
+      jd_ut1(),
+      delta_t_model_id(0),
+      ephemeris_family_id(0),
+      delta_t_seconds(0.0),
+      ut1_jd_tt(),
+      ut1_jd_tdb(),
+      utc_dispatch_generation(0u),
+      utc_valid(false),
+      datetime_utc(),
+      allow_utc_out_of_range_estimate(false),
+      utc_tdb_model_id(0),
+      utc_delta_t_model_id(0),
+      utc_ephemeris_family_id(0),
+      eop_table(0),
+      utc_scales(),
+      utc_diagnostic(),
+      has_celestial_pole_offset(false),
+      celestial_pole_offset_dx_rad(0.0),
+      celestial_pole_offset_dy_rad(0.0),
+      celestial_pole_offset_dx_rate_rad_per_day(0.0),
+      celestial_pole_offset_dy_rate_rad_per_day(0.0) {}
+
+NativeTimeScaleCache::NativeTimeScaleCache(
+    const NativeTimeScaleCache& other
+) : NativeTimeScaleCache() {
+    *this = other;
+}
+
+NativeTimeScaleCache& NativeTimeScaleCache::operator=(
+    const NativeTimeScaleCache& other
+) {
+    if (this == &other) return *this;
+    std::unique_lock<std::recursive_mutex> this_lock(mutex, std::defer_lock);
+    std::unique_lock<std::recursive_mutex> other_lock(other.mutex, std::defer_lock);
+    std::lock(this_lock, other_lock);
+    tt_dispatch_generation = other.tt_dispatch_generation;
+    tt_valid = other.tt_valid;
+    jd_tt = other.jd_tt;
+    tdb_model_id = other.tdb_model_id;
+    jd_tdb = other.jd_tdb;
+    ut1_dispatch_generation = other.ut1_dispatch_generation;
+    ut1_valid = other.ut1_valid;
+    jd_ut1 = other.jd_ut1;
+    delta_t_model_id = other.delta_t_model_id;
+    ephemeris_family_id = other.ephemeris_family_id;
+    delta_t_seconds = other.delta_t_seconds;
+    ut1_jd_tt = other.ut1_jd_tt;
+    ut1_jd_tdb = other.ut1_jd_tdb;
+    utc_dispatch_generation = other.utc_dispatch_generation;
+    utc_valid = other.utc_valid;
+    datetime_utc = other.datetime_utc;
+    allow_utc_out_of_range_estimate = other.allow_utc_out_of_range_estimate;
+    utc_tdb_model_id = other.utc_tdb_model_id;
+    utc_delta_t_model_id = other.utc_delta_t_model_id;
+    utc_ephemeris_family_id = other.utc_ephemeris_family_id;
+    eop_table = other.eop_table;
+    utc_scales = other.utc_scales;
+    utc_diagnostic = other.utc_diagnostic;
+    has_celestial_pole_offset = other.has_celestial_pole_offset;
+    celestial_pole_offset_dx_rad = other.celestial_pole_offset_dx_rad;
+    celestial_pole_offset_dy_rad = other.celestial_pole_offset_dy_rad;
+    celestial_pole_offset_dx_rate_rad_per_day =
+        other.celestial_pole_offset_dx_rate_rad_per_day;
+    celestial_pole_offset_dy_rate_rad_per_day =
+        other.celestial_pole_offset_dy_rate_rad_per_day;
+    return *this;
+}
+
+NativeEphemerisStateCacheEntry::NativeEphemerisStateCacheEntry() noexcept
+    : valid(false),
+      body_id(0),
+      center_id(0),
+      frame_id(0),
+      source_key(),
+      components(0u),
+      state(),
+      diagnostic() {}
+
+NativeEphemerisStateCache::NativeEphemerisStateCache() noexcept
+    : mutex(),
+      valid(false),
+      jd_tdb(),
+      runtime_generation(0u),
+      component_entry_count(0u),
+      hit_count(0u),
+      miss_count(0u),
+      component_entries() {}
+
+NativeEphemerisStateCache::NativeEphemerisStateCache(
+    const NativeEphemerisStateCache& other
+) : NativeEphemerisStateCache() {
+    *this = other;
+}
+
+NativeEphemerisStateCache& NativeEphemerisStateCache::operator=(
+    const NativeEphemerisStateCache& other
+) {
+    if (this == &other) return *this;
+    std::unique_lock<std::recursive_mutex> this_lock(mutex, std::defer_lock);
+    std::unique_lock<std::recursive_mutex> other_lock(other.mutex, std::defer_lock);
+    std::lock(this_lock, other_lock);
+    valid = other.valid;
+    jd_tdb = other.jd_tdb;
+    runtime_generation = other.runtime_generation;
+    component_entry_count = other.component_entry_count;
+    hit_count = other.hit_count;
+    miss_count = other.miss_count;
+    for (size_t i = 0; i < TAIYIN_NATIVE_EPHEMERIS_STATE_CACHE_CAPACITY; ++i) {
+        component_entries[i] = other.component_entries[i];
+    }
+    return *this;
+}
+
 NativeCalcContext::NativeCalcContext() noexcept
     : fields(),
       model_context(),
@@ -222,7 +401,10 @@ NativeCalcContext::NativeCalcContext() noexcept
       eclipse_shadow_model_id(static_cast<uint8_t>(dispatch::ECLIPSE_SHADOW_NASA_DANJON)),
       eclipse_moon_radius_model_id(static_cast<uint8_t>(dispatch::ECLIPSE_MOON_ALMANAC)),
       route_rule_id(TAIYIN_EPHEMERIS_ROUTE_AUTO),
-      route_rules(0) {
+      route_rules(0),
+      apparent_matrix_cache(),
+      time_scale_cache(),
+      ephemeris_state_cache() {
     apparent_options.model_context = &model_context;
     apparent_options.flags |= TAIYIN_APPARENT_ABERRATION
         | TAIYIN_APPARENT_DEFLECTION;

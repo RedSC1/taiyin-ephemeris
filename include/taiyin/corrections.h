@@ -80,7 +80,8 @@ bool solve_light_time_position(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_position_au
+    Vector3* out_retarded_target_position_au,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_velocity(
@@ -98,7 +99,8 @@ bool solve_light_time_velocity(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_position_au,
-    Vector3* out_retarded_target_velocity_au_per_day
+    Vector3* out_retarded_target_velocity_au_per_day,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_acceleration(
@@ -121,7 +123,8 @@ bool solve_light_time_acceleration(
     double* out_light_time_acceleration,
     Vector3* out_retarded_target_position_au,
     Vector3* out_retarded_target_velocity_au_per_day,
-    Vector3* out_retarded_target_acceleration_au_per_day2
+    Vector3* out_retarded_target_acceleration_au_per_day2,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_position_with_shapiro(
@@ -135,7 +138,8 @@ bool solve_light_time_position_with_shapiro(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_heliocentric_position_au
+    Vector3* out_retarded_target_heliocentric_position_au,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_velocity_with_shapiro(
@@ -154,7 +158,8 @@ bool solve_light_time_velocity_with_shapiro(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_heliocentric_position_au,
-    Vector3* out_retarded_target_heliocentric_velocity_au_per_day
+    Vector3* out_retarded_target_heliocentric_velocity_au_per_day,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_acceleration_with_shapiro(
@@ -178,7 +183,8 @@ bool solve_light_time_acceleration_with_shapiro(
     double* out_light_time_acceleration,
     Vector3* out_retarded_target_heliocentric_position_au,
     Vector3* out_retarded_target_heliocentric_velocity_au_per_day,
-    Vector3* out_retarded_target_heliocentric_acceleration_au_per_day2
+    Vector3* out_retarded_target_heliocentric_acceleration_au_per_day2,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_position_with_multi_shapiro(
@@ -195,7 +201,8 @@ bool solve_light_time_position_with_multi_shapiro(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_primary_relative_position_au
+    Vector3* out_retarded_target_primary_relative_position_au,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_velocity_with_multi_shapiro(
@@ -218,7 +225,8 @@ bool solve_light_time_velocity_with_multi_shapiro(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_primary_relative_position_au,
-    Vector3* out_retarded_target_primary_relative_velocity_au_per_day
+    Vector3* out_retarded_target_primary_relative_velocity_au_per_day,
+    int* out_iterations = 0
 ) noexcept;
 
 bool solve_light_time_acceleration_with_multi_shapiro(
@@ -247,7 +255,8 @@ bool solve_light_time_acceleration_with_multi_shapiro(
     double* out_light_time_acceleration,
     Vector3* out_retarded_target_primary_relative_position_au,
     Vector3* out_retarded_target_primary_relative_velocity_au_per_day,
-    Vector3* out_retarded_target_primary_relative_acceleration_au_per_day2
+    Vector3* out_retarded_target_primary_relative_acceleration_au_per_day2,
+    int* out_iterations = 0
 ) noexcept;
 
 bool apply_observer_velocity_aberration(

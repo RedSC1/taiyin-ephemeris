@@ -288,6 +288,22 @@ bool polynomial_target_acceleration(const taiyin::SplitJulianDate&, const void* 
     return true;
 }
 
+bool failing_target_velocity(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    taiyin::Vector3*
+) {
+    return false;
+}
+
+bool failing_target_acceleration(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    taiyin::Vector3*
+) {
+    return false;
+}
+
 bool polynomial_state(
     double jd_tdb,
     const PolynomialTarget& target,
@@ -438,6 +454,7 @@ int main() {
         taiyin::Vector3 observed_position;
         taiyin::Vector3 retarded_target_position;
         double light_time_days = 0.0;
+        int light_time_iterations = -1;
         expect_true(
             taiyin::solve_light_time_position(
                 split_jd(jd_tdb),
@@ -449,12 +466,14 @@ int main() {
                 1e-14,
                 &observed_position,
                 &light_time_days,
-                &retarded_target_position),
+                &retarded_target_position,
+                &light_time_iterations),
             "light-time stationary position succeeds",
             &failures);
         expect_vector_near(observed_position, { 3.0, 4.0, 0.0 }, 0.0, "light-time stationary observed", &failures);
         expect_vector_near(retarded_target_position, { 3.0, 4.0, 0.0 }, 0.0, "light-time stationary target", &failures);
         expect_near(light_time_days, 5.0 * light_time_days_per_au, 0.0, "light-time stationary tau", &failures);
+        expect_true(light_time_iterations == 1, "light-time stationary iteration count", &failures);
         expect_true(
             !taiyin::solve_light_time_position(
                 split_jd(jd_tdb),
@@ -466,8 +485,72 @@ int main() {
                 1e-14,
                 &observed_position,
                 &light_time_days,
-                &retarded_target_position),
+                &retarded_target_position,
+                &light_time_iterations),
             "light-time null target rejected",
+            &failures);
+        expect_true(light_time_iterations == 0, "failed light-time iteration count reset", &failures);
+
+        taiyin::Vector3 observed_velocity;
+        taiyin::Vector3 retarded_target_velocity;
+        double light_time_rate = 0.0;
+        light_time_iterations = -1;
+        expect_true(
+            !taiyin::solve_light_time_velocity(
+                split_jd(jd_tdb),
+                { 0.0, 0.0, 0.0 },
+                { 0.0, 0.0, 0.0 },
+                polynomial_target_position,
+                failing_target_velocity,
+                &target,
+                light_time_days_per_au,
+                8,
+                1e-14,
+                &observed_position,
+                &observed_velocity,
+                &light_time_days,
+                &light_time_rate,
+                &retarded_target_position,
+                &retarded_target_velocity,
+                &light_time_iterations),
+            "light-time derivative callback failure reported",
+            &failures);
+        expect_true(
+            light_time_iterations == 0,
+            "velocity failure keeps iteration count reset",
+            &failures);
+
+        taiyin::Vector3 observed_acceleration;
+        double light_time_acceleration = 0.0;
+        light_time_iterations = -1;
+        expect_true(
+            !taiyin::solve_light_time_acceleration(
+                split_jd(jd_tdb),
+                { 0.0, 0.0, 0.0 },
+                { 0.0, 0.0, 0.0 },
+                { 0.0, 0.0, 0.0 },
+                polynomial_target_position,
+                polynomial_target_velocity,
+                failing_target_acceleration,
+                &target,
+                light_time_days_per_au,
+                8,
+                1e-14,
+                &observed_position,
+                &observed_velocity,
+                &observed_acceleration,
+                &light_time_days,
+                &light_time_rate,
+                &light_time_acceleration,
+                &retarded_target_position,
+                &retarded_target_velocity,
+                0,
+                &light_time_iterations),
+            "light-time acceleration callback failure reported",
+            &failures);
+        expect_true(
+            light_time_iterations == 0,
+            "acceleration failure keeps iteration count reset",
             &failures);
     }
 
@@ -600,6 +683,8 @@ int main() {
         taiyin::Vector3 geometric_position;
         double shapiro_light_time = 0.0;
         double geometric_light_time = 0.0;
+        int shapiro_iterations = 0;
+        int geometric_iterations = 0;
         expect_true(
             taiyin::solve_light_time_position_with_shapiro(
                 split_jd(jd_tdb),
@@ -612,7 +697,8 @@ int main() {
                 1e-15,
                 &shapiro_position,
                 &shapiro_light_time,
-                0),
+                0,
+                &shapiro_iterations),
             "light-time Shapiro stationary position succeeds",
             &failures);
         expect_true(
@@ -626,11 +712,14 @@ int main() {
                 1e-15,
                 &geometric_position,
                 &geometric_light_time,
-                0),
+                0,
+                &geometric_iterations),
             "light-time geometric comparison succeeds",
             &failures);
         expect_vector_near(shapiro_position, geometric_position, 0.0, "light-time Shapiro stationary position", &failures);
         expect_true(shapiro_light_time > geometric_light_time, "light-time Shapiro increases tau", &failures);
+        expect_true(shapiro_iterations > 0, "light-time Shapiro iteration count", &failures);
+        expect_true(geometric_iterations > 0, "light-time geometric iteration count", &failures);
     }
 
     {
@@ -737,6 +826,8 @@ int main() {
         double multi_light_time = 0.0;
         double multi_light_time_rate = 0.0;
         double multi_light_time_acceleration = 0.0;
+        int single_iterations = 0;
+        int multi_iterations = 0;
         expect_true(
             taiyin::solve_light_time_acceleration_with_shapiro(
                 split_jd(jd_tdb),
@@ -759,7 +850,8 @@ int main() {
                 &single_light_time_acceleration,
                 0,
                 0,
-                0),
+                0,
+                &single_iterations),
             "single Shapiro acceleration for multi equivalence succeeds",
             &failures);
         expect_true(
@@ -789,10 +881,13 @@ int main() {
                 &multi_light_time_acceleration,
                 0,
                 0,
-                0),
+                0,
+                &multi_iterations),
             "multi Shapiro single-deflector equivalence succeeds",
             &failures);
         expect_vector_near(multi_position, single_position, 1e-15, "multi Shapiro single position equivalence", &failures);
+        expect_true(single_iterations > 0, "single Shapiro acceleration iteration count", &failures);
+        expect_true(multi_iterations == single_iterations, "multi Shapiro acceleration iteration count", &failures);
         expect_vector_near(multi_velocity, single_velocity, 1e-15, "multi Shapiro single velocity equivalence", &failures);
         expect_vector_near(multi_acceleration, single_acceleration, 1e-15, "multi Shapiro single acceleration equivalence", &failures);
         expect_near(multi_light_time, single_light_time, 1e-15, "multi Shapiro single tau equivalence", &failures);

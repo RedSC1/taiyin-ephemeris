@@ -8,11 +8,13 @@
 #include "taiyin/internal/semi_analytic.h"
 #include "taiyin/internal/spk_catalog_discovery.h"
 #include "taiyin/physical_constants.h"
+#include "taiyin/runtime/native_context.h"
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <new>
 #include <string>
 #include <unordered_map>
@@ -21,6 +23,165 @@
 namespace taiyin {
 namespace runtime {
 namespace {
+
+struct ActiveEpochStateCache {
+    NativeEphemerisStateCache* cache;
+    SplitJulianDate epoch_jd_tdb;
+    uint64_t runtime_generation;
+
+    ActiveEpochStateCache() noexcept
+        : cache(0),
+          epoch_jd_tdb(),
+          runtime_generation(0u) {}
+};
+
+thread_local ActiveEpochStateCache active_epoch_state_cache;
+
+class ActiveEpochStateCacheScope {
+public:
+    explicit ActiveEpochStateCacheScope(const EphemerisRequest& request) noexcept
+        : previous_(active_epoch_state_cache) {
+        active_epoch_state_cache.cache = request.epoch_state_cache;
+        active_epoch_state_cache.epoch_jd_tdb = request.epoch_jd_tdb;
+        active_epoch_state_cache.runtime_generation = request.runtime_generation;
+    }
+
+    ~ActiveEpochStateCacheScope() noexcept {
+        active_epoch_state_cache = previous_;
+    }
+
+private:
+    ActiveEpochStateCache previous_;
+};
+
+void reset_active_epoch_state_cache() noexcept {
+    NativeEphemerisStateCache* cache = active_epoch_state_cache.cache;
+    if (!cache) {
+        return;
+    }
+    cache->valid = true;
+    cache->jd_tdb = active_epoch_state_cache.epoch_jd_tdb;
+    cache->runtime_generation = active_epoch_state_cache.runtime_generation;
+    cache->component_entry_count = 0u;
+    for (size_t i = 0; i < TAIYIN_NATIVE_EPHEMERIS_STATE_CACHE_CAPACITY; ++i) {
+        cache->component_entries[i].valid = false;
+    }
+}
+
+size_t descriptor_epoch_cache_index(
+    const internal::EphemerisBlockDescriptor& source
+) noexcept {
+    // Keep the three Earth-observer reconstruction components out of the
+    // general hash pool: every apparent target needs them, so a collision with
+    // a one-off target state would erase most of the cache's value.
+    if (source.target_id == TAIYIN_BODY_SUN
+        && source.center_id == TAIYIN_BODY_SSB) {
+        return 0u;
+    }
+    if (source.target_id == TAIYIN_BODY_EMB
+        && source.center_id == TAIYIN_BODY_SSB) {
+        return 1u;
+    }
+    if (source.target_id == TAIYIN_BODY_MOON
+        && source.center_id == TAIYIN_BODY_EARTH) {
+        return 2u;
+    }
+    uint64_t hash = source.source_key.source_id;
+    hash ^= source.source_key.block_id * UINT64_C(0xd6e8feb86659fd93);
+    hash ^= static_cast<uint64_t>(source.source_key.generation)
+        * UINT64_C(0xa5a3564e27f8862d);
+    hash ^= static_cast<uint64_t>(source.source_key.purpose)
+        * UINT64_C(0x9e3779b97f4a7c15);
+    hash ^= static_cast<uint64_t>(static_cast<uint32_t>(source.target_id))
+        * UINT64_C(0x9e3779b185ebca87);
+    hash ^= static_cast<uint64_t>(static_cast<uint32_t>(source.center_id))
+        * UINT64_C(0xc2b2ae3d27d4eb4f);
+    hash ^= static_cast<uint64_t>(static_cast<uint32_t>(source.method_id))
+        * UINT64_C(0x165667b19e3779f9);
+    hash ^= static_cast<uint64_t>(static_cast<uint32_t>(source.frame))
+        * UINT64_C(0x85ebca77c2b2ae63);
+    const size_t general_capacity =
+        TAIYIN_NATIVE_EPHEMERIS_STATE_CACHE_CAPACITY - 3u;
+    return 3u + static_cast<size_t>(hash % general_capacity);
+}
+
+bool descriptor_epoch_cache_lookup(
+    const internal::EphemerisBlockDescriptor& source,
+    const SplitJulianDate& jd_tdb,
+    uint32_t components,
+    EphemerisSelectionResult* selection,
+    CartesianState* out,
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    NativeEphemerisStateCache* cache = active_epoch_state_cache.cache;
+    if (!cache || jd_tdb != active_epoch_state_cache.epoch_jd_tdb) {
+        return false;
+    }
+    std::lock_guard<std::recursive_mutex> cache_lock(cache->mutex);
+    if (!cache->valid
+        || cache->jd_tdb != active_epoch_state_cache.epoch_jd_tdb
+        || cache->runtime_generation
+            != active_epoch_state_cache.runtime_generation) {
+        reset_active_epoch_state_cache();
+    }
+    const NativeEphemerisStateCacheEntry& entry =
+        cache->component_entries[descriptor_epoch_cache_index(source)];
+    if (entry.valid
+        && entry.body_id == source.target_id
+        && entry.center_id == source.center_id
+        && entry.frame_id == static_cast<int>(source.frame)
+        && entry.source_key == source.source_key
+        && (entry.components & components) == components) {
+        *out = entry.state;
+        selection->source_descriptor = source;
+        selection->has_source_descriptor = true;
+        selection->cache_hit = true;
+        selection->loaded = false;
+        if (diagnostic) {
+            *diagnostic = entry.diagnostic;
+            diagnostic->status = TAIYIN_STATUS_OK;
+            diagnostic->attempted_method_id = source.method_id;
+        }
+        ++cache->hit_count;
+        return true;
+    }
+    ++cache->miss_count;
+    return false;
+}
+
+void descriptor_epoch_cache_store(
+    const internal::EphemerisBlockDescriptor& source,
+    const SplitJulianDate& jd_tdb,
+    uint32_t components,
+    const CartesianState& state,
+    const EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    NativeEphemerisStateCache* cache = active_epoch_state_cache.cache;
+    if (!cache || jd_tdb != active_epoch_state_cache.epoch_jd_tdb) {
+        return;
+    }
+    std::lock_guard<std::recursive_mutex> cache_lock(cache->mutex);
+    if (!cache->valid
+        || cache->jd_tdb != active_epoch_state_cache.epoch_jd_tdb
+        || cache->runtime_generation
+            != active_epoch_state_cache.runtime_generation) {
+        reset_active_epoch_state_cache();
+    }
+
+    const size_t index = descriptor_epoch_cache_index(source);
+    NativeEphemerisStateCacheEntry& entry = cache->component_entries[index];
+    if (!entry.valid) {
+        ++cache->component_entry_count;
+    }
+    entry.valid = true;
+    entry.body_id = source.target_id;
+    entry.center_id = source.center_id;
+    entry.frame_id = static_cast<int>(source.frame);
+    entry.source_key = source.source_key;
+    entry.components = components;
+    entry.state = state;
+    entry.diagnostic = diagnostic ? *diagnostic : EphemerisEvalDiagnostic();
+}
 
 internal::EphemerisBlockQuery make_query(const EphemerisRequest& request) noexcept {
     internal::EphemerisBlockQuery query;
@@ -882,6 +1043,15 @@ Status EphemerisEngine::eval_method_descriptor_state(
     if (diagnostic) {
         diagnostic->attempted_method_id = source.method_id;
     }
+    if (descriptor_epoch_cache_lookup(
+            source,
+            jd_tdb,
+            components,
+            selection,
+            out,
+            diagnostic)) {
+        return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
+    }
 
     int bucket_id = 0;
     if (!internal::cache_bucket_id_for_jd(source, jd_tdb, &bucket_id)) {
@@ -904,6 +1074,8 @@ Status EphemerisEngine::eval_method_descriptor_state(
         selection->has_source_descriptor = true;
         selection->cache_hit = true;
         selection->loaded = false;
+        descriptor_epoch_cache_store(
+            source, jd_tdb, components, *out, diagnostic);
         return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
     }
 
@@ -957,6 +1129,8 @@ Status EphemerisEngine::eval_method_descriptor_state(
         selection->has_source_descriptor = true;
         selection->cache_hit = false;
         selection->loaded = true;
+        descriptor_epoch_cache_store(
+            source, jd_tdb, components, *out, diagnostic);
         return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
     }
 
@@ -968,6 +1142,8 @@ Status EphemerisEngine::eval_method_descriptor_state(
     selection->has_source_descriptor = true;
     selection->cache_hit = true;
     selection->loaded = false;
+    descriptor_epoch_cache_store(
+        source, jd_tdb, components, *out, diagnostic);
     return set_diagnostic_status(diagnostic, TAIYIN_STATUS_OK);
 }
 
@@ -1521,6 +1697,7 @@ Status EphemerisEngine::eval_state(
     EphemerisResult* out,
     EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
+    ActiveEpochStateCacheScope epoch_cache_scope(request);
     if (out) {
         *out = EphemerisResult();
     }

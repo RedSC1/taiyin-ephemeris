@@ -980,6 +980,7 @@ bool calc_apparent_with_matrix(
     double light_time_days = 0.0;
     double light_time_rate = 0.0;
     double light_time_acceleration = 0.0;
+    int light_time_iterations = 0;
     if ((flags & TAIYIN_APPARENT_SHAPIRO_DELAY) != 0u
         && (flags & TAIYIN_APPARENT_LIGHT_TIME) == 0u) {
         return false;
@@ -1053,7 +1054,8 @@ bool calc_apparent_with_matrix(
                         &light_time_acceleration,
                         &retarded_position,
                         &retarded_velocity,
-                        &retarded_acceleration)) {
+                        &retarded_acceleration,
+                        &light_time_iterations)) {
                     return false;
                 }
             } else if (need_velocity(flags)) {
@@ -1079,7 +1081,8 @@ bool calc_apparent_with_matrix(
                         &light_time_days,
                         &light_time_rate,
                         &retarded_position,
-                        &retarded_velocity)) {
+                        &retarded_velocity,
+                        &light_time_iterations)) {
                     return false;
                 }
             } else {
@@ -1098,7 +1101,8 @@ bool calc_apparent_with_matrix(
                         light_time_tolerance_days,
                         &astrometric.position_au,
                         &light_time_days,
-                        &retarded_position)) {
+                        &retarded_position,
+                        &light_time_iterations)) {
                     return false;
                 }
             }
@@ -1126,7 +1130,8 @@ bool calc_apparent_with_matrix(
                     &light_time_acceleration,
                     &retarded_position,
                     &retarded_velocity,
-                    &retarded_acceleration)) {
+                    &retarded_acceleration,
+                    &light_time_iterations)) {
                 return false;
             }
         } else if (need_velocity(flags)) {
@@ -1147,7 +1152,8 @@ bool calc_apparent_with_matrix(
                     &light_time_days,
                     &light_time_rate,
                     &retarded_position,
-                    &retarded_velocity)) {
+                    &retarded_velocity,
+                    &light_time_iterations)) {
                 return false;
             }
         } else {
@@ -1162,7 +1168,8 @@ bool calc_apparent_with_matrix(
                     light_time_tolerance_days,
                     &astrometric.position_au,
                     &light_time_days,
-                    &retarded_position)) {
+                    &retarded_position,
+                    &light_time_iterations)) {
                 return false;
             }
         }
@@ -1173,7 +1180,7 @@ bool calc_apparent_with_matrix(
     if (out_light_time_days) *out_light_time_days = light_time_days;
     if (need_velocity(flags) && out_light_time_rate) *out_light_time_rate = light_time_rate;
     if (need_acceleration(flags) && out_light_time_acceleration) *out_light_time_acceleration = light_time_acceleration;
-    if (out_light_time_iterations) *out_light_time_iterations = (flags & TAIYIN_APPARENT_LIGHT_TIME) != 0u ? -1 : 0;
+    if (out_light_time_iterations) *out_light_time_iterations = light_time_iterations;
 
     CartesianState deflected = astrometric;
     if ((flags & TAIYIN_APPARENT_DEFLECTION) != 0u) {

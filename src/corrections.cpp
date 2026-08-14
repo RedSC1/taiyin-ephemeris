@@ -80,8 +80,10 @@ bool solve_light_time_iteration(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_position_au
+    Vector3* out_retarded_target_position_au,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au || !out_light_time_days) {
         return false;
     }
@@ -126,6 +128,7 @@ bool solve_light_time_iteration(
             if (out_retarded_target_position_au) {
                 *out_retarded_target_position_au = target;
             }
+            if (out_iterations) *out_iterations = i + 1;
             return true;
         }
         light_time_days = next_light_time_days;
@@ -149,8 +152,10 @@ bool solve_light_time_position_velocity(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_position_au,
-    Vector3* out_retarded_target_velocity_au_per_day
+    Vector3* out_retarded_target_velocity_au_per_day,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au || !out_velocity_au_per_day || !out_light_time_days || !out_light_time_rate) {
         return false;
     }
@@ -161,6 +166,7 @@ bool solve_light_time_position_velocity(
     Vector3 position;
     Vector3 target_retarded_position;
     double light_time_days = 0.0;
+    int iterations = 0;
     if (!solve_light_time_iteration(
             jd_tdb,
             observer_position_au,
@@ -171,7 +177,8 @@ bool solve_light_time_position_velocity(
             tolerance_days,
             &position,
             &light_time_days,
-            &target_retarded_position)) {
+            &target_retarded_position,
+            &iterations)) {
         return false;
     }
 
@@ -216,6 +223,7 @@ bool solve_light_time_position_velocity(
     if (out_retarded_target_velocity_au_per_day) {
         *out_retarded_target_velocity_au_per_day = target_retarded_velocity;
     }
+    if (out_iterations) *out_iterations = iterations;
     return true;
 }
 
@@ -268,8 +276,10 @@ bool solve_light_time_shapiro_iteration(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_heliocentric_position_au
+    Vector3* out_retarded_target_heliocentric_position_au,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au || !out_light_time_days) {
         return false;
     }
@@ -338,6 +348,7 @@ bool solve_light_time_shapiro_iteration(
             if (out_retarded_target_heliocentric_position_au) {
                 *out_retarded_target_heliocentric_position_au = target;
             }
+            if (out_iterations) *out_iterations = i + 1;
             return true;
         }
         light_time_days = next_light_time_days;
@@ -362,8 +373,10 @@ bool solve_light_time_shapiro_position_velocity(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_heliocentric_position_au,
-    Vector3* out_retarded_target_heliocentric_velocity_au_per_day
+    Vector3* out_retarded_target_heliocentric_velocity_au_per_day,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au || !out_velocity_au_per_day || !out_light_time_days || !out_light_time_rate) {
         return false;
     }
@@ -374,6 +387,7 @@ bool solve_light_time_shapiro_position_velocity(
     Vector3 position;
     Vector3 target_retarded_position;
     double light_time_days = 0.0;
+    int iterations = 0;
     if (!solve_light_time_shapiro_iteration(
             jd_tdb,
             observer_heliocentric_position_au,
@@ -385,7 +399,8 @@ bool solve_light_time_shapiro_position_velocity(
             tolerance_days,
             &position,
             &light_time_days,
-            &target_retarded_position)) {
+            &target_retarded_position,
+            &iterations)) {
         return false;
     }
 
@@ -458,6 +473,7 @@ bool solve_light_time_shapiro_position_velocity(
     if (out_retarded_target_heliocentric_velocity_au_per_day) {
         *out_retarded_target_heliocentric_velocity_au_per_day = target_retarded_velocity;
     }
+    if (out_iterations) *out_iterations = iterations;
     return true;
 }
 
@@ -537,8 +553,10 @@ bool solve_light_time_multi_shapiro_iteration(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_primary_relative_position_au
+    Vector3* out_retarded_target_primary_relative_position_au,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au || !out_light_time_days) {
         return false;
     }
@@ -616,6 +634,7 @@ bool solve_light_time_multi_shapiro_iteration(
             if (out_retarded_target_primary_relative_position_au) {
                 *out_retarded_target_primary_relative_position_au = target;
             }
+            if (out_iterations) *out_iterations = i + 1;
             return true;
         }
         light_time_days = next_light_time_days;
@@ -718,8 +737,10 @@ bool solve_light_time_multi_shapiro_position_velocity(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_primary_relative_position_au,
-    Vector3* out_retarded_target_primary_relative_velocity_au_per_day
+    Vector3* out_retarded_target_primary_relative_velocity_au_per_day,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au || !out_velocity_au_per_day || !out_light_time_days || !out_light_time_rate) {
         return false;
     }
@@ -732,6 +753,7 @@ bool solve_light_time_multi_shapiro_position_velocity(
     Vector3 position;
     Vector3 target_retarded_position;
     double light_time_days = 0.0;
+    int iterations = 0;
     if (!solve_light_time_multi_shapiro_iteration(
             jd_tdb,
             observer_primary_relative_position_au,
@@ -746,7 +768,8 @@ bool solve_light_time_multi_shapiro_position_velocity(
             tolerance_days,
             &position,
             &light_time_days,
-            &target_retarded_position)) {
+            &target_retarded_position,
+            &iterations)) {
         return false;
     }
 
@@ -822,6 +845,7 @@ bool solve_light_time_multi_shapiro_position_velocity(
     if (out_retarded_target_primary_relative_velocity_au_per_day) {
         *out_retarded_target_primary_relative_velocity_au_per_day = target_retarded_velocity;
     }
+    if (out_iterations) *out_iterations = iterations;
     return true;
 }
 
@@ -1011,7 +1035,8 @@ bool solve_light_time_position(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_position_au
+    Vector3* out_retarded_target_position_au,
+    int* out_iterations
 ) noexcept {
     return solve_light_time_iteration(
         jd_tdb,
@@ -1023,7 +1048,8 @@ bool solve_light_time_position(
         tolerance_days,
         out_position_au,
         out_light_time_days,
-        out_retarded_target_position_au);
+        out_retarded_target_position_au,
+        out_iterations);
 }
 
 bool solve_light_time_velocity(
@@ -1041,7 +1067,8 @@ bool solve_light_time_velocity(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_position_au,
-    Vector3* out_retarded_target_velocity_au_per_day
+    Vector3* out_retarded_target_velocity_au_per_day,
+    int* out_iterations
 ) noexcept {
     return solve_light_time_position_velocity(
         jd_tdb,
@@ -1058,7 +1085,8 @@ bool solve_light_time_velocity(
         out_light_time_days,
         out_light_time_rate,
         out_retarded_target_position_au,
-        out_retarded_target_velocity_au_per_day);
+        out_retarded_target_velocity_au_per_day,
+        out_iterations);
 }
 
 bool solve_light_time_acceleration(
@@ -1081,8 +1109,10 @@ bool solve_light_time_acceleration(
     double* out_light_time_acceleration,
     Vector3* out_retarded_target_position_au,
     Vector3* out_retarded_target_velocity_au_per_day,
-    Vector3* out_retarded_target_acceleration_au_per_day2
+    Vector3* out_retarded_target_acceleration_au_per_day2,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au
         || !out_velocity_au_per_day
         || !out_acceleration_au_per_day2
@@ -1101,6 +1131,7 @@ bool solve_light_time_acceleration(
     Vector3 target_retarded_velocity;
     double light_time_days = 0.0;
     double light_time_rate = 0.0;
+    int iterations = 0;
     if (!solve_light_time_position_velocity(
             jd_tdb,
             observer_position_au,
@@ -1116,7 +1147,8 @@ bool solve_light_time_acceleration(
             &light_time_days,
             &light_time_rate,
             &target_retarded_position,
-            &target_retarded_velocity)) {
+            &target_retarded_velocity,
+            &iterations)) {
         return false;
     }
 
@@ -1180,6 +1212,7 @@ bool solve_light_time_acceleration(
     if (out_retarded_target_acceleration_au_per_day2) {
         *out_retarded_target_acceleration_au_per_day2 = target_retarded_acceleration;
     }
+    if (out_iterations) *out_iterations = iterations;
     return true;
 }
 
@@ -1194,7 +1227,8 @@ bool solve_light_time_position_with_shapiro(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_heliocentric_position_au
+    Vector3* out_retarded_target_heliocentric_position_au,
+    int* out_iterations
 ) noexcept {
     return solve_light_time_shapiro_iteration(
         jd_tdb,
@@ -1207,7 +1241,8 @@ bool solve_light_time_position_with_shapiro(
         tolerance_days,
         out_position_au,
         out_light_time_days,
-        out_retarded_target_heliocentric_position_au);
+        out_retarded_target_heliocentric_position_au,
+        out_iterations);
 }
 
 bool solve_light_time_velocity_with_shapiro(
@@ -1226,7 +1261,8 @@ bool solve_light_time_velocity_with_shapiro(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_heliocentric_position_au,
-    Vector3* out_retarded_target_heliocentric_velocity_au_per_day
+    Vector3* out_retarded_target_heliocentric_velocity_au_per_day,
+    int* out_iterations
 ) noexcept {
     return solve_light_time_shapiro_position_velocity(
         jd_tdb,
@@ -1244,7 +1280,8 @@ bool solve_light_time_velocity_with_shapiro(
         out_light_time_days,
         out_light_time_rate,
         out_retarded_target_heliocentric_position_au,
-        out_retarded_target_heliocentric_velocity_au_per_day);
+        out_retarded_target_heliocentric_velocity_au_per_day,
+        out_iterations);
 }
 
 bool solve_light_time_acceleration_with_shapiro(
@@ -1268,8 +1305,10 @@ bool solve_light_time_acceleration_with_shapiro(
     double* out_light_time_acceleration,
     Vector3* out_retarded_target_heliocentric_position_au,
     Vector3* out_retarded_target_heliocentric_velocity_au_per_day,
-    Vector3* out_retarded_target_heliocentric_acceleration_au_per_day2
+    Vector3* out_retarded_target_heliocentric_acceleration_au_per_day2,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au
         || !out_velocity_au_per_day
         || !out_acceleration_au_per_day2
@@ -1288,6 +1327,7 @@ bool solve_light_time_acceleration_with_shapiro(
     Vector3 target_retarded_velocity;
     double light_time_days = 0.0;
     double light_time_rate = 0.0;
+    int iterations = 0;
     if (!solve_light_time_shapiro_position_velocity(
             jd_tdb,
             observer_heliocentric_position_au,
@@ -1304,7 +1344,8 @@ bool solve_light_time_acceleration_with_shapiro(
             &light_time_days,
             &light_time_rate,
             &target_retarded_position,
-            &target_retarded_velocity)) {
+            &target_retarded_velocity,
+            &iterations)) {
         return false;
     }
 
@@ -1421,6 +1462,7 @@ bool solve_light_time_acceleration_with_shapiro(
     if (out_retarded_target_heliocentric_acceleration_au_per_day2) {
         *out_retarded_target_heliocentric_acceleration_au_per_day2 = target_retarded_acceleration;
     }
+    if (out_iterations) *out_iterations = iterations;
     return true;
 }
 
@@ -1438,7 +1480,8 @@ bool solve_light_time_position_with_multi_shapiro(
     double tolerance_days,
     Vector3* out_position_au,
     double* out_light_time_days,
-    Vector3* out_retarded_target_primary_relative_position_au
+    Vector3* out_retarded_target_primary_relative_position_au,
+    int* out_iterations
 ) noexcept {
     return solve_light_time_multi_shapiro_iteration(
         jd_tdb,
@@ -1454,7 +1497,8 @@ bool solve_light_time_position_with_multi_shapiro(
         tolerance_days,
         out_position_au,
         out_light_time_days,
-        out_retarded_target_primary_relative_position_au);
+        out_retarded_target_primary_relative_position_au,
+        out_iterations);
 }
 
 bool solve_light_time_velocity_with_multi_shapiro(
@@ -1477,7 +1521,8 @@ bool solve_light_time_velocity_with_multi_shapiro(
     double* out_light_time_days,
     double* out_light_time_rate,
     Vector3* out_retarded_target_primary_relative_position_au,
-    Vector3* out_retarded_target_primary_relative_velocity_au_per_day
+    Vector3* out_retarded_target_primary_relative_velocity_au_per_day,
+    int* out_iterations
 ) noexcept {
     return solve_light_time_multi_shapiro_position_velocity(
         jd_tdb,
@@ -1499,7 +1544,8 @@ bool solve_light_time_velocity_with_multi_shapiro(
         out_light_time_days,
         out_light_time_rate,
         out_retarded_target_primary_relative_position_au,
-        out_retarded_target_primary_relative_velocity_au_per_day);
+        out_retarded_target_primary_relative_velocity_au_per_day,
+        out_iterations);
 }
 
 bool solve_light_time_acceleration_with_multi_shapiro(
@@ -1528,8 +1574,10 @@ bool solve_light_time_acceleration_with_multi_shapiro(
     double* out_light_time_acceleration,
     Vector3* out_retarded_target_primary_relative_position_au,
     Vector3* out_retarded_target_primary_relative_velocity_au_per_day,
-    Vector3* out_retarded_target_primary_relative_acceleration_au_per_day2
+    Vector3* out_retarded_target_primary_relative_acceleration_au_per_day2,
+    int* out_iterations
 ) noexcept {
+    if (out_iterations) *out_iterations = 0;
     if (!out_position_au
         || !out_velocity_au_per_day
         || !out_acceleration_au_per_day2
@@ -1550,6 +1598,7 @@ bool solve_light_time_acceleration_with_multi_shapiro(
     Vector3 target_retarded_velocity;
     double light_time_days = 0.0;
     double light_time_rate = 0.0;
+    int iterations = 0;
     if (!solve_light_time_multi_shapiro_position_velocity(
             jd_tdb,
             observer_primary_relative_position_au,
@@ -1570,7 +1619,8 @@ bool solve_light_time_acceleration_with_multi_shapiro(
             &light_time_days,
             &light_time_rate,
             &target_retarded_position,
-            &target_retarded_velocity)) {
+            &target_retarded_velocity,
+            &iterations)) {
         return false;
     }
 
@@ -1660,6 +1710,7 @@ bool solve_light_time_acceleration_with_multi_shapiro(
     if (out_retarded_target_primary_relative_acceleration_au_per_day2) {
         *out_retarded_target_primary_relative_acceleration_au_per_day2 = target_retarded_acceleration;
     }
+    if (out_iterations) *out_iterations = iterations;
     return true;
 }
 

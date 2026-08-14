@@ -18,6 +18,12 @@ enum ModelSelectionId {
     MODEL_SELECTION_DEFAULT = -1,
 };
 
+// Monotonically changes whenever a dispatch registration or selection policy
+// capable of affecting cached time scales or apparent matrices changes.
+// Context-local caches use this to reject values produced by a callback that
+// has since been replaced under the same model ID.
+uint64_t model_registry_generation() noexcept;
+
 enum RefractionModelId {
     REFRACTION_BENNETT = 0,
     REFRACTION_SKYFIELD = 1,

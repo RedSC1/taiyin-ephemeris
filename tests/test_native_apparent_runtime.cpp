@@ -12,13 +12,60 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <atomic>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
 
 const taiyin::SplitJulianDate JD_UT(2460310, 0.5);
 const taiyin::CalendarDateTime UTC_SAMPLE = { 2024, 4, 8, 18, 17, 20.0 };
+const int TEST_TDB_MODEL_ID = 19001;
+const int TEST_PRECESSION_MODEL_ID = 19002;
+
+double test_tdb_zero(
+    const taiyin::SplitJulianDate&,
+    const void*
+) {
+    return 0.0;
+}
+
+double test_tdb_two_minutes(
+    const taiyin::SplitJulianDate&,
+    const void*
+) {
+    return 120.0;
+}
+
+bool test_identity_precession(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    taiyin::Matrix3x3* out,
+    double* out_mean_obliquity_rad
+) {
+    if (!out) return false;
+    *out = taiyin::matrix3x3_identity();
+    if (out_mean_obliquity_rad) {
+        *out_mean_obliquity_rad = 23.4 * taiyin::TAIYIN_DEG_TO_RAD;
+    }
+    return true;
+}
+
+bool test_rotated_precession(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    taiyin::Matrix3x3* out,
+    double* out_mean_obliquity_rad
+) {
+    if (!out) return false;
+    *out = taiyin::rotation_z_matrix(0.125);
+    if (out_mean_obliquity_rad) {
+        *out_mean_obliquity_rad = 23.4 * taiyin::TAIYIN_DEG_TO_RAD;
+    }
+    return true;
+}
 
 void expect_true(bool value, const char* label, int* failures) {
     if (!value) {
@@ -338,6 +385,398 @@ void test_native_position_batch(int* failures) {
         expect_position_vector(batch[i], true, "batch body", failures);
         expect_status(diagnostics[i].status, TAIYIN_STATUS_OK, "native batch diagnostic", failures);
     }
+}
+
+void test_native_context_apparent_matrix_cache(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    expect_true(!context.apparent_matrix_cache.valid, "matrix cache starts empty", failures);
+
+    double position[6] = {};
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "populate apparent matrix cache",
+        failures);
+    expect_true(context.apparent_matrix_cache.valid, "matrix cache populated", failures);
+    expect_true(context.time_scale_cache.ut1_valid, "UT1 time-scale cache populated", failures);
+    expect_true(context.time_scale_cache.tt_valid, "TT-to-TDB cache populated", failures);
+    expect_true(context.ephemeris_state_cache.valid, "epoch state cache populated", failures);
+    expect_true(
+        context.ephemeris_state_cache.component_entry_count > 0u,
+        "epoch state cache stores source-aware receive-epoch states",
+        failures);
+    expect_true(
+        context.apparent_matrix_cache.derivative_flags == 0u,
+        "position matrix cache needs no derivatives",
+        failures);
+    expect_true(
+        context.apparent_matrix_cache.output_frame_id
+            == TAIYIN_APPARENT_FRAME_TRUE_ECLIPTIC_OF_DATE,
+        "matrix cache records output frame",
+        failures);
+    const SplitJulianDate first_jd_tt = context.apparent_matrix_cache.jd_tt;
+    const uint64_t first_state_cache_hits = context.ephemeris_state_cache.hit_count;
+
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_VENUS_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "reuse apparent matrix cache for another target",
+        failures);
+    expect_true(
+        context.apparent_matrix_cache.jd_tt == first_jd_tt,
+        "same epoch keeps matrix cache key",
+        failures);
+    expect_true(
+        context.ephemeris_state_cache.hit_count > first_state_cache_hits,
+        "same epoch reuses observer or solar-deflector states",
+        failures);
+    expect_true(
+        context.time_scale_cache.jd_ut1 == JD_UT,
+        "same UT1 input keeps cached time-scale key",
+        failures);
+    NativeCalcContext fresh_context = make_geocentric_context();
+    double fresh_position[6] = {};
+    expect_status(
+        calc_position_ut(
+            &fresh_context,
+            TAIYIN_BODY_VENUS_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            fresh_position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "fresh-context reference for cached position",
+        failures);
+    for (int i = 0; i < 3; ++i) {
+        expect_near(
+            position[i],
+            fresh_position[i],
+            1.0e-15,
+            "cached and uncached positions agree",
+            failures);
+    }
+
+    for (size_t i = 0; i < TAIYIN_NATIVE_EPHEMERIS_STATE_CACHE_CAPACITY; ++i) {
+        if (context.ephemeris_state_cache.component_entries[i].valid) {
+            context.ephemeris_state_cache.component_entries[i]
+                .source_key.source_id ^= UINT64_C(0x8000000000000000);
+        }
+    }
+    const uint64_t misses_before_source_change =
+        context.ephemeris_state_cache.miss_count;
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_VENUS_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "source-key mismatch refreshes same-epoch raw states",
+        failures);
+    expect_true(
+        context.ephemeris_state_cache.miss_count
+            > misses_before_source_change,
+        "same JD does not reuse a different source key",
+        failures);
+
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_VENUS_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_SPEED,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "refresh matrix cache for velocity derivatives",
+        failures);
+    expect_true(
+        context.apparent_matrix_cache.derivative_flags == TAIYIN_APPARENT_VELOCITY,
+        "speed request updates matrix derivative key",
+        failures);
+
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_VENUS_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_NONUT,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "refresh matrix cache for mean ecliptic frame",
+        failures);
+    expect_true(
+        context.apparent_matrix_cache.output_frame_id
+            == TAIYIN_APPARENT_FRAME_MEAN_ECLIPTIC_OF_DATE,
+        "NONUT updates matrix frame key",
+        failures);
+
+    const SplitJulianDate next_jd(JD_UT.day_number, JD_UT.day_fraction + 0.25);
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_VENUS_BARYCENTER,
+            next_jd,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "refresh matrix cache for a new epoch",
+        failures);
+    expect_true(
+        context.apparent_matrix_cache.jd_tt != first_jd_tt,
+        "new epoch replaces matrix cache key",
+        failures);
+    expect_true(
+        context.ephemeris_state_cache.jd_tdb
+            == context.time_scale_cache.ut1_jd_tdb,
+        "new epoch replaces state-cache key",
+        failures);
+}
+
+void test_context_epoch_cache_invalidated_by_runtime_clear(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    double position[6] = {};
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "populate epoch cache before global clear",
+        failures);
+    const uint64_t generation_before_clear =
+        context.ephemeris_state_cache.runtime_generation;
+
+    clear_global_ephemeris_cache();
+    expect_true(
+        global_ephemeris_cache_entry_count() == 0u,
+        "global clear empties segment cache",
+        failures);
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "same-context evaluation after global clear",
+        failures);
+    expect_true(
+        context.ephemeris_state_cache.runtime_generation
+            != generation_before_clear,
+        "global clear invalidates the context epoch generation",
+        failures);
+    expect_true(
+        global_ephemeris_cache_entry_count() > 0u,
+        "post-clear context evaluation remaps a segment",
+        failures);
+}
+
+void test_context_caches_invalidated_by_dispatch_replacement(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext time_context = make_geocentric_context();
+    time_context.model_context.tdb_model_id = TEST_TDB_MODEL_ID;
+    dispatch::register_tdb_model(TEST_TDB_MODEL_ID, test_tdb_zero);
+    double position[6] = {};
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_position_tt(
+            &time_context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "populate time cache with first TDB callback",
+        failures);
+    const SplitJulianDate first_jd_tdb = time_context.time_scale_cache.jd_tdb;
+    const uint64_t first_time_generation =
+        time_context.time_scale_cache.tt_dispatch_generation;
+
+    dispatch::register_tdb_model(TEST_TDB_MODEL_ID, test_tdb_two_minutes);
+    expect_status(
+        calc_position_tt(
+            &time_context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "replace TDB callback under cached model ID",
+        failures);
+    expect_true(
+        time_context.time_scale_cache.tt_dispatch_generation
+            != first_time_generation,
+        "TDB replacement invalidates time cache generation",
+        failures);
+    expect_near(
+        days_between_split_jd(
+            first_jd_tdb, time_context.time_scale_cache.jd_tdb),
+        120.0 / 86400.0,
+        1.0e-15,
+        "TDB replacement refreshes cached scale",
+        failures);
+
+    NativeCalcContext matrix_context = make_geocentric_context();
+    matrix_context.model_context.precession_model_id =
+        TEST_PRECESSION_MODEL_ID;
+    dispatch::register_precession_model(
+        TEST_PRECESSION_MODEL_ID, test_identity_precession);
+    double first_position[6] = {};
+    double second_position[6] = {};
+    expect_status(
+        calc_position_tt(
+            &matrix_context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            first_position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "populate matrix cache with first precession callback",
+        failures);
+    const uint64_t first_matrix_generation =
+        matrix_context.apparent_matrix_cache.dispatch_generation;
+
+    dispatch::register_precession_model(
+        TEST_PRECESSION_MODEL_ID, test_rotated_precession);
+    expect_status(
+        calc_position_tt(
+            &matrix_context,
+            TAIYIN_BODY_MERCURY_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            second_position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "replace precession callback under cached model ID",
+        failures);
+    expect_true(
+        matrix_context.apparent_matrix_cache.dispatch_generation
+            != first_matrix_generation,
+        "precession replacement invalidates matrix cache generation",
+        failures);
+    expect_true(
+        spherical_array_angle_delta(first_position, second_position) > 0.01,
+        "precession replacement recomputes apparent matrix",
+        failures);
+}
+
+void test_shared_native_context_concurrent_reads(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    struct ConcurrentCase {
+        int target_id;
+        SplitJulianDate jd_ut;
+        uint32_t flags;
+        double expected[6];
+    };
+    ConcurrentCase cases[] = {
+        { TAIYIN_BODY_MERCURY_BARYCENTER, JD_UT,
+          TAIYIN_NATIVE_POSITION_RADIANS, {} },
+        { TAIYIN_BODY_VENUS_BARYCENTER,
+          SplitJulianDate(JD_UT.day_number, JD_UT.day_fraction + 0.125),
+          TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_SPEED, {} },
+        { TAIYIN_BODY_MARS_BARYCENTER,
+          SplitJulianDate(JD_UT.day_number, JD_UT.day_fraction + 0.25),
+          TAIYIN_NATIVE_POSITION_RADIANS, {} },
+        { TAIYIN_BODY_JUPITER_BARYCENTER,
+          SplitJulianDate(JD_UT.day_number, JD_UT.day_fraction + 0.375),
+          TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_SPEED, {} },
+    };
+
+    EphemerisEvalDiagnostic diagnostic;
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        NativeCalcContext reference = make_geocentric_context();
+        expect_status(
+            calc_position_ut(
+                &reference,
+                cases[i].target_id,
+                cases[i].jd_ut,
+                cases[i].flags,
+                cases[i].expected,
+                &diagnostic),
+            TAIYIN_STATUS_OK,
+            "concurrent shared-context reference",
+            failures);
+    }
+
+    NativeCalcContext shared = make_geocentric_context();
+    std::atomic<int> concurrent_failures(0);
+    std::vector<std::thread> workers;
+    const int worker_count = 8;
+    const int iterations_per_worker = 64;
+    for (int worker = 0; worker < worker_count; ++worker) {
+        workers.push_back(std::thread([&, worker]() {
+            for (int iteration = 0; iteration < iterations_per_worker; ++iteration) {
+                const size_t index = static_cast<size_t>(
+                    (worker + iteration) %
+                    static_cast<int>(sizeof(cases) / sizeof(cases[0])));
+                double actual[6] = {};
+                EphemerisEvalDiagnostic thread_diagnostic;
+                const Status status = calc_position_ut(
+                    &shared,
+                    cases[index].target_id,
+                    cases[index].jd_ut,
+                    cases[index].flags,
+                    actual,
+                    &thread_diagnostic);
+                const int value_count =
+                    (cases[index].flags & TAIYIN_NATIVE_POSITION_SPEED) != 0u
+                    ? 6 : 3;
+                bool matches = status == TAIYIN_STATUS_OK;
+                for (int component = 0; matches && component < value_count; ++component) {
+                    matches = std::fabs(
+                        actual[component] - cases[index].expected[component])
+                        <= 1.0e-14;
+                }
+                if (!matches) {
+                    concurrent_failures.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        }));
+    }
+    for (size_t i = 0; i < workers.size(); ++i) {
+        workers[i].join();
+    }
+    expect_true(
+        concurrent_failures.load(std::memory_order_relaxed) == 0,
+        "immutable native context supports concurrent calculations",
+        failures);
 }
 
 void test_major_body_apparent_batch(int* failures) {
@@ -1174,6 +1613,48 @@ void test_non_earth_topocentric_is_unsupported(int* failures) {
         failures);
 }
 
+void test_native_position_many_deflectors(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    ApparentDeflector deflectors[5];
+    const int body_ids[5] = {
+        TAIYIN_BODY_SUN,
+        TAIYIN_BODY_JUPITER_BARYCENTER,
+        TAIYIN_BODY_SATURN_BARYCENTER,
+        TAIYIN_BODY_URANUS_BARYCENTER,
+        TAIYIN_BODY_NEPTUNE_BARYCENTER,
+    };
+    for (size_t i = 0; i < 5u; ++i) {
+        deflectors[i] = *native_solar_deflector();
+        deflectors[i].body_id = body_ids[i];
+        if (i > 0u) {
+            deflectors[i].schwarzschild_radius_au *= 1.0e-6;
+        }
+    }
+    expect_status(
+        native_context_set_deflectors(&context, deflectors, 5u, 0),
+        TAIYIN_STATUS_OK,
+        "set more deflectors than the native inline capacity",
+        failures);
+
+    double position[6] = {};
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_MARS_BARYCENTER,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS,
+            position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "native position supports overflow deflector storage",
+        failures);
+    expect_position_vector(position, false, "many-deflector position", failures);
+}
+
 }  // namespace
 
 int main() {
@@ -1181,6 +1662,10 @@ int main() {
     if (initialize_packaged_runtime(&failures)) {
         test_default_apparent_jupiter_matches_swiss(&failures);
         test_native_position_batch(&failures);
+        test_native_context_apparent_matrix_cache(&failures);
+        test_context_epoch_cache_invalidated_by_runtime_clear(&failures);
+        test_context_caches_invalidated_by_dispatch_replacement(&failures);
+        test_shared_native_context_concurrent_reads(&failures);
         test_major_body_apparent_batch(&failures);
         test_observed_utc_requires_time_tables(&failures);
         test_observed_utc_requires_eop_coverage(&failures);
@@ -1195,6 +1680,7 @@ int main() {
         test_horizontal_formula_matches_erfa_baked_oracle(&failures);
         test_observed_utc_refraction_requires_atmosphere_fields(&failures);
         test_non_earth_topocentric_is_unsupported(&failures);
+        test_native_position_many_deflectors(&failures);
     }
     return failures == 0 ? 0 : 1;
 }

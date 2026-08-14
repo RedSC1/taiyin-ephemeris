@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 
 namespace taiyin {
 namespace runtime {
@@ -20,6 +21,40 @@ namespace runtime {
 namespace {
 
 constexpr int kMaxFastCorrectionSampleRadius = 4096;
+
+bool resolve_fast_jd_tdb(
+    const NativeCalcContext& context,
+    const SplitJulianDate& jd_tt,
+    SplitJulianDate* out_jd_tdb
+) noexcept {
+    if (!out_jd_tdb || !split_julian_date_is_finite(jd_tt)) {
+        return false;
+    }
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.tt_valid
+        && cache.tt_dispatch_generation == dispatch_generation
+        && cache.jd_tt == jd_tt
+        && cache.tdb_model_id == context.model_context.tdb_model_id) {
+        *out_jd_tdb = cache.jd_tdb;
+        return true;
+    }
+    const double tdb_minus_tt = dispatch::eval_tdb(
+        context.model_context.tdb_model_id, jd_tt, nullptr);
+    SplitJulianDate jd_tdb;
+    if (!std::isfinite(tdb_minus_tt)
+        || !add_seconds_to_split_jd(jd_tt, tdb_minus_tt, &jd_tdb)) {
+        return false;
+    }
+    cache.tt_valid = true;
+    cache.tt_dispatch_generation = dispatch_generation;
+    cache.jd_tt = jd_tt;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.jd_tdb = jd_tdb;
+    *out_jd_tdb = jd_tdb;
+    return true;
+}
 
 int output_frame_id(FastApparentFrame frame) noexcept {
     switch (frame) {
@@ -690,9 +725,8 @@ Status eval_body_2_correction_epoch_sample(
     if (frame_id < 0) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
-    const double tdb_minus_tt = dispatch::eval_tdb(context->model_context.tdb_model_id, jd_tt, nullptr);
     SplitJulianDate jd_tdb;
-    if (!add_seconds_to_split_jd(jd_tt, tdb_minus_tt, &jd_tdb)) {
+    if (!resolve_fast_jd_tdb(*context, jd_tt, &jd_tdb)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
@@ -715,6 +749,8 @@ Status eval_body_2_correction_epoch_sample(
     eval_context.use_global = true;
     eval_context.route_rule_id = context->route_rule_id;
     eval_context.route_rules = context->route_rules;
+    eval_context.epoch_state_cache = &context->ephemeris_state_cache;
+    eval_context.epoch_jd_tdb = jd_tdb;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data[2] = {};
@@ -872,9 +908,8 @@ Status eval_body_correction_epoch_sample(
     }
     const int frame_id = output_frame_id(options.frame);
     if (frame_id < 0) return TAIYIN_ERROR_UNSUPPORTED;
-    const double tdb_minus_tt = dispatch::eval_tdb(context->model_context.tdb_model_id, jd_tt, nullptr);
     SplitJulianDate jd_tdb;
-    if (!add_seconds_to_split_jd(jd_tt, tdb_minus_tt, &jd_tdb)) {
+    if (!resolve_fast_jd_tdb(*context, jd_tt, &jd_tdb)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
@@ -897,6 +932,8 @@ Status eval_body_correction_epoch_sample(
     eval_context.use_global = true;
     eval_context.route_rule_id = context->route_rule_id;
     eval_context.route_rules = context->route_rules;
+    eval_context.epoch_state_cache = &context->ephemeris_state_cache;
+    eval_context.epoch_jd_tdb = jd_tdb;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data = {};
@@ -1340,6 +1377,8 @@ Status eval_fast_apparent_body_2_tdb(
     eval_context.use_global = true;
     eval_context.route_rule_id = context->route_rule_id;
     eval_context.route_rules = context->route_rules;
+    eval_context.epoch_state_cache = &context->ephemeris_state_cache;
+    eval_context.epoch_jd_tdb = jd_tdb;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data[2] = {};
@@ -1726,6 +1765,8 @@ Status eval_fast_apparent_body_tdb(
     eval_context.use_global = true;
     eval_context.route_rule_id = context->route_rule_id;
     eval_context.route_rules = context->route_rules;
+    eval_context.epoch_state_cache = &context->ephemeris_state_cache;
+    eval_context.epoch_jd_tdb = jd_tdb;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data = {};

@@ -1291,7 +1291,11 @@ void test_batch_convenience_and_light_time(int* failures) {
         expect_near(convenience_lon_rate[i], with_matrix_lon_rate[i], 1.0e-15, "batch convenience longitude rate", failures);
         expect_near(convenience_light_time[i], with_matrix_light_time[i], 1.0e-15, "batch convenience light-time", failures);
         expect_near(convenience_light_time_rate[i], with_matrix_light_time_rate[i], 1.0e-15, "batch convenience light-time rate", failures);
-        expect_true(convenience_iterations[i] == -1, "batch light-time iteration count reserved", failures);
+        expect_true(convenience_iterations[i] > 0, "batch light-time iteration count reported", failures);
+        expect_true(
+            convenience_iterations[i] == with_matrix_iterations[i],
+            "batch light-time iteration count matches matrix path",
+            failures);
     }
 }
 

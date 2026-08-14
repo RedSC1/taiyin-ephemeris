@@ -7,10 +7,12 @@
 #include "taiyin/status.h"
 #include "taiyin/time.h"
 
+#include <mutex>
 #include <stdint.h>
 
 namespace taiyin {
 namespace internal {
+struct EarthOrientationTable;
 class EphemerisRouteRuleTable;
 }
 namespace runtime {
@@ -59,6 +61,113 @@ struct NativeAtmosphere {
     NativeAtmosphere() noexcept;
 };
 
+// One synchronized exact-epoch matrix entry owned by each native calculation
+// context. Concurrent calculations may safely share an immutable context.
+// Consecutive scalar position calls for a chart normally share TT, frame and
+// model configuration, so this avoids rebuilding the same precession,
+// nutation and output-frame matrices for every target.  The cache is not used
+// for custom output-frame callbacks because their opaque data may be mutable.
+struct NativeApparentMatrixCache {
+    mutable std::recursive_mutex mutex;
+    bool valid;
+    uint64_t dispatch_generation;
+    SplitJulianDate jd_tt;
+    uint32_t derivative_flags;
+    int output_frame_id;
+    int precession_model_id;
+    int nutation_model_id;
+    int obliquity_model_id;
+    int frame_route_id;
+    double celestial_pole_offset_dx_rad;
+    double celestial_pole_offset_dy_rad;
+    double celestial_pole_offset_dx_rate_rad_per_day;
+    double celestial_pole_offset_dy_rate_rad_per_day;
+    double matrix_derivative_step_days;
+    double output_matrix[9];
+    double output_matrix_dot[9];
+    double output_matrix_ddot[9];
+
+    NativeApparentMatrixCache() noexcept;
+    NativeApparentMatrixCache(const NativeApparentMatrixCache& other);
+    NativeApparentMatrixCache& operator=(const NativeApparentMatrixCache& other);
+};
+
+// Synchronized exact-input time-scale memoization owned by a calculation
+// context. The model identifiers and EOP table identity are part of the key,
+// so changing a configured model or replacing the runtime EOP table cannot
+// reuse stale values.
+struct NativeTimeScaleCache {
+    mutable std::recursive_mutex mutex;
+    uint64_t tt_dispatch_generation;
+    bool tt_valid;
+    SplitJulianDate jd_tt;
+    int tdb_model_id;
+    SplitJulianDate jd_tdb;
+
+    uint64_t ut1_dispatch_generation;
+    bool ut1_valid;
+    SplitJulianDate jd_ut1;
+    int delta_t_model_id;
+    int ephemeris_family_id;
+    double delta_t_seconds;
+    SplitJulianDate ut1_jd_tt;
+    SplitJulianDate ut1_jd_tdb;
+
+    uint64_t utc_dispatch_generation;
+    bool utc_valid;
+    CalendarDateTime datetime_utc;
+    bool allow_utc_out_of_range_estimate;
+    int utc_tdb_model_id;
+    int utc_delta_t_model_id;
+    int utc_ephemeris_family_id;
+    const internal::EarthOrientationTable* eop_table;
+    PreciseTimeScales utc_scales;
+    TimeScaleDiagnostic utc_diagnostic;
+    bool has_celestial_pole_offset;
+    double celestial_pole_offset_dx_rad;
+    double celestial_pole_offset_dy_rad;
+    double celestial_pole_offset_dx_rate_rad_per_day;
+    double celestial_pole_offset_dy_rate_rad_per_day;
+
+    NativeTimeScaleCache() noexcept;
+    NativeTimeScaleCache(const NativeTimeScaleCache& other);
+    NativeTimeScaleCache& operator=(const NativeTimeScaleCache& other);
+};
+
+const size_t TAIYIN_NATIVE_EPHEMERIS_STATE_CACHE_CAPACITY = 32u;
+
+struct NativeEphemerisStateCacheEntry {
+    bool valid;
+    int body_id;
+    int center_id;
+    int frame_id;
+    internal::EphemerisBlockKey source_key;
+    uint32_t components;
+    CartesianState state;
+    EphemerisEvalDiagnostic diagnostic;
+
+    NativeEphemerisStateCacheEntry() noexcept;
+};
+
+// Stores raw geometric states evaluated at one exact receive epoch. A hit
+// requires the same runtime generation, requested state identity and complete
+// source key. Retarded epochs used by light-time iteration deliberately bypass
+// it. Internal locking preserves read-only context sharing across threads.
+struct NativeEphemerisStateCache {
+    mutable std::recursive_mutex mutex;
+    bool valid;
+    SplitJulianDate jd_tdb;
+    uint64_t runtime_generation;
+    size_t component_entry_count;
+    uint64_t hit_count;
+    uint64_t miss_count;
+    NativeEphemerisStateCacheEntry component_entries[TAIYIN_NATIVE_EPHEMERIS_STATE_CACHE_CAPACITY];
+
+    NativeEphemerisStateCache() noexcept;
+    NativeEphemerisStateCache(const NativeEphemerisStateCache& other);
+    NativeEphemerisStateCache& operator=(const NativeEphemerisStateCache& other);
+};
+
 struct NativeCalcContext {
     FieldSet fields;
     AstroModelContext model_context;
@@ -87,6 +196,9 @@ struct NativeCalcContext {
     // Resolved at setRouteRule time. Route rule tables are registered during
     // setup and treated as immutable while calculations are running.
     const internal::EphemerisRouteRuleTable* route_rules;
+    mutable NativeApparentMatrixCache apparent_matrix_cache;
+    mutable NativeTimeScaleCache time_scale_cache;
+    mutable NativeEphemerisStateCache ephemeris_state_cache;
 
     NativeCalcContext() noexcept;
 };

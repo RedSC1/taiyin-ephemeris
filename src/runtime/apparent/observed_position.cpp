@@ -12,6 +12,7 @@
 #include "taiyin/time.h"
 
 #include <cmath>
+#include <mutex>
 
 namespace taiyin {
 namespace runtime {
@@ -228,6 +229,19 @@ Status resolve_ut_scales(
     if (!out_jd_tt || !out_jd_tdb || !split_julian_date_is_finite(jd_ut)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    NativeTimeScaleCache& cache = context.time_scale_cache;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    if (cache.ut1_valid
+        && cache.ut1_dispatch_generation == dispatch_generation
+        && cache.jd_ut1 == jd_ut
+        && cache.delta_t_model_id == context.delta_t_model_id
+        && cache.ephemeris_family_id == context.ephemeris_family_id
+        && cache.tdb_model_id == context.model_context.tdb_model_id) {
+        *out_jd_tt = cache.ut1_jd_tt;
+        *out_jd_tdb = cache.ut1_jd_tdb;
+        return TAIYIN_STATUS_OK;
+    }
     const double delta_t_seconds = dispatch::eval_delta_t_with_ephemeris_correction(
         context.delta_t_model_id,
         context.ephemeris_family_id,
@@ -243,9 +257,34 @@ Status resolve_ut_scales(
     if (!add_seconds_to_split_jd(jd_tt, tdb_minus_tt_seconds, &jd_tdb)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
+    cache.tt_valid = true;
+    cache.tt_dispatch_generation = dispatch_generation;
+    cache.jd_tt = jd_tt;
+    cache.tdb_model_id = context.model_context.tdb_model_id;
+    cache.jd_tdb = jd_tdb;
+    cache.ut1_valid = true;
+    cache.ut1_dispatch_generation = dispatch_generation;
+    cache.jd_ut1 = jd_ut;
+    cache.delta_t_model_id = context.delta_t_model_id;
+    cache.ephemeris_family_id = context.ephemeris_family_id;
+    cache.delta_t_seconds = delta_t_seconds;
+    cache.ut1_jd_tt = jd_tt;
+    cache.ut1_jd_tdb = jd_tdb;
     *out_jd_tt = jd_tt;
     *out_jd_tdb = jd_tdb;
     return TAIYIN_STATUS_OK;
+}
+
+bool same_calendar_datetime(
+    const CalendarDateTime& lhs,
+    const CalendarDateTime& rhs
+) noexcept {
+    return lhs.year == rhs.year
+        && lhs.month == rhs.month
+        && lhs.day == rhs.day
+        && lhs.hour == rhs.hour
+        && lhs.minute == rhs.minute
+        && lhs.second == rhs.second;
 }
 
 Status apply_celestial_pole_offset_from_eop(
@@ -563,36 +602,89 @@ Status calc_observed_utc(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     const internal::EarthOrientationTable* eop_table = global_earth_orientation_table();
-
-    TimeScaleOptions options;
-    options.allow_utc_out_of_range_estimate =
-        context->allow_utc_out_of_range_estimate;
-    options.tdb_model_id = context->model_context.tdb_model_id;
-    options.delta_t_model_id = context->delta_t_model_id;
-    options.ephemeris_family_id = context->ephemeris_family_id;
-    options.leap_second_table = builtin_leap_second_table();
     PreciseTimeScales scales;
     TimeScaleDiagnostic time_diagnostic;
-    if (!make_time_scales_from_utc(datetime_utc, eop_table, &options, &scales, &time_diagnostic)) {
-        const Status status = precise_time_failure_status(time_diagnostic);
-        set_diagnostics(
-            diagnostics,
-            body_count,
-            body_ids,
-            status,
-            context->observer_id,
-            jd_utc);
-        for (size_t i = 0; diagnostics && i < body_count; ++i) {
-            copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
-        }
-        return status;
-    }
-
+    NativeTimeScaleCache& cache = context->time_scale_cache;
     NativeCalcContext scratch = *context;
     scratch.apparent_options.model_context = &scratch.model_context;
-    const Status cpo_status = time_diagnostic.used_eop
-        ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
-        : TAIYIN_STATUS_OK;
+    std::lock_guard<std::recursive_mutex> cache_lock(cache.mutex);
+    const uint64_t dispatch_generation = dispatch::model_registry_generation();
+    const bool time_cache_hit = cache.utc_valid
+        && cache.utc_dispatch_generation == dispatch_generation
+        && same_calendar_datetime(cache.datetime_utc, datetime_utc)
+        && cache.allow_utc_out_of_range_estimate
+            == context->allow_utc_out_of_range_estimate
+        && cache.utc_tdb_model_id == context->model_context.tdb_model_id
+        && cache.utc_delta_t_model_id == context->delta_t_model_id
+        && cache.utc_ephemeris_family_id == context->ephemeris_family_id
+        && cache.eop_table == eop_table;
+    Status cpo_status = TAIYIN_STATUS_OK;
+    if (time_cache_hit) {
+        scales = cache.utc_scales;
+        time_diagnostic = cache.utc_diagnostic;
+        if (cache.has_celestial_pole_offset) {
+            cpo_status = native_context_set_celestial_pole_offset(
+                &scratch,
+                cache.celestial_pole_offset_dx_rad,
+                cache.celestial_pole_offset_dy_rad,
+                cache.celestial_pole_offset_dx_rate_rad_per_day,
+                cache.celestial_pole_offset_dy_rate_rad_per_day);
+        }
+    } else {
+        TimeScaleOptions options;
+        options.allow_utc_out_of_range_estimate =
+            context->allow_utc_out_of_range_estimate;
+        options.tdb_model_id = context->model_context.tdb_model_id;
+        options.delta_t_model_id = context->delta_t_model_id;
+        options.ephemeris_family_id = context->ephemeris_family_id;
+        options.leap_second_table = builtin_leap_second_table();
+        if (!make_time_scales_from_utc(
+                datetime_utc,
+                eop_table,
+                &options,
+                &scales,
+                &time_diagnostic)) {
+            const Status status = precise_time_failure_status(time_diagnostic);
+            set_diagnostics(
+                diagnostics,
+                body_count,
+                body_ids,
+                status,
+                context->observer_id,
+                jd_utc);
+            for (size_t i = 0; diagnostics && i < body_count; ++i) {
+                copy_time_scale_diagnostic(diagnostics + i, time_diagnostic);
+            }
+            return status;
+        }
+        cpo_status = time_diagnostic.used_eop
+            ? apply_celestial_pole_offset_from_eop(&scratch, scales.jd_utc)
+            : TAIYIN_STATUS_OK;
+        if (cpo_status == TAIYIN_STATUS_OK) {
+            cache.utc_valid = true;
+            cache.utc_dispatch_generation = dispatch_generation;
+            cache.datetime_utc = datetime_utc;
+            cache.allow_utc_out_of_range_estimate =
+                context->allow_utc_out_of_range_estimate;
+            cache.utc_tdb_model_id = context->model_context.tdb_model_id;
+            cache.utc_delta_t_model_id = context->delta_t_model_id;
+            cache.utc_ephemeris_family_id = context->ephemeris_family_id;
+            cache.eop_table = eop_table;
+            cache.utc_scales = scales;
+            cache.utc_diagnostic = time_diagnostic;
+            cache.has_celestial_pole_offset = time_diagnostic.used_eop;
+            if (cache.has_celestial_pole_offset) {
+                cache.celestial_pole_offset_dx_rad =
+                    scratch.apparent_options.celestial_pole_offset_dx_rad;
+                cache.celestial_pole_offset_dy_rad =
+                    scratch.apparent_options.celestial_pole_offset_dy_rad;
+                cache.celestial_pole_offset_dx_rate_rad_per_day =
+                    scratch.apparent_options.celestial_pole_offset_dx_rate_rad_per_day;
+                cache.celestial_pole_offset_dy_rate_rad_per_day =
+                    scratch.apparent_options.celestial_pole_offset_dy_rate_rad_per_day;
+            }
+        }
+    }
     if (cpo_status != TAIYIN_STATUS_OK) {
         set_diagnostics(
             diagnostics,
