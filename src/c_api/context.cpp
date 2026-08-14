@@ -133,7 +133,9 @@ void TAIYIN_C_CALL taiyin_apparent_config_init(
     const taiyin::runtime::ApparentOptions defaults;
     std::memset(config, 0, sizeof(*config));
     config->struct_size = sizeof(*config);
-    config->flags = defaults.flags;
+    config->flags = defaults.flags
+        | taiyin::TAIYIN_APPARENT_ABERRATION
+        | taiyin::TAIYIN_APPARENT_DEFLECTION;
     config->output_frame_id = defaults.output_frame_id;
     config->light_time_method_id = defaults.light_time_method_id;
     config->shapiro_delay_model_id = defaults.shapiro_delay_model_id;

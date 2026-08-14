@@ -54,6 +54,12 @@ void test_default_geocentric_ecliptic(int* failures) {
     expect_true(!spec.observer.use_topocentric_offset, "default geocentric has no topo offset", failures);
     expect_int(spec.apparent_output_frame_id, TAIYIN_APPARENT_FRAME_TRUE_ECLIPTIC_OF_DATE, "default output frame", failures);
     expect_true((spec.apparent_flags & TAIYIN_APPARENT_SPHERICAL) != 0u, "default apparent spherical", failures);
+    expect_true((spec.apparent_flags & TAIYIN_APPARENT_LIGHT_TIME) != 0u, "default apparent light time", failures);
+    expect_true((spec.apparent_flags & TAIYIN_APPARENT_ABERRATION) != 0u, "default annual aberration", failures);
+    expect_true((spec.apparent_flags & TAIYIN_APPARENT_DEFLECTION) != 0u, "default solar deflection", failures);
+    expect_true(context.apparent_options.deflector_count == 1, "default has one deflector", failures);
+    expect_int(context.apparent_options.solar_deflector_index, 0, "default solar deflector index", failures);
+    expect_int(context.apparent_options.deflectors[0].body_id, TAIYIN_BODY_SUN, "default deflector is Sun", failures);
 }
 
 void test_equatorial_speed_and_xyz(int* failures) {

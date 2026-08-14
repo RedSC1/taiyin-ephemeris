@@ -47,6 +47,8 @@ calc_observed_utc
 
 The current apparent/observed chain supports combinations of light-time, annual aberration, solar/multi-body gravitational deflection, topocentric observer, horizontal az/alt, refraction, frame selection, UTC/EOP/UT1/polar motion/CPO, and related options. The global runtime owns EOP, leap-second, and lunar-limb data. User location, atmosphere, the explicit UTC out-of-range fallback flag, model IDs, and route rule live on `NativeCalcContext`; flags control calculation switches. Observed APIs use a `uint64_t` layering convention: their low 32 bits accept only calculation semantics (`SPEED`, `TRUEPOS`, `NO_ABERR`, `NO_GDEFL`, `ASTROMETRIC`, `TOPOCENTRIC`, and `ALLOW_BARYCENTER_APPROX`), while horizontal/refraction/meteorology options occupy the high 32 bits. Output-shape and frame-selector flags (`XYZ`, `EQUATORIAL`, `RADIANS`, and `NONUT`) return `TAIYIN_ERROR_UNSUPPORTED`, rather than being silently ignored.
 
+New native contexts default to light-time, annual aberration, and Sun-only gravitational deflection; Shapiro delay remains opt-in. `SPEED` is supported with that correction set. `NO_ABERR` and `NO_GDEFL` override the corresponding correction for one call, while `ASTROMETRIC` and `TRUEPOS` select broader reduced-position conventions. Custom deflector arrays replace the built-in Sun-only list and must identify the solar entry explicitly when annual aberration or another solar-specific term remains enabled.
+
 ### Composite Bodies And Data Fallback
 
 Earth/Moon and major-body barycenter/body-offset logic is centralized in the runtime body registry and built-in body rules. Catalog initialization marks direct-capable bodies; bodies that cannot be read directly from a data file are handled by fallback evaluators.

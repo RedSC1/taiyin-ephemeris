@@ -15,7 +15,7 @@ runtime and import-library name, for example `taiyin-8.dll` and `taiyin-8.lib`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
 the independent semantic library version; the current preview is
-`1.0.0-preview.1`. `taiyin_get_library_codename()` reports the major-release codename;
+`1.0.0-preview.2`. `taiyin_get_library_codename()` reports the major-release codename;
 Taiyin `1.x.x` is **Singularity**. The returned version and codename strings
 have static library lifetime and must not be freed. `taiyin_get_capabilities()`
 reports the functional modules and feature-level extensions present in the
@@ -161,6 +161,16 @@ Initialize configuration values with their `_init()` functions before changing
 individual fields. Topocentric state and deflectors use dedicated setters and
 are preserved when `taiyin_context_set_apparent_config()` changes the remaining
 apparent options.
+
+A newly created context, and a `taiyin_apparent_config` initialized with
+`taiyin_apparent_config_init()`, use light-time, annual aberration, and
+gravitational deflection by the Sun. The context's built-in deflector list
+contains the Sun only; Shapiro delay remains opt-in. Position `SPEED` output is
+compatible with this default. Use the per-call `NO_ABERR` or `NO_GDEFL` flags
+to suppress one correction, or replace the complete deflector array with
+`taiyin_context_set_deflectors()`. When supplying several deflectors, the
+solar-deflector index must identify the Sun needed by annual aberration and
+solar-specific terms.
 
 Unknown apparent flags, Delta-T model IDs, and ephemeris-family IDs are rejected
 instead of silently selecting a fallback.

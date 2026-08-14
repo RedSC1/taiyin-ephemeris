@@ -23,7 +23,7 @@
 
 namespace {
 
-const size_t PACKAGED_OPM2_DESCRIPTOR_COUNT = 25u;
+const size_t PACKAGED_OPM2_DESCRIPTOR_COUNT = 36u;
 
 void expect_true(bool value, const char* label, int* failures) {
     if (!value) {

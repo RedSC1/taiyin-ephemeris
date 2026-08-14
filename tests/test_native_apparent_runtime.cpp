@@ -184,6 +184,94 @@ void expect_state_vector(const taiyin::CartesianState& state, const char* label,
     expect_true(acceleration_norm > 0.0, "state acceleration is nonzero", failures);
 }
 
+void test_default_apparent_jupiter_matches_swiss(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    // 2003-08-28 03:00 China Standard Time = 2003-08-27 19:00 UT.
+    // Swiss Ephemeris 2.10.03, SEFLG_SWIEPH | SEFLG_SPEED:
+    // longitude 150.0868595396218 deg, latitude 0.8261369468319945 deg.
+    const SplitJulianDate jd_ut(2452879, 0.2916666666666665);
+    const double swiss_longitude_rad = 150.0868595396218 * TAIYIN_DEG_TO_RAD;
+    const double swiss_latitude_rad = 0.8261369468319945 * TAIYIN_DEG_TO_RAD;
+    const double tolerance_rad = 0.2 / 3600.0 * TAIYIN_DEG_TO_RAD;
+
+    NativeCalcContext context;
+    expect_true(
+        (context.apparent_options.flags & TAIYIN_APPARENT_ABERRATION) != 0u,
+        "default context enables annual aberration",
+        failures);
+    expect_true(
+        (context.apparent_options.flags & TAIYIN_APPARENT_DEFLECTION) != 0u,
+        "default context enables solar deflection",
+        failures);
+    expect_true(
+        context.apparent_options.deflector_count == 1
+            && context.apparent_options.solar_deflector_index == 0
+            && context.apparent_options.deflectors
+            && context.apparent_options.deflectors[0].body_id == TAIYIN_BODY_SUN,
+        "default context contains only the solar deflector",
+        failures);
+
+    double apparent[6] = {};
+    double no_aberration[6] = {};
+    double no_deflection[6] = {};
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_position_ut(
+            &context, TAIYIN_BODY_JUPITER_BARYCENTER, jd_ut,
+            TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_SPEED,
+            apparent,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "default apparent Jupiter position and speed with solar deflection",
+        failures);
+    expect_position_vector(
+        apparent,
+        true,
+        "default apparent Jupiter with solar deflection",
+        failures);
+    expect_near(
+        std::fabs(angular_difference_radians(apparent[0], swiss_longitude_rad)),
+        0.0,
+        tolerance_rad,
+        "default Jupiter longitude matches Swiss apparent position",
+        failures);
+    expect_near(
+        apparent[1],
+        swiss_latitude_rad,
+        tolerance_rad,
+        "default Jupiter latitude matches Swiss apparent position",
+        failures);
+
+    expect_status(
+        calc_position_ut(
+            &context, TAIYIN_BODY_JUPITER_BARYCENTER, jd_ut,
+            TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_NO_ABERR,
+            no_aberration, &diagnostic),
+        TAIYIN_STATUS_OK,
+        "Jupiter position without annual aberration",
+        failures);
+    expect_status(
+        calc_position_ut(
+            &context, TAIYIN_BODY_JUPITER_BARYCENTER, jd_ut,
+            TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_NO_GDEFL,
+            no_deflection, &diagnostic),
+        TAIYIN_STATUS_OK,
+        "Jupiter position without solar deflection",
+        failures);
+    expect_true(
+        std::fabs(angular_difference_radians(apparent[0], no_aberration[0]))
+            > 15.0 / 3600.0 * TAIYIN_DEG_TO_RAD,
+        "NO_ABERR removes the default annual aberration",
+        failures);
+    expect_true(
+        std::fabs(angular_difference_radians(apparent[0], no_deflection[0]))
+            > 0.01 / 3600.0 * TAIYIN_DEG_TO_RAD,
+        "NO_GDEFL removes the default solar deflection",
+        failures);
+}
+
 void test_native_position_batch(int* failures) {
     using namespace taiyin;
     using namespace taiyin::runtime;
@@ -1091,6 +1179,7 @@ void test_non_earth_topocentric_is_unsupported(int* failures) {
 int main() {
     int failures = 0;
     if (initialize_packaged_runtime(&failures)) {
+        test_default_apparent_jupiter_matches_swiss(&failures);
         test_native_position_batch(&failures);
         test_major_body_apparent_batch(&failures);
         test_observed_utc_requires_time_tables(&failures);

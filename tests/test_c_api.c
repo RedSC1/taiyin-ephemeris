@@ -836,6 +836,13 @@ int main(int argc, char** argv) {
         taiyin_astro_model_config_init(&models);
         taiyin_apparent_config_init(&apparent);
         taiyin_apparent_deflector_init(&deflector);
+        if ((apparent.flags & TAIYIN_APPARENT_FLAG_LIGHT_TIME) == 0u
+            || (apparent.flags & TAIYIN_APPARENT_FLAG_ABERRATION) == 0u
+            || (apparent.flags & TAIYIN_APPARENT_FLAG_DEFLECTION) == 0u
+            || (apparent.flags & TAIYIN_APPARENT_FLAG_SHAPIRO_DELAY) != 0u) {
+            taiyin_context_destroy(context);
+            return fail("default apparent C config corrections");
+        }
         models.precession_model_id = TAIYIN_PRECESSION_IAU_2006;
         models.nutation_model_id = TAIYIN_NUTATION_IAU_2000A;
         apparent.output_frame_id = TAIYIN_FRAME_TRUE_EQUATOR_OF_DATE;

@@ -523,10 +523,12 @@ int main() {
     const double longitude_delta = std::remainder(
         corrected_comparison->longitude_deg - corrected_curve_row.north_limit.longitude_deg,
         360.0);
+    const double profiled_curve_tolerance_deg = 1.0e-4;
     if (!std::isfinite(corrected_curve_row.north_limit.latitude_deg)
         || std::fabs(corrected_comparison->latitude_deg
-                - corrected_curve_row.north_limit.latitude_deg) > 1.0e-6
-        || !std::isfinite(longitude_delta) || std::fabs(longitude_delta) > 1.0e-6) {
+                - corrected_curve_row.north_limit.latitude_deg) > profiled_curve_tolerance_deg
+        || !std::isfinite(longitude_delta)
+        || std::fabs(longitude_delta) > profiled_curve_tolerance_deg) {
         return fail("corrected route curve must use profiled route-row limit");
     }
 

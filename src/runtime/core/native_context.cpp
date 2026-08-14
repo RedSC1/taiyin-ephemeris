@@ -224,6 +224,9 @@ NativeCalcContext::NativeCalcContext() noexcept
       route_rule_id(TAIYIN_EPHEMERIS_ROUTE_AUTO),
       route_rules(0) {
     apparent_options.model_context = &model_context;
+    apparent_options.flags |= TAIYIN_APPARENT_ABERRATION
+        | TAIYIN_APPARENT_DEFLECTION;
+    native_context_use_solar_deflector(this);
     route_rules = global_ephemeris_route_rule(route_rule_id);
 }
 
@@ -911,8 +914,12 @@ NativeCalcContext get_default_native_calc_context() noexcept {
     std::lock_guard<std::mutex> lock(manager.mutex);
     NativeCalcContext context = manager.context;
     context.apparent_options.model_context = &context.model_context;
-    context.apparent_options.deflectors = manager.deflectors.empty() ? 0 : manager.deflectors.data();
-    context.apparent_options.deflector_count = manager.deflectors.size();
+    if (!manager.deflectors.empty()) {
+        context.apparent_options.deflectors = manager.deflectors.data();
+        context.apparent_options.deflector_count = manager.deflectors.size();
+    } else if (context.apparent_options.deflector_count == 0) {
+        context.apparent_options.deflectors = 0;
+    }
     return context;
 }
 
@@ -931,8 +938,12 @@ Status set_default_native_calc_context(const NativeCalcContext& context) noexcep
         manager.deflectors.clear();
         return status;
     }
-    manager.context.apparent_options.deflectors = manager.deflectors.empty() ? 0 : manager.deflectors.data();
+    manager.context.apparent_options.deflectors = manager.deflectors.empty()
+        ? 0 : manager.deflectors.data();
     manager.context.apparent_options.deflector_count = manager.deflectors.size();
+    if (manager.deflectors.empty()) {
+        manager.context.apparent_options.solar_deflector_index = -1;
+    }
     return TAIYIN_STATUS_OK;
 }
 

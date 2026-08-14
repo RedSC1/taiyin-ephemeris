@@ -300,7 +300,8 @@ int main() {
         &failures);
     aberrated_context.apparent_options.flags = TAIYIN_APPARENT_SPHERICAL
         | TAIYIN_APPARENT_LIGHT_TIME
-        | TAIYIN_APPARENT_ABERRATION;
+        | TAIYIN_APPARENT_ABERRATION
+        | TAIYIN_APPARENT_DEFLECTION;
     LunarTrueNodePosition aberrated_node;
     LunarTrueNodePosition unaberrated_node;
     expect_status(
@@ -323,10 +324,10 @@ int main() {
         "annual aberration changes the true-node direction",
         &failures);
     expect_near(
-        unaberrated_node.longitude_rad,
+        aberrated_node.longitude_rad,
         ascending.longitude_rad,
         1.0e-14,
-        "NO_ABERR matches the default unaberrated true-node path",
+        "default true-node path includes apparent corrections",
         &failures);
 
     const double rate_step_days = 1.0e-3;
@@ -726,10 +727,10 @@ int main() {
         "annual aberration changes the osculating-apogee direction",
         &failures);
     expect_near(
-        unaberrated_apogee.longitude_rad,
+        aberrated_apogee.longitude_rad,
         default_apparent_apogee.longitude_rad,
         1.0e-14,
-        "NO_ABERR matches the default unaberrated osculating-apogee path",
+        "default osculating-apogee path includes apparent corrections",
         &failures);
     // Swiss Ephemeris Moshier, swe_calc(2460409.0, SE_OSCU_APOG,
     // SEFLG_MOSEPH | SEFLG_SPEED | SEFLG_NONUT | SEFLG_TRUEPOS). Osculating
