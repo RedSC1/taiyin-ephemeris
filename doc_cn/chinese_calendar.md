@@ -15,11 +15,14 @@
 
 ## 可运行示例
 
-两个独立 C++ 程序覆盖历法层，而且不需要启用八字扩展：
+三个独立 C++ 程序覆盖历法层，而且不需要启用八字扩展：
 
 - [`examples/chinese_calendar_han.cpp`](../examples/chinese_calendar_han.cpp)
   使用中国历史历法 profile 跨越太初改历窗口，将公元前 104 年 1 月 20 日
   转换为农历，再反向转回同一个公历日，并查询前后节气；
+- [`examples/chinese_calendar_modes.cpp`](../examples/chinese_calendar_modes.cpp)
+  在一个北京时间凌晨 01:36 发生的真实朔附近对比三种历法模式，并验证历史
+  特殊月名不会因用户采用其他当地时差而消失；
 - [`examples/ganzhi_bce.cpp`](../examples/ganzhi_bce.cpp) 计算公元前 1046 年
   1 月 20 日 06:30（UTC+08）的年月日时四柱与纳音，结果为
   `甲午、丁丑、甲子、丁卯`。
@@ -28,12 +31,13 @@
 
 ```sh
 cmake -S . -B build
-cmake --build build --target example_chinese_calendar_han example_ganzhi_bce
+cmake --build build --target example_chinese_calendar_han example_chinese_calendar_modes example_ganzhi_bce
 ./build/example_chinese_calendar_han /path/to/taiyin/data
+./build/example_chinese_calendar_modes /path/to/taiyin/data
 ./build/example_ganzhi_bce /path/to/taiyin/data
 ```
 
-数据目录参数可以省略；两个程序都会依次尝试 `TAIYIN_DATA_ROOT` 和
+数据目录参数可以省略；这些程序都会依次尝试 `TAIYIN_DATA_ROOT` 和
 `./data`。Taiyin API 内部使用天文年编号，因此公元前 1046 年传入 `-1045`，
 公元前 104 年传入 `-103`。
 
@@ -66,9 +70,7 @@ cmake --build build --target example_tang_833_antares
 UT 儒略日；`calcY()` 及其 C ABI 入口也接收 split-JD UT。它们不随历法
 民用日策略改变。
 
-现代法定历法应显式使用固定 UTC 时差。例如
-`fixed_utc_offset_config(480)` 表示 UTC+8，
-`fixed_utc_offset_config(420)` 表示 UTC+7。Taiyin 不内置时区数据库，也不
+配置中的固定 UTC 时差描述用户当地民用钟表。Taiyin 不内置时区数据库，也不
 推测夏令时或历史法定时区变化。
 
 地方平太阳时经线是另一种显式可选策略，其日界偏移按下式计算：
@@ -81,17 +83,25 @@ UT 儒略日；`calcY()` 及其 C ABI 入口也接收 split-JD UT。它们不随
 地表站点的视节气或视朔，因此接口不需要纬度和海拔；所有配置使用的太阳、
 月球地心事件时刻完全相同。
 
-## 两种规则
+## 三种历法模式
 
 `historical_china_config()` 是 C++ 默认配置。它使用生成的历史 UTC+08
 民用日归属 profile，以及早期建正和特殊月名。profile 中的值是民用日编号，
-不是 UT 天文事件时刻。它按 UTC+8 划分民用日；由于 profile 已编码中国民用
-日归属，历史模式会拒绝 UTC+8 之外的日界策略，避免把两套规则混在一起。
+不是 UT 天文事件时刻。配置其他当地时差只改变用户当前是哪一个公历日期，不会
+用当地日界重新生成历史月份结构。
 
-`fixed_utc_offset_config(offset_minutes)` 在所有年代都使用 Taiyin 求得的
-天文定气、定朔，再按显式固定时差划分民用日。
-`fixed_meridian_config(longitude_deg)` 使用同一套天文规则，但按地方平太阳
-时经线换日。这两种配置都不会应用历史历法修正。
+`china_standard_astronomical_config(local_offset_minutes)` 不使用历史修正，
+而是把天文朔和中气固定按 UTC+08 归日，生成中国标准农历日期表，再把日期标签
+用于用户当地的同名公历日期。
+
+`local_astronomical_utc_offset_config(offset_minutes)` 和
+`local_astronomical_meridian_config(longitude_deg)` 才会按所选当地日界给朔、
+中气归日，并重新排月和闰月。旧的 `fixed_utc_offset_config()` 与
+`fixed_meridian_config()` 保留为这两个当地天文模式的兼容别名。
+
+`fromInstant()` 先将输入瞬间映射为配置所代表的当地公历日期。中国标准两种模式
+用这个同名日期查参考农历表；当地天文模式查当地重排后的结构。它不会先把当地
+钟表字段转换成北京时间再查表。
 
 生成的 profile 只在其历史覆盖区间内使用，不会向 `-13000..17000` 外推。
 早于 profile 起点或晚于 profile 终点时，事件时刻和民用日都会使用 Taiyin 的
@@ -103,10 +113,10 @@ UT 儒略日；`calcY()` 及其 C ABI 入口也接收 split-JD UT。它们不随
 窗口的中点临时推导。这样在新旧年首相接的太初改历窗口，`fromSolar()` 与
 `fromLunar()` 仍保持一一对应。
 
-C ABI 分别使用 `taiyin_chinese_calendar_config_init()` 和
-`taiyin_chinese_calendar_config_init_utc_offset()`、
-`taiyin_chinese_calendar_config_init_meridian()`。接口没有把
-`-1` 混入合法经度，而是分别用显式规则模式和日界模式表达语义。
+C ABI 使用 `taiyin_chinese_calendar_config_init()`、
+`*_china_standard_astronomical()` 以及两个 `*_local_astronomical_*()`
+初始化函数。接口没有把 `-1` 混入合法经度，而是分别用显式历法模式和日界模式
+表达语义。
 
 ## 2026 年 PMO 对照
 

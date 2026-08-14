@@ -59,9 +59,10 @@ bool finite_meridian(double longitude_deg) noexcept {
         && longitude_deg <= 180.0;
 }
 
-bool valid_rule_mode(int32_t mode) noexcept {
-    return mode == TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA
-        || mode == TAIYIN_CHINESE_CALENDAR_ASTRONOMICAL;
+bool valid_calendar_mode(int32_t mode) noexcept {
+    return mode == TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL
+        || mode == TAIYIN_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL
+        || mode == TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_ASTRONOMICAL;
 }
 
 bool valid_day_boundary_mode(int32_t mode) noexcept {
@@ -74,14 +75,9 @@ bool valid_utc_offset_minutes(int32_t offset_minutes) noexcept {
 }
 
 bool valid_config(const ChineseCalendarConfig& config) noexcept {
-    if (!valid_rule_mode(config.rule_mode)
+    if (!valid_calendar_mode(config.mode)
         || !valid_day_boundary_mode(config.day_boundary_mode)) {
         return false;
-    }
-    if (config.rule_mode == TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA) {
-        return config.day_boundary_mode
-                == TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET
-            && config.utc_offset_minutes == kModernChinaUtcOffsetMinutes;
     }
     if (config.day_boundary_mode
         == TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET) {
@@ -90,13 +86,31 @@ bool valid_config(const ChineseCalendarConfig& config) noexcept {
     return finite_meridian(config.calendar_meridian_deg);
 }
 
-double calendar_day_offset(const ChineseCalendarContext& context) noexcept {
+double local_day_offset(const ChineseCalendarContext& context) noexcept {
     if (context.config.day_boundary_mode
         == TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET) {
         return static_cast<double>(context.config.utc_offset_minutes)
             / (24.0 * 60.0);
     }
     return context.config.calendar_meridian_deg / 360.0;
+}
+
+double structure_day_offset(
+    const ChineseCalendarContext& context
+) noexcept {
+    if (context.config.mode
+        != TAIYIN_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL) {
+        return static_cast<double>(kModernChinaUtcOffsetMinutes)
+            / (24.0 * 60.0);
+    }
+    return local_day_offset(context);
+}
+
+bool uses_historical_china_profile(
+    const ChineseCalendarContext& context
+) noexcept {
+    return context.config.mode
+        == TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL;
 }
 
 int64_t civil_day_number(
@@ -306,14 +320,14 @@ int64_t assigned_event_day(
     SplitJulianDate estimate_jd_ut,
     SplitJulianDate precise_jd_ut
 ) noexcept {
-    if (context.config.rule_mode == TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA) {
+    if (uses_historical_china_profile(context)) {
         return historical_calendar_day(
             kind,
             split_julian_date_to_double(estimate_jd_ut),
             precise_jd_ut,
-            calendar_day_offset(context));
+            structure_day_offset(context));
     }
-    return civil_day_number(precise_jd_ut, calendar_day_offset(context));
+    return civil_day_number(precise_jd_ut, structure_day_offset(context));
 }
 
 Status evaluate_solar_term(
@@ -538,12 +552,12 @@ Status find_winter_solstice(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     const int64_t target_day = civil_day_number(
-        target_jd_ut, calendar_day_offset(context));
+        target_jd_ut, structure_day_offset(context));
 
     // Search a complete tropical year instead of accumulating a linear
     // solstice seed from J2000. The extra days cover civil-day assignment at
     // both ends of the interval.
-    const double day_offset = calendar_day_offset(context);
+    const double day_offset = structure_day_offset(context);
     const SplitJulianDate end_jd_ut = split_jd_from_parts(
         target_day, -day_offset + 0.5);
     const SplitJulianDate start_jd_ut = end_jd_ut - 371.0;
@@ -744,7 +758,7 @@ Status assign_early_historical_months(
             HistoricalNewMoon,
             estimate,
             precise_estimate,
-            calendar_day_offset(context));
+            structure_day_offset(context));
     }
 
     for (std::size_t i = 0; i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT; ++i) {
@@ -801,8 +815,7 @@ Status assign_months(
         // civil day 1807696 is 28 days. Only the historical profile carries
         // this; an astronomical 28-day month would be a genuine error.
         const bool jingchu_transition_month =
-            context.config.rule_mode
-                == TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA
+            uses_historical_china_profile(context)
             && day_count == 28
             && out->new_moons[i].civil_day_number == INT64_C(1807696);
         if (!jingchu_transition_month && (day_count < 29 || day_count > 30)) {
@@ -820,7 +833,7 @@ Status assign_months(
         (static_cast<double>(out->solar_terms[0].civil_day_number)
             - kJ2000 + 190.0)
         / DAYS_PER_TROPICAL_YEAR)) + 2000;
-    if (context.config.rule_mode == TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA
+    if (uses_historical_china_profile(context)
         && year_hint >= -721 && year_hint <= -104) {
         return assign_early_historical_months(context, year_hint, out);
     }
@@ -850,8 +863,7 @@ Status assign_months(
             ? 1u
             : 0u;
 
-        if (context.config.rule_mode
-            != TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA) {
+        if (!uses_historical_china_profile(context)) {
             continue;
         }
         const int64_t first_day = month.first_civil_day_number;
@@ -911,14 +923,14 @@ Status calc_year_for_lunar_search(
     if (!julian_day_split(local_noon, &jd_ut)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    jd_ut -= calendar_day_offset(*context);
+    jd_ut -= structure_day_offset(*context);
     return calcY(context, jd_ut, out, diagnostic);
 }
 
 }  // namespace
 
 ChineseCalendarConfig::ChineseCalendarConfig() noexcept
-    : rule_mode(TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA),
+    : mode(TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL),
       day_boundary_mode(TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET),
       utc_offset_minutes(kModernChinaUtcOffsetMinutes),
       reserved(0),
@@ -990,24 +1002,57 @@ ChineseCalendarConfig historical_china_config() noexcept {
     return ChineseCalendarConfig();
 }
 
-ChineseCalendarConfig fixed_utc_offset_config(
+ChineseCalendarConfig china_standard_historical_config(
+    int32_t local_utc_offset_minutes
+) noexcept {
+    ChineseCalendarConfig config;
+    config.mode = TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL;
+    config.day_boundary_mode = TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET;
+    config.utc_offset_minutes = local_utc_offset_minutes;
+    config.calendar_meridian_deg =
+        static_cast<double>(local_utc_offset_minutes) / 4.0;
+    return config;
+}
+
+ChineseCalendarConfig china_standard_astronomical_config(
+    int32_t local_utc_offset_minutes
+) noexcept {
+    ChineseCalendarConfig config =
+        china_standard_historical_config(local_utc_offset_minutes);
+    config.mode = TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_ASTRONOMICAL;
+    return config;
+}
+
+ChineseCalendarConfig local_astronomical_utc_offset_config(
     int32_t utc_offset_minutes
 ) noexcept {
     ChineseCalendarConfig config;
-    config.rule_mode = TAIYIN_CHINESE_CALENDAR_ASTRONOMICAL;
+    config.mode = TAIYIN_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL;
     config.day_boundary_mode = TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET;
     config.utc_offset_minutes = utc_offset_minutes;
     config.calendar_meridian_deg = static_cast<double>(utc_offset_minutes) / 4.0;
     return config;
 }
 
-ChineseCalendarConfig fixed_meridian_config(double longitude_deg) noexcept {
+ChineseCalendarConfig local_astronomical_meridian_config(
+    double longitude_deg
+) noexcept {
     ChineseCalendarConfig config;
-    config.rule_mode = TAIYIN_CHINESE_CALENDAR_ASTRONOMICAL;
+    config.mode = TAIYIN_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL;
     config.day_boundary_mode = TAIYIN_CHINESE_CALENDAR_MEAN_SOLAR_MERIDIAN;
     config.utc_offset_minutes = 0;
     config.calendar_meridian_deg = longitude_deg;
     return config;
+}
+
+ChineseCalendarConfig fixed_utc_offset_config(
+    int32_t utc_offset_minutes
+) noexcept {
+    return local_astronomical_utc_offset_config(utc_offset_minutes);
+}
+
+ChineseCalendarConfig fixed_meridian_config(double longitude_deg) noexcept {
+    return local_astronomical_meridian_config(longitude_deg);
 }
 
 Status initialize_context(
@@ -1143,7 +1188,7 @@ Status fromSolar(
     }
     const int64_t target_day = solar_date_day_number(*solar);
     const SplitJulianDate target_jd_ut = split_jd_from_parts(
-        target_day, -calendar_day_offset(*context));
+        target_day, -structure_day_offset(*context));
     ChineseCalendarYear year;
     Status status = calcY(context, target_jd_ut, &year, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
@@ -1162,6 +1207,21 @@ Status fromSolar(
         return TAIYIN_STATUS_OK;
     }
     return TAIYIN_EVENT_ERROR_NOT_FOUND;
+}
+
+Status fromInstant(
+    const ChineseCalendarContext* context,
+    SplitJulianDate jd_ut,
+    LunarDate* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (out) *out = LunarDate();
+    if (!context || !out || !split_julian_date_is_finite(jd_ut)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    const SolarDate local_date = solar_date_from_day_number(
+        civil_day_number(jd_ut, local_day_offset(*context)));
+    return fromSolar(context, &local_date, out, diagnostic);
 }
 
 Status fromLunar(

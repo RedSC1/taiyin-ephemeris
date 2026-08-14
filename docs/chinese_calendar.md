@@ -16,12 +16,15 @@ The extension has no global calendar singleton. Every operation receives a
 
 ## Runnable Examples
 
-Two standalone C++ programs cover the calendar layers without enabling BaZi:
+Three standalone C++ programs cover the calendar layers without enabling BaZi:
 
 - [`examples/chinese_calendar_han.cpp`](../examples/chinese_calendar_han.cpp)
   converts 104 BCE-01-20 across the modeled Taichu reform in the historical
   China profile, converts the result back to the same solar date, and queries
   the adjacent solar terms;
+- [`examples/chinese_calendar_modes.cpp`](../examples/chinese_calendar_modes.cpp)
+  compares all three calendar modes at a real new moon that occurs at 01:36
+  Beijing time and preserves an exceptional historical month name;
 - [`examples/ganzhi_bce.cpp`](../examples/ganzhi_bce.cpp) calculates the four
   Ganzhi pillars and NaYin for 1046 BCE-01-20 06:30 at UTC+08. It produces
   `Jia-Wu / Ding-Chou / Jia-Zi / Ding-Mao` (甲午、丁丑、甲子、丁卯).
@@ -30,12 +33,13 @@ Build and run them from the repository root:
 
 ```sh
 cmake -S . -B build
-cmake --build build --target example_chinese_calendar_han example_ganzhi_bce
+cmake --build build --target example_chinese_calendar_han example_chinese_calendar_modes example_ganzhi_bce
 ./build/example_chinese_calendar_han /path/to/taiyin/data
+./build/example_chinese_calendar_modes /path/to/taiyin/data
 ./build/example_ganzhi_bce /path/to/taiyin/data
 ```
 
-The argument is optional; both programs fall back to `TAIYIN_DATA_ROOT` and
+The argument is optional; all programs fall back to `TAIYIN_DATA_ROOT` and
 then `./data`. Taiyin uses astronomical year numbering in API structures, so
 1046 BCE is year `-1045` and 104 BCE is year `-103`.
 
@@ -75,10 +79,9 @@ cmake --build build --target example_tang_833_antares
 split-Julian dates. `calcY()` and its C ABI counterpart likewise accept a
 split-Julian UT value. These instants do not change with the civil-day policy.
 
-For modern legal calendars, use an explicit fixed UTC offset. For example,
-`fixed_utc_offset_config(480)` uses UTC+8 and
-`fixed_utc_offset_config(420)` uses UTC+7. Taiyin does not contain a time-zone
-database and does not infer daylight-saving or historical legal time rules.
+The configured fixed UTC offset describes the caller's local civil clock.
+Taiyin does not contain a time-zone database and does not infer daylight-saving
+or historical legal-time rules.
 
 Mean-solar meridian mode is a separate opt-in policy. It derives the civil-day
 offset from the selected reference meridian:
@@ -92,20 +95,31 @@ for a legal time zone. Neither policy is topocentric: latitude and observer
 height are intentionally absent, and Taiyin calculates the same geocentric
 Sun-Moon event instant in every profile.
 
-## Rule Profiles
+## Calendar Modes
 
 `historical_china_config()` is the C++ default. It uses a generated historical
-profile of fixed UTC+08 civil-day assignments, early calendar year starts, and
-exceptional month names. The profile values are calendar day numbers, not
-astronomical event instants in UT. Its civil-day boundary is fixed UTC+8.
-Because the profile encodes Chinese civil-day assignments, this rule profile
-rejects any other day-boundary policy.
+profile of China-standard civil-day assignments, early calendar year starts,
+and exceptional month names. A non-UTC+08 local offset changes only which
+Gregorian date the caller is currently observing; it does not rebuild the
+historical lunar-month structure.
 
-`fixed_utc_offset_config(offset_minutes)` uses Taiyin astronomical solar terms
-and new moons for every era and assigns them to an explicit fixed civil offset.
-`fixed_meridian_config(longitude_deg)` selects the same astronomical rules but
-uses a local-mean-solar day boundary. These profiles do not apply historical
-calendar corrections.
+`china_standard_astronomical_config(local_offset_minutes)` builds the same kind
+of China-standard Gregorian-date table from astronomical new moons and solar
+terms assigned at UTC+08, without historical corrections. It then applies
+those date labels to the caller's local civil calendar.
+
+`local_astronomical_utc_offset_config(offset_minutes)` and
+`local_astronomical_meridian_config(longitude_deg)` instead assign astronomical
+events at the selected local boundary and rebuild the month and leap-month
+structure there. The older `fixed_utc_offset_config()` and
+`fixed_meridian_config()` names remain compatibility aliases for these local
+astronomical modes.
+
+`fromInstant()` first maps the input instant to the configured local Gregorian
+date. China-standard modes query that same date label in the reference table;
+local astronomical mode queries the locally rebuilt structure. It never
+converts local wall-clock fields to Beijing time before looking up a
+China-standard date label.
 
 The generated profile is used only inside its historical coverage interval and
 is never extrapolated across `-13000..17000`. Before the profile starts and
@@ -123,9 +137,9 @@ the modeled Taichu reform, where the old and new year-start conventions meet.
 
 The C ABI exposes the same distinction through
 `taiyin_chinese_calendar_config_init()`,
-`taiyin_chinese_calendar_config_init_utc_offset()`, and
-`taiyin_chinese_calendar_config_init_meridian()`. It deliberately uses
-explicit rule and day-boundary modes instead of overloading a numeric longitude
+the `*_china_standard_astronomical()` initializer, and the two
+`*_local_astronomical_*()` initializers. It deliberately uses an explicit
+calendar mode and day-boundary mode instead of overloading a numeric longitude
 sentinel.
 
 ## PMO 2026 Comparison

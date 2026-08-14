@@ -24,7 +24,7 @@ taiyin::chinese_calendar::ChineseCalendarConfig to_cpp_config(
     const taiyin_chinese_calendar_config& source
 ) noexcept {
     taiyin::chinese_calendar::ChineseCalendarConfig out;
-    out.rule_mode = source.rule_mode;
+    out.mode = source.mode;
     out.day_boundary_mode = source.day_boundary_mode;
     out.utc_offset_minutes = source.utc_offset_minutes;
     out.reserved = 0;
@@ -199,7 +199,8 @@ void TAIYIN_C_CALL taiyin_chinese_calendar_config_init(
 ) {
     init_struct(config);
     if (!config) return;
-    config->rule_mode = TAIYIN_C_CHINESE_CALENDAR_HISTORICAL_CHINA;
+    config->mode =
+        TAIYIN_C_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL;
     config->day_boundary_mode =
         TAIYIN_C_CHINESE_CALENDAR_FIXED_UTC_OFFSET;
     config->utc_offset_minutes = 8 * 60;
@@ -207,13 +208,42 @@ void TAIYIN_C_CALL taiyin_chinese_calendar_config_init(
 }
 
 void TAIYIN_C_CALL
-taiyin_chinese_calendar_config_init_utc_offset(
+taiyin_chinese_calendar_config_init_china_standard_historical(
+    taiyin_chinese_calendar_config* config,
+    int32_t local_utc_offset_minutes
+) {
+    init_struct(config);
+    if (!config) return;
+    config->mode =
+        TAIYIN_C_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL;
+    config->day_boundary_mode =
+        TAIYIN_C_CHINESE_CALENDAR_FIXED_UTC_OFFSET;
+    config->utc_offset_minutes = local_utc_offset_minutes;
+    config->calendar_meridian_deg =
+        static_cast<double>(local_utc_offset_minutes) / 4.0;
+}
+
+void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_china_standard_astronomical(
+    taiyin_chinese_calendar_config* config,
+    int32_t local_utc_offset_minutes
+) {
+    taiyin_chinese_calendar_config_init_china_standard_historical(
+        config, local_utc_offset_minutes);
+    if (config) {
+        config->mode =
+            TAIYIN_C_CHINESE_CALENDAR_CHINA_STANDARD_ASTRONOMICAL;
+    }
+}
+
+void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_local_astronomical_utc_offset(
     taiyin_chinese_calendar_config* config,
     int32_t utc_offset_minutes
 ) {
     init_struct(config);
     if (!config) return;
-    config->rule_mode = TAIYIN_C_CHINESE_CALENDAR_ASTRONOMICAL;
+    config->mode = TAIYIN_C_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL;
     config->day_boundary_mode =
         TAIYIN_C_CHINESE_CALENDAR_FIXED_UTC_OFFSET;
     config->utc_offset_minutes = utc_offset_minutes;
@@ -221,17 +251,35 @@ taiyin_chinese_calendar_config_init_utc_offset(
         static_cast<double>(utc_offset_minutes) / 4.0;
 }
 
-void TAIYIN_C_CALL taiyin_chinese_calendar_config_init_meridian(
+void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_local_astronomical_meridian(
     taiyin_chinese_calendar_config* config,
     double longitude_deg
 ) {
     init_struct(config);
     if (!config) return;
-    config->rule_mode = TAIYIN_C_CHINESE_CALENDAR_ASTRONOMICAL;
+    config->mode = TAIYIN_C_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL;
     config->day_boundary_mode =
         TAIYIN_C_CHINESE_CALENDAR_MEAN_SOLAR_MERIDIAN;
     config->utc_offset_minutes = 0;
     config->calendar_meridian_deg = longitude_deg;
+}
+
+void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_utc_offset(
+    taiyin_chinese_calendar_config* config,
+    int32_t utc_offset_minutes
+) {
+    taiyin_chinese_calendar_config_init_local_astronomical_utc_offset(
+        config, utc_offset_minutes);
+}
+
+void TAIYIN_C_CALL taiyin_chinese_calendar_config_init_meridian(
+    taiyin_chinese_calendar_config* config,
+    double longitude_deg
+) {
+    taiyin_chinese_calendar_config_init_local_astronomical_meridian(
+        config, longitude_deg);
 }
 
 void TAIYIN_C_CALL taiyin_solar_date_init(taiyin_solar_date* value) {
@@ -412,6 +460,27 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_solar(
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::chinese_calendar::fromSolar(
         &context->value, &cpp_solar, &cpp_out,
+        diagnostic ? &cpp_diagnostic : 0);
+    if (status == taiyin::TAIYIN_STATUS_OK) copy_lunar(cpp_out, out);
+    taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
+    return status;
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_instant_ut(
+    const taiyin_chinese_calendar_context* context,
+    const taiyin_split_julian_date* jd_ut,
+    taiyin_lunar_date* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+) {
+    if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
+        || !taiyin_c_internal::valid_struct(out)
+        || !valid_diagnostic(diagnostic)) {
+        return taiyin_c_internal::invalid_argument();
+    }
+    taiyin::chinese_calendar::LunarDate cpp_out;
+    taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    const taiyin::Status status = taiyin::chinese_calendar::fromInstant(
+        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut), &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_lunar(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);

@@ -459,7 +459,7 @@ int main(int argc, char** argv) {
         taiyin_calendar_datetime probe;
         taiyin_split_julian_date probe_jd;
 
-        taiyin_chinese_calendar_config_init_utc_offset(
+        taiyin_chinese_calendar_config_init_local_astronomical_utc_offset(
             &calendar_config, 8 * 60);
         taiyin_solar_date_init(&solar);
         taiyin_solar_date_init(&roundtrip);
@@ -502,6 +502,9 @@ int main(int argc, char** argv) {
                 != TAIYIN_STATUS_OK
             || taiyin_chinese_calendar_calc_year_ut(
                 calendar_context, &probe_jd, &calendar_year, NULL)
+                != TAIYIN_STATUS_OK
+            || taiyin_chinese_calendar_from_instant_ut(
+                calendar_context, &probe_jd, &lunar, NULL)
                 != TAIYIN_STATUS_OK
             || taiyin_chinese_calendar_get_prev_jie_qi_ut(
                 calendar_context, &probe_jd, &previous_term, NULL)

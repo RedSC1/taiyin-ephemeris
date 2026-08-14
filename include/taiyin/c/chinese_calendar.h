@@ -13,9 +13,10 @@ extern "C" {
 
 typedef struct taiyin_chinese_calendar_context taiyin_chinese_calendar_context;
 
-enum taiyin_chinese_calendar_rule_mode {
-    TAIYIN_C_CHINESE_CALENDAR_HISTORICAL_CHINA = 0,
-    TAIYIN_C_CHINESE_CALENDAR_ASTRONOMICAL = 1
+enum taiyin_chinese_calendar_mode {
+    TAIYIN_C_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL = 0,
+    TAIYIN_C_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL = 1,
+    TAIYIN_C_CHINESE_CALENDAR_CHINA_STANDARD_ASTRONOMICAL = 2
 };
 
 enum taiyin_chinese_calendar_day_boundary_mode {
@@ -39,7 +40,7 @@ typedef struct taiyin_chinese_calendar_config {
      * do not memcpy or reinterpret_cast this as a C++ calendar struct.
      */
     uint32_t struct_size;
-    int32_t rule_mode;
+    int32_t mode;
     int32_t day_boundary_mode;
     int32_t utc_offset_minutes;
     int32_t reserved;
@@ -111,6 +112,27 @@ typedef struct taiyin_chinese_calendar_year {
 TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL taiyin_chinese_calendar_config_init(
     taiyin_chinese_calendar_config* config
 );
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_china_standard_historical(
+    taiyin_chinese_calendar_config* config,
+    int32_t local_utc_offset_minutes
+);
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_china_standard_astronomical(
+    taiyin_chinese_calendar_config* config,
+    int32_t local_utc_offset_minutes
+);
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_local_astronomical_utc_offset(
+    taiyin_chinese_calendar_config* config,
+    int32_t utc_offset_minutes
+);
+TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
+taiyin_chinese_calendar_config_init_local_astronomical_meridian(
+    taiyin_chinese_calendar_config* config,
+    double longitude_deg
+);
+/* Compatibility initializers: both select local astronomical mode. */
 TAIYIN_C_CHINESE_CALENDAR_API void TAIYIN_C_CALL
 taiyin_chinese_calendar_config_init_utc_offset(
     taiyin_chinese_calendar_config* config,
@@ -211,6 +233,13 @@ TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
 taiyin_chinese_calendar_from_solar(
     const taiyin_chinese_calendar_context* context,
     const taiyin_solar_date* solar,
+    taiyin_lunar_date* out,
+    taiyin_ephemeris_diagnostic* diagnostic
+);
+TAIYIN_C_CHINESE_CALENDAR_API taiyin_status TAIYIN_C_CALL
+taiyin_chinese_calendar_from_instant_ut(
+    const taiyin_chinese_calendar_context* context,
+    const taiyin_split_julian_date* jd_ut,
     taiyin_lunar_date* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );

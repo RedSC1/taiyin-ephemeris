@@ -376,29 +376,110 @@ void test_calendar_config_semantics() {
     using namespace taiyin::chinese_calendar;
     const ChineseCalendarConfig historical = historical_china_config();
     expect(
-        historical.rule_mode == TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA
+        historical.mode
+                == TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL
             && historical.day_boundary_mode
                 == TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET
             && historical.utc_offset_minutes == 8 * 60,
         "historical China defaults to fixed UTC+8");
 
-    const ChineseCalendarConfig modern = fixed_utc_offset_config(7 * 60);
+    const ChineseCalendarConfig china_astronomical =
+        china_standard_astronomical_config(7 * 60);
     expect(
-        modern.rule_mode == TAIYIN_CHINESE_CALENDAR_ASTRONOMICAL
-            && modern.day_boundary_mode
+        china_astronomical.mode
+                == TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_ASTRONOMICAL
+            && china_astronomical.day_boundary_mode
                 == TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET
-            && modern.utc_offset_minutes == 7 * 60,
-        "astronomical calendar accepts an explicit fixed UTC offset");
+            && china_astronomical.utc_offset_minutes == 7 * 60,
+        "China-standard astronomical mode keeps a local UTC offset");
+
+    const ChineseCalendarConfig local =
+        local_astronomical_utc_offset_config(7 * 60);
+    expect(
+        local.mode == TAIYIN_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL
+            && local.utc_offset_minutes == 7 * 60,
+        "local astronomical mode uses the configured local boundary");
 
     taiyin::runtime::NativeCalcContext astronomy;
-    ChineseCalendarConfig invalid_historical = historical;
-    invalid_historical.utc_offset_minutes = 7 * 60;
     ChineseCalendarContext context;
+    const ChineseCalendarConfig historical_utc7 =
+        china_standard_historical_config(7 * 60);
     expect(
         initialize_context(
-            &context, &astronomy, &invalid_historical)
-            == taiyin::TAIYIN_ERROR_INVALID_ARGUMENT,
-        "historical correction tables reject non-UTC+8 day boundaries");
+            &context,
+            &astronomy,
+            &historical_utc7)
+            == taiyin::TAIYIN_STATUS_OK,
+        "historical China accepts a distinct local civil offset");
+}
+
+void test_calendar_modes_at_new_moon_boundary() {
+    using namespace taiyin::chinese_calendar;
+
+    // The 2026-08 new moon is 2026-08-12 17:36:45 UT, or 01:36:45
+    // Beijing time on August 13. At 17:40 UT Beijing is already on August 13,
+    // while India (UTC+05:30) is still on August 12.
+    taiyin::SplitJulianDate instant;
+    expect(
+        taiyin::julian_day_split(
+            {2026, 8, 12, 17, 40, 0.0}, &instant),
+        "cross-time-zone new-moon instant");
+
+    const ChineseCalendarContext beijing_historical = make_context(
+        china_standard_historical_config(8 * 60));
+    const ChineseCalendarContext india_historical = make_context(
+        china_standard_historical_config(5 * 60 + 30));
+    const ChineseCalendarContext india_china_astronomical = make_context(
+        china_standard_astronomical_config(5 * 60 + 30));
+    const ChineseCalendarContext india_local_astronomical = make_context(
+        local_astronomical_utc_offset_config(5 * 60 + 30));
+
+    LunarDate beijing;
+    LunarDate india_historical_date;
+    LunarDate india_china_astronomical_date;
+    LunarDate india_local_astronomical_date;
+    taiyin::runtime::EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        fromInstant(
+            &beijing_historical, instant, &beijing, &diagnostic),
+        "Beijing historical calendar at new moon");
+    expect_status(
+        fromInstant(
+            &india_historical,
+            instant,
+            &india_historical_date,
+            &diagnostic),
+        "India historical China calendar at new moon");
+    expect_status(
+        fromInstant(
+            &india_china_astronomical,
+            instant,
+            &india_china_astronomical_date,
+            &diagnostic),
+        "India China-standard astronomical calendar at new moon");
+    expect_status(
+        fromInstant(
+            &india_local_astronomical,
+            instant,
+            &india_local_astronomical_date,
+            &diagnostic),
+        "India local astronomical calendar at new moon");
+
+    expect(
+        beijing.month == 7 && beijing.day == 1,
+        "Beijing is lunar 7-1 after the 01:36 new moon");
+    expect(
+        india_historical_date.month == 6
+            && india_historical_date.day == 30,
+        "historical China mode maps India's August 12 to lunar 6-30");
+    expect(
+        india_china_astronomical_date.month == 6
+            && india_china_astronomical_date.day == 30,
+        "China-standard astronomical mode preserves the China date table");
+    expect(
+        india_local_astronomical_date.month == 7
+            && india_local_astronomical_date.day == 1,
+        "local astronomical mode assigns the new moon to India's August 12");
 }
 
 void test_single_solar_term_queries() {
@@ -734,6 +815,9 @@ void test_historical_calendar_fixtures() {
     const ChineseCalendarContext context = make_context(
         historical_china_config(),
         taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC);
+    const ChineseCalendarContext india_context = make_context(
+        china_standard_historical_config(5 * 60 + 30),
+        taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC);
 
     SolarDate solar;
     solar.year = -456;
@@ -802,6 +886,12 @@ void test_historical_calendar_fixtures() {
         23, 12, 2,
         23, 12, 1, false, 29,
         "Xin alternate-twelve month",
+        TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE);
+    expect_lunar(
+        india_context,
+        23, 12, 2,
+        23, 12, 1, false, 29,
+        "localized historical China alternate-twelve month",
         TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE);
     expect_lunar(
         context,
@@ -1100,6 +1190,7 @@ int main() {
         test_2033_leap_month();
         test_day_boundary_changes_day_not_event();
         test_calendar_config_semantics();
+        test_calendar_modes_at_new_moon_boundary();
         test_single_solar_term_queries();
         test_pmo_2026_calendar_oracles(
             taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_OPM2);

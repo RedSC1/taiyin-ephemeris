@@ -1007,6 +1007,12 @@ add_executable(example_chinese_calendar_han
 target_link_libraries(example_chinese_calendar_han
     PRIVATE taiyin_chinese_calendar_extension)
 
+add_executable(example_chinese_calendar_modes
+    examples/chinese_calendar_modes.cpp
+)
+target_link_libraries(example_chinese_calendar_modes
+    PRIVATE taiyin_chinese_calendar_extension)
+
 add_executable(example_ganzhi_bce
     examples/ganzhi_bce.cpp
 )
@@ -1311,6 +1317,9 @@ add_test(
     NAME example_chinese_calendar_han_run
     COMMAND example_chinese_calendar_han ${CMAKE_CURRENT_SOURCE_DIR}/data)
 add_test(
+    NAME example_chinese_calendar_modes_run
+    COMMAND example_chinese_calendar_modes ${CMAKE_CURRENT_SOURCE_DIR}/data)
+add_test(
     NAME example_ganzhi_bce_run
     COMMAND example_ganzhi_bce ${CMAKE_CURRENT_SOURCE_DIR}/data)
 add_test(
@@ -1325,6 +1334,7 @@ set_tests_properties(
     example_apparent_ut_chart_table_run
     example_eclipse_search_run
     example_chinese_calendar_han_run
+    example_chinese_calendar_modes_run
     example_ganzhi_bce_run
     example_muye_jupiter_run
     example_tang_833_antares_run

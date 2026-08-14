@@ -14,9 +14,18 @@ constexpr std::size_t TAIYIN_CHINESE_CALENDAR_TERM_COUNT = 25;
 constexpr std::size_t TAIYIN_CHINESE_CALENDAR_NEW_MOON_COUNT = 15;
 constexpr std::size_t TAIYIN_CHINESE_CALENDAR_MONTH_COUNT = 14;
 
-enum ChineseCalendarRuleMode {
-    TAIYIN_CHINESE_CALENDAR_HISTORICAL_CHINA = 0,
-    TAIYIN_CHINESE_CALENDAR_ASTRONOMICAL = 1,
+enum ChineseCalendarMode {
+    // Use the historical China profile and apply its Gregorian-date labels to
+    // the caller's local civil calendar. The local offset does not rebuild the
+    // lunar-month structure.
+    TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL = 0,
+    // Preserve the former astronomical/fixed-offset behavior: assign new
+    // moons and solar terms to the caller's local civil days and rebuild the
+    // lunar-month structure there.
+    TAIYIN_CHINESE_CALENDAR_LOCAL_ASTRONOMICAL = 1,
+    // Build the astronomical China-standard calendar at UTC+08, then apply
+    // its Gregorian-date labels to the caller's local civil calendar.
+    TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_ASTRONOMICAL = 2,
 };
 
 enum ChineseCalendarDayBoundaryMode {
@@ -40,7 +49,7 @@ struct ChineseCalendarConfig {
     // Native C++ representation. This is intentionally not byte-compatible
     // with the versioned C ABI structs; use the C API conversion layer rather
     // than memcpy or reinterpret_cast between the two representations.
-    int32_t rule_mode;
+    int32_t mode;
     int32_t day_boundary_mode;
     int32_t utc_offset_minutes;
     int32_t reserved;
@@ -127,6 +136,17 @@ struct ChineseCalendarYear {
 };
 
 ChineseCalendarConfig historical_china_config() noexcept;
+ChineseCalendarConfig china_standard_historical_config(
+    int32_t local_utc_offset_minutes) noexcept;
+ChineseCalendarConfig china_standard_astronomical_config(
+    int32_t local_utc_offset_minutes) noexcept;
+ChineseCalendarConfig local_astronomical_utc_offset_config(
+    int32_t utc_offset_minutes) noexcept;
+ChineseCalendarConfig local_astronomical_meridian_config(
+    double longitude_deg) noexcept;
+
+// Compatibility names for the pre-three-mode API. Both select the local
+// astronomical mode.
 ChineseCalendarConfig fixed_utc_offset_config(
     int32_t utc_offset_minutes) noexcept;
 ChineseCalendarConfig fixed_meridian_config(double longitude_deg) noexcept;
@@ -208,6 +228,16 @@ Status getNextQi(
 Status fromSolar(
     const ChineseCalendarContext* context,
     const SolarDate* solar,
+    LunarDate* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic
+) noexcept;
+
+// Convert one UTC/UT-like astronomical instant using the configured local
+// civil clock. China-standard modes preserve the reference calendar's date
+// labels; local-astronomical mode rebuilds the calendar at the local boundary.
+Status fromInstant(
+    const ChineseCalendarContext* context,
+    SplitJulianDate jd_ut,
     LunarDate* out,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept;

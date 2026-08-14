@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
 
     taiyin::chinese_calendar::ChineseCalendarContext calendar;
     const taiyin::chinese_calendar::ChineseCalendarConfig calendar_config =
-        taiyin::chinese_calendar::fixed_utc_offset_config(8 * 60);
+        taiyin::chinese_calendar::historical_china_config();
     if (!expect_status(taiyin::chinese_calendar::initialize_context(
             &calendar, &astronomy, &calendar_config), "initialize Chinese calendar")) {
         return EXIT_FAILURE;
@@ -156,6 +156,62 @@ int main(int argc, char** argv) {
             &traditional_qiyun,
             &diagnostic), "calculate traditional qi-yun")) {
         return EXIT_FAILURE;
+    }
+
+    // Calendar month-structure modes must not change BaZi. Four pillars use
+    // the supplied local civil time, while Qi-Yun uses precise Jie instants
+    // and the configured local offset rather than lunar month labels.
+    const taiyin::chinese_calendar::ChineseCalendarConfig
+        china_astronomical_config =
+            taiyin::chinese_calendar::china_standard_astronomical_config(
+                8 * 60);
+    const taiyin::chinese_calendar::ChineseCalendarConfig
+        local_astronomical_config =
+            taiyin::chinese_calendar::local_astronomical_utc_offset_config(
+                8 * 60);
+    taiyin::chinese_calendar::ChineseCalendarContext china_astronomical;
+    taiyin::chinese_calendar::ChineseCalendarContext local_astronomical;
+    if (!expect_status(taiyin::chinese_calendar::initialize_context(
+            &china_astronomical, &astronomy, &china_astronomical_config),
+            "initialize China-standard astronomical calendar")
+        || !expect_status(taiyin::chinese_calendar::initialize_context(
+            &local_astronomical, &astronomy, &local_astronomical_config),
+            "initialize local astronomical calendar")) {
+        return EXIT_FAILURE;
+    }
+    const taiyin::chinese_calendar::ChineseCalendarContext* mode_calendars[] = {
+        &china_astronomical,
+        &local_astronomical,
+    };
+    for (std::size_t mode_index = 0; mode_index < 2; ++mode_index) {
+        taiyin::chinese_calendar::GanzhiFourPillars mode_pillars;
+        taiyin::bazi::BaziQiYunResult mode_qiyun;
+        if (!expect_status(taiyin::chinese_calendar::calculate_four_pillars(
+                mode_calendars[mode_index],
+                fortune_birth_jd,
+                fortune_birth,
+                taiyin::chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT,
+                &mode_pillars,
+                &diagnostic), "calculate mode-independent pillars")
+            || mode_pillars.year != fortune_pillars.year
+            || mode_pillars.month != fortune_pillars.month
+            || mode_pillars.day != fortune_pillars.day
+            || mode_pillars.hour != fortune_pillars.hour
+            || !expect_status(taiyin::bazi::calculate_qiyun(
+                &bazi,
+                mode_calendars[mode_index],
+                fortune_birth_jd,
+                fortune_birth,
+                &fortune_chart,
+                taiyin::bazi::BaziGenderMale,
+                &mode_qiyun,
+                &diagnostic), "calculate mode-independent qi-yun")
+            || mode_qiyun.direction != traditional_qiyun.direction
+            || mode_qiyun.reference_jie_jd_ut
+                != traditional_qiyun.reference_jie_jd_ut
+            || mode_qiyun.start_jd_ut != traditional_qiyun.start_jd_ut) {
+            return fail("calendar mode changed BaZi pillars or qi-yun");
+        }
     }
 
     taiyin::chinese_calendar::SolarTermEvent previous_jie;

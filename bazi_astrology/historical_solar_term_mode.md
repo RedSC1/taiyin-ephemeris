@@ -16,7 +16,7 @@ double day_coordinate = instant_jd_ut - previous_jie.jd_ut;  // 时柱/分段
 
 民用日仅通过 `calendar_civil_day_number()` 用固定公式 `(jd_ut + offset + 0.5)`
 计算，不读取 `SolarTermEvent::civil_day_number`，也不读取
-`ChineseCalendarConfig::rule_mode`。
+`ChineseCalendarConfig::mode`。
 
 因此无论调用方传入 `historical_china_config()` 还是天文配置，八字得到的节令
 边界都是同一套精确天文定气，与日历模块的历史 civil-day profile 完全解耦。
@@ -35,7 +35,7 @@ double day_coordinate = instant_jd_ut - previous_jie.jd_ut;  // 时柱/分段
 1. 新增节令边界来源开关，如 `定气`（当前）与 `历史民用日`。
 2. 历史来源读取日历模块生成的 `SolarTermEvent::civil_day_number`，或直接查询
    historical profile 的节气民用日。
-3. 明确该开关与日历 `rule_mode` 的关系：八字开关独立于日历配置，避免调用方
+3. 明确该开关与日历 `mode` 的关系：八字开关独立于日历配置，避免调用方
    必须同步两个 context。
 
 此功能尚未排期。添加前需先确认流派需求（哪些年代、哪些流派依赖历史节气日），
