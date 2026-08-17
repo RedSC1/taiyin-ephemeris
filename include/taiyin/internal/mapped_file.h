@@ -24,6 +24,9 @@ public:
     size_t size() const noexcept;
     bool is_open() const noexcept;
     bool is_mapped() const noexcept;
+    // Indicates that the most recent failed open exhausted memory while
+    // materializing the owned-buffer fallback.
+    bool allocation_failed() const noexcept;
 
 private:
     bool open_readonly_mapped(const std::string& path) noexcept;
@@ -32,6 +35,7 @@ private:
     const uint8_t* data_;
     size_t size_;
     bool mapped_;
+    bool allocation_failed_;
     std::vector<uint8_t> owned_buffer_;
 
     void* file_handle_;

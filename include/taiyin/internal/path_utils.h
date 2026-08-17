@@ -5,15 +5,10 @@
 #include <cstring>
 #include <string>
 
-#include <sys/stat.h>
-
 #if defined(_WIN32)
-#if !defined(S_ISDIR)
-#define S_ISDIR(mode) (((mode) & _S_IFMT) == _S_IFDIR)
-#endif
-#if !defined(S_ISREG)
-#define S_ISREG(mode) (((mode) & _S_IFMT) == _S_IFREG)
-#endif
+#include "taiyin/internal/win32_path.h"
+#else
+#include <sys/stat.h>
 #endif
 
 namespace taiyin {
@@ -70,11 +65,31 @@ inline std::string join_path(const std::string& lhs, const std::string& rhs) {
 
 inline bool directory_exists(const std::string& path) noexcept {
 #ifdef _WIN32
-    struct _stat st;
-    return _stat(path.c_str(), &st) == 0 && (st.st_mode & _S_IFDIR) != 0;
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    const DWORD attributes = GetFileAttributesW(wide_path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES
+        && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 #else
     struct stat st;
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+}
+
+inline bool regular_file_exists(const std::string& path) noexcept {
+#ifdef _WIN32
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    const DWORD attributes = GetFileAttributesW(wide_path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES
+        && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+#else
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 #endif
 }
 

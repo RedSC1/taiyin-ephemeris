@@ -8,7 +8,7 @@
 
 namespace {
 
-int g_destroy_count = 0;
+std::atomic<int> g_destroy_count(0);
 
 struct Payload {
     int value;
@@ -170,7 +170,7 @@ void test_erase_and_zero_capacity() {
     expect_true(g_destroy_count == 2, "caller still owns rejected payload");
 }
 
-void test_with_data_holds_read_lock_against_erase() {
+void test_with_data_pins_payload_without_holding_read_lock() {
     using taiyin::internal::EphemerisSegmentCache;
     using taiyin::internal::EphemerisSegmentCacheKindSpkSegment;
 
@@ -202,17 +202,95 @@ void test_with_data_holds_read_lock_against_erase() {
         erased.store(cache.erase(key));
     });
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    expect_false(erased.load(), "erase waits while read callback holds cache data");
-    expect_true(g_destroy_count == 0, "payload not destroyed while read callback holds data");
+    for (int i = 0; i < 200 && !erased.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    expect_true(erased.load(), "erase completes while read callback holds pinned data");
+    expect_true(g_destroy_count.load() == 0, "pinned payload survives concurrent erase");
     expect_true(observed_value == 123, "read callback saw payload");
 
     release.store(true);
     reader.join();
     writer.join();
 
-    expect_true(erased.load(), "erase completes after read callback exits");
-    expect_true(g_destroy_count == 1, "erase destroys payload after read callback exits");
+    expect_true(g_destroy_count.load() == 1, "payload destroyed after read callback exits");
+}
+
+struct ReentrantClearState {
+    taiyin::internal::EphemerisSegmentCache* cache;
+    int observed_before;
+    int observed_after;
+};
+
+bool clear_cache_from_callback(const void* data, void* user) {
+    const Payload* payload = static_cast<const Payload*>(data);
+    ReentrantClearState* state = static_cast<ReentrantClearState*>(user);
+    state->observed_before = payload ? payload->value : -1;
+    state->cache->clear();
+    state->observed_after = payload ? payload->value : -1;
+    return true;
+}
+
+void test_with_data_allows_reentrant_clear() {
+    using taiyin::internal::EphemerisSegmentCache;
+    using taiyin::internal::EphemerisSegmentCacheKindSpkSegment;
+
+    g_destroy_count = 0;
+    EphemerisSegmentCache cache(1);
+    const taiyin::internal::EphemerisSegmentCacheKey key =
+        make_key(EphemerisSegmentCacheKindSpkSegment, 91, 92);
+    expect_true(cache.insert(key, make_payload(456)), "insert reentrant payload");
+
+    ReentrantClearState state;
+    state.cache = &cache;
+    state.observed_before = 0;
+    state.observed_after = 0;
+    expect_true(
+        cache.with_data(key, clear_cache_from_callback, &state),
+        "with_data callback may clear cache");
+    expect_true(state.observed_before == 456, "reentrant callback sees payload before clear");
+    expect_true(state.observed_after == 456, "pinned payload survives reentrant clear");
+    expect_size(cache.entry_count(), 0, "reentrant clear empties cache");
+    expect_true(g_destroy_count.load() == 1, "reentrant payload destroyed after callback");
+}
+
+struct ReentrantDestroyPayload {
+    taiyin::internal::EphemerisSegmentCache* cache;
+    std::atomic<bool>* destroyed;
+    size_t* entry_count_seen;
+};
+
+void destroy_payload_with_cache_read(void* data) {
+    ReentrantDestroyPayload* payload =
+        static_cast<ReentrantDestroyPayload*>(data);
+    *payload->entry_count_seen = payload->cache->entry_count();
+    payload->destroyed->store(true);
+    delete payload;
+}
+
+void test_payload_destroy_runs_outside_cache_lock() {
+    using taiyin::internal::EphemerisSegmentCache;
+    using taiyin::internal::EphemerisSegmentCacheData;
+    using taiyin::internal::EphemerisSegmentCacheKindSpkSegment;
+
+    EphemerisSegmentCache cache(1);
+    const taiyin::internal::EphemerisSegmentCacheKey key =
+        make_key(EphemerisSegmentCacheKindSpkSegment, 93, 94);
+    std::atomic<bool> destroyed(false);
+    size_t entry_count_seen = 99;
+    ReentrantDestroyPayload* payload = new ReentrantDestroyPayload();
+    payload->cache = &cache;
+    payload->destroyed = &destroyed;
+    payload->entry_count_seen = &entry_count_seen;
+
+    expect_true(
+        cache.insert(
+            key,
+            EphemerisSegmentCacheData(payload, destroy_payload_with_cache_read)),
+        "insert payload with reentrant deleter");
+    expect_true(cache.erase(key), "erase payload with reentrant deleter");
+    expect_true(destroyed.load(), "payload deleter ran");
+    expect_size(entry_count_seen, 0, "payload deleter safely re-enters cache");
 }
 
 void test_concurrent_read_write_pressure() {
@@ -302,7 +380,9 @@ int main() {
     test_insert_find_and_replace();
     test_clock_eviction();
     test_erase_and_zero_capacity();
-    test_with_data_holds_read_lock_against_erase();
+    test_with_data_pins_payload_without_holding_read_lock();
+    test_with_data_allows_reentrant_clear();
+    test_payload_destroy_runs_outside_cache_lock();
     test_concurrent_read_write_pressure();
     return 0;
 }

@@ -46,6 +46,14 @@ MIT license notices, and `miniz.c` additionally retains the complete upstream
 Unlicense/public-domain dedication. Redistributions must retain the notices
 present in the bundled source files.
 
+toml11
+------
+
+`ziwei_astrology/third_party/toml11/` contains the single-header toml11
+v4.4.0 TOML parser by Toru Niina. It is used while loading authored Ziwei rule
+files into validated integer-only runtime tables. toml11 is distributed under
+the MIT license; its complete license is retained beside the bundled header.
+
 Astronomy Engine
 ----------------
 

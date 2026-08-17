@@ -146,7 +146,12 @@ CacheFixedSpan       bucket_id = floor((jd - origin) / span)
 
 OPM2 uses the natural segment policy, corresponding to the Chebyshev segment index. SPK, TKC1/Kepler, custom method, and similar formats use the `cache_policy` produced by their discoverers. The TSC1 star provider also reuses the `EphemerisSegmentCache` type, but it does not use the main ephemeris descriptor catalog. It uses the provider's internal star runtime id as its cache identity.
 
-Callers evaluate cached entries through `with_data()`. It holds a read lock while the cached pointer is in use, preventing the data from being evicted during computation.
+Callers evaluate cached entries through `with_data()`. The cache copies a
+shared ownership handle while holding its read lock, releases the lock, and
+then invokes the evaluator. Concurrent replacement, eviction, or `clear()` can
+remove the entry immediately, while the pinned payload remains alive until the
+evaluator returns. User evaluators and payload deleters therefore never run
+under the segment-cache lock and may safely re-enter cache/runtime operations.
 
 On a segment-cache miss, `EphemerisEngine` follows this path:
 

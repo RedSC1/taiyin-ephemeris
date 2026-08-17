@@ -30,6 +30,7 @@
       "cacheVariables": {
         "TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS": "ON",
         "TAIYIN_BUILD_BAZI_EXTENSION": "ON",
+        "TAIYIN_BUILD_ZIWEI_EXTENSION": "ON",
         "TAIYIN_BUILD_MODULAR_C_API": "ON"
       }
     },
@@ -58,12 +59,36 @@
     },
     {
       "name": "windows-msvc",
-      "displayName": "Windows MSVC modular BaZi",
-      "description": "Visual Studio x64 build that verifies the Ganzhi-to-BaZi runtime DLL link.",
+      "displayName": "Windows MSVC modular metaphysics",
+      "description": "Visual Studio x64 build for the Ganzhi, BaZi, and Ziwei runtime DLL links.",
       "inherits": "modular-bazi",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build-preset-${presetName}"
+    },
+    {
+      "name": "windows-mingw-gcc",
+      "displayName": "Windows MinGW-w64 GCC modular metaphysics",
+      "description": "Ninja/MinGW-w64 x64 release build, matching the published Windows x64 Python wheels.",
+      "inherits": "modular-bazi",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-preset-${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "windows-llvm-mingw-arm64",
+      "displayName": "Windows ARM64 llvm-mingw modular metaphysics",
+      "description": "Ninja/llvm-mingw ARM64 release build, matching the published Windows ARM64 Python wheels.",
+      "inherits": "modular-bazi",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-preset-${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "aarch64-w64-mingw32-clang",
+        "CMAKE_CXX_COMPILER": "aarch64-w64-mingw32-clang++"
+      }
     },
     {
       "name": "android-arm64",
@@ -97,6 +122,14 @@
       "name": "windows-msvc",
       "configurePreset": "windows-msvc",
       "configuration": "Release"
+    },
+    {
+      "name": "windows-mingw-gcc",
+      "configurePreset": "windows-mingw-gcc"
+    },
+    {
+      "name": "windows-llvm-mingw-arm64",
+      "configurePreset": "windows-llvm-mingw-arm64"
     },
     {
       "name": "android-arm64",
@@ -136,6 +169,20 @@
       "name": "windows-msvc",
       "configurePreset": "windows-msvc",
       "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-mingw-gcc",
+      "configurePreset": "windows-mingw-gcc",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-llvm-mingw-arm64",
+      "configurePreset": "windows-llvm-mingw-arm64",
       "output": {
         "outputOnFailure": true
       }

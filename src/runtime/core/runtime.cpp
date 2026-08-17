@@ -23,7 +23,6 @@
 #include <limits>
 #include <new>
 #include <string>
-#include <sys/stat.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -98,8 +97,7 @@ bool discover_ephemeris_descriptors_from_file(
 }
 
 bool regular_file_exists(const std::string& path) noexcept {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+    return internal::regular_file_exists(path);
 }
 
 bool same_path_string(const std::string& lhs, const std::string& rhs) {
@@ -247,11 +245,6 @@ bool collect_descriptors_from_source_path_string(
         return false;
     }
 
-    struct stat st;
-    if (stat(source_path.c_str(), &st) != 0) {
-        return false;
-    }
-
     std::vector<internal::EphemerisDiscoverFileFn> discoverers;
     internal::append_builtin_ephemeris_discoverers(&discoverers);
     if (discoverers.empty()) {
@@ -263,7 +256,7 @@ bool collect_descriptors_from_source_path_string(
 
     std::vector<internal::EphemerisBlockDescriptor> descriptors;
     bool discovered = false;
-    if (S_ISDIR(st.st_mode)) {
+    if (internal::directory_exists(source_path)) {
         discovered = discover_packaged_ephemeris_descriptors(
             source_path,
             discoverers,
@@ -276,7 +269,7 @@ bool collect_descriptors_from_source_path_string(
                 options,
                 &descriptors);
         }
-    } else if (S_ISREG(st.st_mode)) {
+    } else if (internal::regular_file_exists(source_path)) {
         discovered = discover_ephemeris_descriptors_from_file(
             source_path,
             discoverers,

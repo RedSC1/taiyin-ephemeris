@@ -15,7 +15,6 @@
 #include <dirent.h>
 #endif
 #include <limits>
-#include <sys/stat.h>
 #include <vector>
 
 namespace taiyin {
@@ -40,18 +39,14 @@ bool collect_file_paths_recursive(const std::string& root, std::vector<std::stri
         }
 
         const std::string path = join_path(root, name);
-        struct stat st;
-        if (stat(path.c_str(), &st) != 0) {
-            ok = false;
-            continue;
-        }
-
-        if (S_ISDIR(st.st_mode)) {
+        if (directory_exists(path)) {
             if (!collect_file_paths_recursive(path, out)) {
                 ok = false;
             }
-        } else if (S_ISREG(st.st_mode)) {
+        } else if (regular_file_exists(path)) {
             out->push_back(path);
+        } else {
+            ok = false;
         }
     }
 

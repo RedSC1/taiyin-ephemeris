@@ -2,12 +2,10 @@
 
 #include <fstream>
 #include <limits>
+#include <new>
 
 #if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+#include "taiyin/internal/win32_path.h"
 #endif
 
 #if defined(__APPLE__) || defined(__linux__)
@@ -24,6 +22,7 @@ MappedFile::MappedFile() noexcept
     : data_(0),
       size_(0),
       mapped_(false),
+      allocation_failed_(false),
       owned_buffer_(),
       file_handle_(0),
       mapping_handle_(0),
@@ -64,6 +63,7 @@ void MappedFile::close() noexcept {
     data_ = 0;
     size_ = 0;
     mapped_ = false;
+    allocation_failed_ = false;
     std::vector<uint8_t>().swap(owned_buffer_);
     file_handle_ = 0;
     mapping_handle_ = 0;
@@ -86,14 +86,22 @@ bool MappedFile::is_mapped() const noexcept {
     return mapped_;
 }
 
+bool MappedFile::allocation_failed() const noexcept {
+    return allocation_failed_;
+}
+
 bool MappedFile::open_readonly_mapped(const std::string& path) noexcept {
     if (path.empty()) {
         return false;
     }
 
 #if defined(_WIN32)
-    HANDLE file = CreateFileA(
-        path.c_str(),
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    HANDLE file = CreateFileW(
+        wide_path.c_str(),
         GENERIC_READ,
         FILE_SHARE_READ,
         0,
@@ -111,7 +119,7 @@ bool MappedFile::open_readonly_mapped(const std::string& path) noexcept {
         return false;
     }
 
-    HANDLE mapping = CreateFileMappingA(file, 0, PAGE_READONLY, 0, 0, 0);
+    HANDLE mapping = CreateFileMappingW(file, 0, PAGE_READONLY, 0, 0, 0);
     if (!mapping) {
         CloseHandle(file);
         return false;
@@ -167,6 +175,60 @@ bool MappedFile::open_readonly_owned(const std::string& path) noexcept {
     if (path.empty()) {
         return false;
     }
+#if defined(_WIN32)
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    HANDLE file = CreateFileW(
+        wide_path.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        0,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    LARGE_INTEGER file_size;
+    if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart <= 0
+        || static_cast<unsigned long long>(file_size.QuadPart)
+            > static_cast<unsigned long long>(std::numeric_limits<size_t>::max())) {
+        CloseHandle(file);
+        return false;
+    }
+    const size_t byte_count = static_cast<size_t>(file_size.QuadPart);
+    try {
+        owned_buffer_.resize(byte_count);
+    } catch (const std::bad_alloc&) {
+        allocation_failed_ = true;
+        CloseHandle(file);
+        std::vector<uint8_t>().swap(owned_buffer_);
+        return false;
+    } catch (...) {
+        CloseHandle(file);
+        std::vector<uint8_t>().swap(owned_buffer_);
+        return false;
+    }
+    size_t offset = 0u;
+    while (offset < owned_buffer_.size()) {
+        const size_t remaining = owned_buffer_.size() - offset;
+        const DWORD request = remaining > static_cast<size_t>(
+            std::numeric_limits<DWORD>::max())
+            ? std::numeric_limits<DWORD>::max()
+            : static_cast<DWORD>(remaining);
+        DWORD read_count = 0u;
+        if (!ReadFile(file, &owned_buffer_[offset], request, &read_count, 0)
+            || read_count != request) {
+            CloseHandle(file);
+            std::vector<uint8_t>().swap(owned_buffer_);
+            return false;
+        }
+        offset += read_count;
+    }
+    CloseHandle(file);
+#else
     std::ifstream file(path.c_str(), std::ios::binary | std::ios::ate);
     if (!file) {
         return false;
@@ -181,6 +243,10 @@ bool MappedFile::open_readonly_owned(const std::string& path) noexcept {
     const size_t byte_count = static_cast<size_t>(end_pos);
     try {
         owned_buffer_.resize(byte_count);
+    } catch (const std::bad_alloc&) {
+        allocation_failed_ = true;
+        std::vector<uint8_t>().swap(owned_buffer_);
+        return false;
     } catch (...) {
         std::vector<uint8_t>().swap(owned_buffer_);
         return false;
@@ -192,6 +258,7 @@ bool MappedFile::open_readonly_owned(const std::string& path) noexcept {
         std::vector<uint8_t>().swap(owned_buffer_);
         return false;
     }
+#endif
 
     data_ = &owned_buffer_[0];
     size_ = owned_buffer_.size();

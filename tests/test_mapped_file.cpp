@@ -1,10 +1,16 @@
 #include "taiyin/internal/mapped_file.h"
 #include "taiyin/internal/ephemeris_file_loader.h"
 
+#if defined(_WIN32)
+#include "taiyin/internal/win32_dirent.h"
+#include "taiyin/internal/win32_path.h"
+#endif
+
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 namespace {
 
@@ -28,6 +34,38 @@ void expect_size(size_t actual, size_t expected, const char* label, int* failure
         ++(*failures);
     }
 }
+
+#if defined(_WIN32)
+bool write_utf8_fixture(
+    const std::string& path,
+    const char* contents,
+    size_t contents_size
+) {
+    std::wstring wide_path;
+    if (!taiyin::internal::win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    HANDLE file = CreateFileW(
+        wide_path.c_str(), GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    DWORD written = 0u;
+    const bool ok = WriteFile(
+        file, contents, static_cast<DWORD>(contents_size), &written, 0) != 0
+        && written == contents_size;
+    CloseHandle(file);
+    return ok;
+}
+
+void remove_utf8_fixture(const std::string& path) {
+    std::wstring wide_path;
+    if (taiyin::internal::win32_utf8_to_wide(path, &wide_path)) {
+        DeleteFileW(wide_path.c_str());
+    }
+}
+#endif
 
 }  // namespace
 
@@ -104,6 +142,45 @@ int main() {
     view.close();
     expect_false(view.is_open(), "closed gzip view is not open", &failures);
     expect_false(view.is_decompressed(), "closed gzip view releases decompressed bytes", &failures);
+
+#if defined(_WIN32)
+    const std::string unicode_path = u8"test_太阴_星历_fixture.bin";
+    expect_true(
+        write_utf8_fixture(unicode_path, contents, contents_size),
+        "write UTF-8 fixture through Win32 API", &failures);
+    expect_true(
+        file.open_readonly(unicode_path),
+        "open UTF-8 path fixture readonly", &failures);
+    expect_size(file.size(), contents_size, "UTF-8 fixture size", &failures);
+    if (file.data()) {
+        expect_true(
+            std::memcmp(file.data(), contents, contents_size) == 0,
+            "UTF-8 fixture bytes match", &failures);
+    }
+    file.close();
+    std::vector<uint8_t> unicode_bytes;
+    expect_true(
+        taiyin::internal::read_file_bytes(unicode_path, &unicode_bytes),
+        "read UTF-8 path fixture through ephemeris loader", &failures);
+    expect_size(
+        unicode_bytes.size(), contents_size,
+        "UTF-8 ephemeris loader fixture size", &failures);
+    DIR* current_directory = opendir(".");
+    bool found_unicode_leaf = false;
+    if (current_directory) {
+        while (dirent* entry = readdir(current_directory)) {
+            if (unicode_path == entry->d_name) {
+                found_unicode_leaf = true;
+                break;
+            }
+        }
+        closedir(current_directory);
+    }
+    expect_true(
+        found_unicode_leaf,
+        "enumerate UTF-8 fixture through Win32 directory layer", &failures);
+    remove_utf8_fixture(unicode_path);
+#endif
 
     expect_false(file.open_readonly("missing_mapped_file_fixture.bin"), "missing file open fails", &failures);
     expect_false(file.is_open(), "missing file leaves closed", &failures);

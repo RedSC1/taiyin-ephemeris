@@ -1,0 +1,14 @@
+format_version = 1
+stars = "duplicate_star.toml"
+placement_rules = "duplicate_star.toml"
+brightness_rules = "duplicate_star.toml"
+sihua_rules = "duplicate_star.toml"
+flow_stars = []
+
+[[natal_stars]]
+key = "ziwei"
+category = "major"
+
+[[natal_stars]]
+key = "ziwei"
+category = "major"

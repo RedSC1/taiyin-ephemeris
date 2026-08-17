@@ -1,5 +1,9 @@
 #include "taiyin/internal/spk.h"
 
+#if defined(_WIN32)
+#include "taiyin/internal/win32_path.h"
+#endif
+
 #include "taiyin/physical_constants.h"
 
 #include <cmath>
@@ -124,6 +128,44 @@ bool read_file_source_range(const void* user_data, uint64_t offset, void* out, s
     if (!source || source->path.empty() || !out || byte_count == 0) {
         return false;
     }
+#if defined(_WIN32)
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(source->path, &wide_path)
+        || offset > static_cast<uint64_t>(std::numeric_limits<LONGLONG>::max())) {
+        return false;
+    }
+    HANDLE file = CreateFileW(
+        wide_path.c_str(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    LARGE_INTEGER position;
+    position.QuadPart = static_cast<LONGLONG>(offset);
+    if (!SetFilePointerEx(file, position, 0, FILE_BEGIN)) {
+        CloseHandle(file);
+        return false;
+    }
+    uint8_t* bytes = static_cast<uint8_t*>(out);
+    size_t consumed = 0u;
+    bool ok = true;
+    while (consumed < byte_count) {
+        const size_t remaining = byte_count - consumed;
+        const DWORD request = remaining > static_cast<size_t>(
+            std::numeric_limits<DWORD>::max())
+            ? std::numeric_limits<DWORD>::max()
+            : static_cast<DWORD>(remaining);
+        DWORD read_count = 0u;
+        if (!ReadFile(file, bytes + consumed, request, &read_count, 0)
+            || read_count != request) {
+            ok = false;
+            break;
+        }
+        consumed += read_count;
+    }
+    CloseHandle(file);
+    return ok;
+#else
     std::ifstream file(source->path.c_str(), std::ios::binary);
     if (!file || offset > static_cast<uint64_t>(std::numeric_limits<std::streamoff>::max())) {
         return false;
@@ -134,6 +176,7 @@ bool read_file_source_range(const void* user_data, uint64_t offset, void* out, s
     }
     file.read(static_cast<char*>(out), static_cast<std::streamsize>(byte_count));
     return static_cast<bool>(file);
+#endif
 }
 
 bool read_memory_source_range(const void* user_data, uint64_t offset, void* out, size_t byte_count) noexcept {
@@ -157,6 +200,27 @@ bool file_size_bytes(const std::string& path, uint64_t* out) noexcept {
     if (path.empty() || !out) {
         return false;
     }
+#if defined(_WIN32)
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    HANDLE file = CreateFileW(
+        wide_path.c_str(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    LARGE_INTEGER file_size;
+    const bool ok = GetFileSizeEx(file, &file_size) != 0
+        && file_size.QuadPart >= 0;
+    CloseHandle(file);
+    if (!ok) {
+        return false;
+    }
+    *out = static_cast<uint64_t>(file_size.QuadPart);
+    return true;
+#else
     std::ifstream file(path.c_str(), std::ios::binary | std::ios::ate);
     if (!file) {
         return false;
@@ -167,6 +231,7 @@ bool file_size_bytes(const std::string& path, uint64_t* out) noexcept {
     }
     *out = static_cast<uint64_t>(end_pos);
     return true;
+#endif
 }
 
 bool read_spk_range(const SpkKernel& kernel, uint64_t offset, void* out, size_t byte_count) noexcept {

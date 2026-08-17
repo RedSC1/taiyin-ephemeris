@@ -141,7 +141,10 @@ CacheFixedSpan       bucket_id = floor((jd - origin) / span)
 
 OPM2 使用 natural segment policy，对应 Chebyshev segment index。SPK、TKC1/Kepler、custom method 等格式按各自 discovery 生成的 `cache_policy` 决定 bucket。TSC1 star provider 也复用 `EphemerisSegmentCache` 类型，但它不走 ephemeris descriptor catalog 主线，而是用 provider 内部的 star runtime id 作为 cache identity。
 
-调用方在计算 cached entry 时使用 `with_data()`。它会在 cached pointer 使用期间持有 read lock，避免数据在计算中被换出。
+调用方在计算 cached entry 时使用 `with_data()`。Cache 在 read lock 内复制一份共享所有权，
+随后释放锁再调用 evaluator。并发 replacement、eviction 或 `clear()` 可以立即移除条目，
+但被 pin 的 payload 会存活到 evaluator 返回。用户 evaluator 和 payload deleter 因而都不会
+在 segment-cache lock 内运行，可以安全重入 cache/runtime 操作。
 
 Segment cache miss 时，`EphemerisEngine` 的流程是：
 

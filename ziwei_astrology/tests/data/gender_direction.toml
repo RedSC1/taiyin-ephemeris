@@ -1,0 +1,90 @@
+format_version = 1
+stars = "gender_direction.toml"
+placement_rules = "gender_direction.toml"
+brightness_rules = "gender_direction.toml"
+sihua_rules = "gender_direction.toml"
+flow_stars = []
+
+[[natal_stars]]
+key = "cycle"
+category = "cycle"
+
+[[placements]]
+star = "cycle"
+inputs = ["lunar.year_stem", "birth.gender"]
+shape = [10, 2]
+positions = [2, 10, 10, 2, 2, 10, 10, 2, 2, 10, 10, 2, 2, 10, 10, 2, 2, 10, 10, 2]
+
+[[brightness]]
+star = "cycle"
+values = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+
+[[sihua]]
+stem = "jia"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "yi"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "bing"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "ding"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "wu"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "ji"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "geng"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "xin"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "ren"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"
+
+[[sihua]]
+stem = "gui"
+lu = "cycle"
+quan = "cycle"
+ke = "cycle"
+ji = "cycle"

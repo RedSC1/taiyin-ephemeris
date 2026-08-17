@@ -60,6 +60,9 @@ uint64_t TAIYIN_C_CALL taiyin_get_capabilities(void) {
 #ifdef TAIYIN_C_HAS_BAZI_EXTENSION
         | TAIYIN_CAPABILITY_BAZI
 #endif
+#ifdef TAIYIN_C_HAS_ZIWEI_EXTENSION
+        | TAIYIN_CAPABILITY_ZIWEI
+#endif
         ;
 }
 

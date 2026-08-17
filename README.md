@@ -14,6 +14,13 @@ written in C++ and also provides a versioned C99 ABI for applications and FFI
 bindings. Python, Dart, and JavaScript wrappers are under active development;
 their public APIs and distribution packages are not yet released.
 
+> **Civil-time limitation:** Taiyin's native calendar and Ziwei layers use a
+> fixed UTC offset (or an explicit mean-solar meridian), not a named time-zone
+> database. In countries with daylight-saving/standard-time transitions, a new
+> moon or solar term near a transition can receive the wrong local civil-day
+> label under actual legal time. The astronomical instant remains valid; do not
+> treat its native lunar-date assignment as a legal-time reproduction there.
+
 The library uses the OPM2 ephemeris format together with a built-in
 semi-analytical ephemeris. For a typical major-body OPM2 product, the
 compression/reconstruction difference from its source DE441 or DE442 ephemeris
@@ -130,9 +137,13 @@ cmake --build --preset modular-bazi
 ctest --preset modular-bazi
 ```
 
-Use `linux-gcc`, `linux-clang`, `macos-appleclang`, or `windows-msvc` to select
-the corresponding host compiler. The Windows preset uses Visual Studio 2022
-and x64. `android-arm64` uses the NDK toolchain and therefore requires the
+Use `linux-gcc`, `linux-clang`, `macos-appleclang`, `windows-mingw-gcc`,
+`windows-llvm-mingw-arm64`, or `windows-msvc` to select the corresponding host
+compiler. On Windows x64, MinGW-w64 GCC is the recommended release toolchain;
+on Windows ARM64, use llvm-mingw Clang/LLD. Both match the published Python
+wheels. Visual Studio 2022/MSVC remains a compatibility target covered by CI;
+it is supported on a best-effort basis rather than used to gate Windows wheel
+releases. `android-arm64` uses the NDK toolchain and therefore requires the
 `ANDROID_NDK` environment variable:
 
 ```sh

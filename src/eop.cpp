@@ -1,4 +1,5 @@
 #include "taiyin/internal/eop.h"
+#include "taiyin/internal/mapped_file.h"
 #include "taiyin/angle.h"
 #include "taiyin/time.h"
 
@@ -10,6 +11,13 @@
 #include <limits>
 #include <new>
 #include <vector>
+
+#if defined(_WIN32)
+#include "taiyin/internal/win32_path.h"
+#include <windows.h>
+#elif defined(__APPLE__) || defined(__linux__)
+#include <sys/stat.h>
+#endif
 
 namespace taiyin {
 namespace internal {
@@ -122,27 +130,51 @@ size_t first_eop_sample_at_or_after(
     return lower;
 }
 
+// MappedFile deliberately rejects empty files because it represents an open
+// file by a non-null data pointer. For an EOP input, however, an existing
+// zero-byte file is malformed data, not a missing path.
+bool is_existing_empty_file(const char* path) noexcept {
+    if (!path || path[0] == '\0') return false;
+#if defined(_WIN32)
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) return false;
+    HANDLE file = CreateFileW(wide_path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+        0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER size;
+    const bool empty = GetFileSizeEx(file, &size) && size.QuadPart == 0;
+    CloseHandle(file);
+    return empty;
+#elif defined(__APPLE__) || defined(__linux__)
+    struct stat status;
+    return ::stat(path, &status) == 0 && S_ISREG(status.st_mode)
+        && status.st_size == 0;
+#else
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    return file && file.tellg() == std::ifstream::pos_type(0);
+#endif
+}
+
 Status read_file_bytes(const char* path, std::vector<char>* out) noexcept {
     if (!path || !out) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     try {
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file) {
-            return TAIYIN_FILE_ERROR_NOT_FOUND;
+        MappedFile file;
+        if (!file.open_readonly(path) || !file.is_open()) {
+            if (file.allocation_failed()) {
+                return TAIYIN_ERROR_OUT_OF_MEMORY;
+            }
+            return is_existing_empty_file(path)
+                ? TAIYIN_FILE_ERROR_BAD_FORMAT
+                : TAIYIN_FILE_ERROR_NOT_FOUND;
         }
-        const std::ifstream::pos_type end_pos = file.tellg();
-        if (end_pos <= 0
-            || end_pos > static_cast<std::ifstream::pos_type>(
-                std::numeric_limits<int>::max())) {
+        if (file.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
             return TAIYIN_FILE_ERROR_BAD_FORMAT;
         }
-        const int size = static_cast<int>(end_pos);
-        std::vector<char> bytes(static_cast<size_t>(size));
-        file.seekg(0, std::ios::beg);
-        if (!file.read(&bytes[0], size)) {
-            return TAIYIN_EPHEMERIS_ERROR_LOAD_FAILED;
-        }
+        std::vector<char> bytes(
+            reinterpret_cast<const char*>(file.data()),
+            reinterpret_cast<const char*>(file.data()) + file.size());
         out->swap(bytes);
         return TAIYIN_STATUS_OK;
     } catch (const std::bad_alloc&) {

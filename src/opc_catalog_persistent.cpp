@@ -9,12 +9,15 @@
 #include <cstring>
 #if defined(_WIN32)
 #include "taiyin/internal/win32_dirent.h"
+#include "taiyin/internal/win32_path.h"
 #else
 #include <dirent.h>
 #endif
 #include <fstream>
 #include <limits>
+#if !defined(_WIN32)
 #include <sys/stat.h>
+#endif
 #include <vector>
 
 namespace taiyin {
@@ -25,6 +28,7 @@ const char OPC_MAGIC[4] = { 'O', 'P', 'C', '1' };
 const uint64_t FNV1A_64_OFFSET = 14695981039346656037ULL;
 const uint64_t FNV1A_64_PRIME = 1099511628211ULL;
 const uint64_t OPC_SOURCE_ID = 0;
+const int64_t WINDOWS_TO_UNIX_EPOCH_SECONDS = 11644473600LL;
 
 bool checked_range(size_t size, uint64_t offset, uint64_t byte_count) noexcept {
     return offset <= static_cast<uint64_t>(size)
@@ -72,6 +76,28 @@ bool get_file_stat_metadata(
     if (!out_size || !out_mtime_sec || !out_mtime_nsec) {
         return false;
     }
+#if defined(_WIN32)
+    std::wstring wide_path;
+    if (!win32_utf8_to_wide(path, &wide_path)) {
+        return false;
+    }
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(
+            wide_path.c_str(), GetFileExInfoStandard, &data)
+        || (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        return false;
+    }
+    *out_size = (static_cast<uint64_t>(data.nFileSizeHigh) << 32)
+        | static_cast<uint64_t>(data.nFileSizeLow);
+    ULARGE_INTEGER timestamp;
+    timestamp.LowPart = data.ftLastWriteTime.dwLowDateTime;
+    timestamp.HighPart = data.ftLastWriteTime.dwHighDateTime;
+    *out_mtime_sec = static_cast<int64_t>(timestamp.QuadPart / 10000000ULL)
+        - WINDOWS_TO_UNIX_EPOCH_SECONDS;
+    *out_mtime_nsec = static_cast<int64_t>(
+        (timestamp.QuadPart % 10000000ULL) * 100ULL);
+    return true;
+#else
     struct stat st;
     if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0) {
         return false;
@@ -88,6 +114,7 @@ bool get_file_stat_metadata(
     *out_mtime_nsec = static_cast<int64_t>(st.st_mtim.tv_nsec);
 #endif
     return true;
+#endif
 }
 
 bool fnv1a_update_file_identity(uint64_t* hash, const std::string& path) noexcept {
@@ -156,23 +183,19 @@ bool collect_indexed_source_paths_recursive(
         }
 
         const std::string path = join_path(current, name);
-        struct stat st;
-        if (stat(path.c_str(), &st) != 0) {
-            ok = false;
-            continue;
-        }
-
-        if (S_ISDIR(st.st_mode)) {
+        if (directory_exists(path)) {
             if (!collect_indexed_source_paths_recursive(root, path, out)) {
                 ok = false;
             }
-        } else if (S_ISREG(st.st_mode) && is_opc_indexed_source_file(path)) {
+        } else if (regular_file_exists(path) && is_opc_indexed_source_file(path)) {
             std::string relative;
             if (make_relative_path(root, path, &relative)) {
                 out->push_back(relative);
             } else {
                 ok = false;
             }
+        } else if (!regular_file_exists(path)) {
+            ok = false;
         }
     }
 

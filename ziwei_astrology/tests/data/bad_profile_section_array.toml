@@ -1,0 +1,6 @@
+format_version = 1
+stars = "option_components.toml"
+placement_rules = "option_components.toml"
+brightness_rules = "option_components.toml"
+sihua_rules = "option_components.toml"
+brightness = []

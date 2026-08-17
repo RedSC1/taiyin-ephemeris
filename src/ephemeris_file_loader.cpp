@@ -1,9 +1,9 @@
 #include "taiyin/internal/ephemeris_file_loader.h"
 
 #include "taiyin/internal/gzip.h"
+#include "taiyin/internal/mapped_file.h"
 
 #include <cmath>
-#include <fstream>
 #include <limits>
 
 namespace taiyin {
@@ -98,36 +98,17 @@ bool read_file_bytes(const std::string& path, std::vector<uint8_t>* out) noexcep
     }
     std::vector<uint8_t>().swap(*out);
 
-    std::ifstream file(path.c_str(), std::ios::binary | std::ios::ate);
-    if (!file) {
-        return false;
-    }
-
-    const std::ifstream::pos_type end_pos = file.tellg();
-    if (end_pos < 0) {
-        return false;
-    }
-    const uint64_t byte_count = static_cast<uint64_t>(end_pos);
-    if (byte_count > static_cast<uint64_t>(std::numeric_limits<size_t>::max())
-        || byte_count > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+    MappedFile file;
+    if (!file.open_readonly(path) || !file.is_open()) {
         return false;
     }
 
     try {
-        out->resize(static_cast<size_t>(byte_count));
+        out->assign(file.data(), file.data() + file.size());
     } catch (...) {
         std::vector<uint8_t>().swap(*out);
         return false;
     }
-    file.seekg(0, std::ios::beg);
-    if (!out->empty()) {
-        file.read(reinterpret_cast<char*>(&(*out)[0]), static_cast<std::streamsize>(out->size()));
-        if (!file) {
-            std::vector<uint8_t>().swap(*out);
-            return false;
-        }
-    }
-
     return true;
 }
 

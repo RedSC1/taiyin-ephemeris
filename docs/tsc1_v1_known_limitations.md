@@ -244,9 +244,8 @@ high-level star position / observed-star API
 
 Known limits:
 
-- Windows memory mapping is implemented with the narrow-character path APIs `CreateFileA`, `CreateFileMappingA`, and `MapViewOfFile`, but has not yet been verified on a real Windows machine. macOS/Linux mmap has been built and tested locally.
-- If platform mapping fails, `MappedFile` falls back to reading the whole file into an owned byte buffer; the current fallback reader still uses a narrow-character file path.
-- Non-ASCII data paths on Windows are therefore not guaranteed to work. Full multilingual path support should switch the Windows file-IO path to wide-character APIs such as `CreateFileW` and a matching wide-character fallback reader.
+- Windows file mapping and catalog traversal use UTF-16 Win32 APIs (`CreateFileW`, `FindFirstFileW`, and `GetFileAttributesExW`). The raw-SPK reader also uses `GetFileSizeEx` and `SetFilePointerEx`, so large kernels such as DE441 do not rely on narrow-character C++ stream handling.
+- The Windows MSVC modular CI includes a UTF-8 path mapping and directory-enumeration regression test. It does not stage the multi-gigabyte DE441 kernel, so real-world DE441 loading remains a release smoke check in addition to CI.
 - The reader currently assumes native little-endian runtime. Catalog validation checks this, so unsupported endian layouts fail safely rather than silently misreading fields.
 - `Tsc1StarProvider` lazily assigns an internal `runtime_id` when a star is resolved; it does not bulk-register every star at catalog load time. These IDs are used only for cache keys and diagnostics. HIP, HR, HD, Gaia DR3, and canonical aliases remain catalog metadata.
 - The current star store is global, not independently held by each `NativeCalcContext`. Applications that need isolated star-catalog sets should explicitly manage `add_global_*` and `clear_global_star_catalogs` at their call boundaries.

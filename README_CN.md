@@ -10,6 +10,11 @@ Taiyin Ephemeris 是一个可嵌入的天文库，用于计算太阳系天体位
 并为应用程序和 FFI 绑定提供带版本号的 C99 ABI。
 Python、Dart 与 JavaScript wrapper 正在积极开发中，公开 API 和分发包尚未发布。
 
+> **民用时间限制：** Taiyin 的 native 历法和紫微层只使用固定 UTC offset（或显式
+> 地方平太阳时经线），不内置命名时区数据库。对于实行夏令时/冬令时切换的国家和地区，
+> 若朔或节气靠近切换时刻，按当地实际法定时间得到的农历归日标签可能错误。天文瞬间本身
+> 仍有效，但不应将 native 返回的农历日期视为当地法定时间的复现。
+
 该库使用 OPM2 星历格式，以及内置的半解析星历。典型主星 OPM2
 产品相对其源 DE441 或 DE442 星历的压缩/还原差异约为 **0.001 角秒**。这描述的是
 OPM2 状态压缩误差，而不是最终 apparent 或站心结果；后者还取决于时间尺度、观测者
@@ -108,8 +113,11 @@ cmake --build --preset modular-bazi
 ctest --preset modular-bazi
 ```
 
-`linux-gcc`、`linux-clang`、`macos-appleclang` 与 `windows-msvc` 分别选择相应
-主机编译器。Windows preset 使用 Visual Studio 2022 和 x64。`android-arm64`
+`linux-gcc`、`linux-clang`、`macos-appleclang`、`windows-mingw-gcc`、
+`windows-llvm-mingw-arm64` 与 `windows-msvc` 分别选择相应主机编译器。Windows
+x64 推荐 MinGW-w64 GCC，Windows ARM64 推荐 llvm-mingw Clang/LLD，二者均与
+发布的 Python wheel 使用同一工具链；Visual Studio 2022/MSVC 继续由 CI 做兼容
+性验证，但属于尽力支持，不作为 Windows wheel 发布的阻塞条件。`android-arm64`
 使用 NDK toolchain，因此需要设置 `ANDROID_NDK`：
 
 ```sh

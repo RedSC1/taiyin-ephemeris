@@ -5,16 +5,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  bazi-module-link:
-    name: BaZi module links against the base module
+  modular-extension-link:
+    name: BaZi and Ziwei modules link against the base module
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure
         run: cmake --preset windows-msvc
       - name: Build modular DLLs
-        run: cmake --build --preset windows-msvc --target taiyin taiyin_bazi
-      - name: Build and run BaZi C API integration test
+        run: cmake --build --preset windows-msvc --target taiyin taiyin_bazi taiyin_ziwei
+      - name: Build and run modular C API integration tests
         run: |
-          cmake --build --preset windows-msvc --target test_bazi_c_api
-          ctest --test-dir build-preset-windows-msvc -C Release --output-on-failure -R "^bazi_c_api$"
+          cmake --build --preset windows-msvc --target test_bazi_c_api test_ziwei_c_api test_mapped_file
+          ctest --test-dir build-preset-windows-msvc -C Release --output-on-failure -R "^(bazi|ziwei)_c_api$|^mapped_file$"

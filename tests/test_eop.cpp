@@ -360,5 +360,18 @@ int main() {
             &failures);
     }
 
+    // An empty, existing EOP file is invalid input, not a missing file.
+    {
+        const char* path = "taiyin_test_empty_finals2000a.tmp";
+        {
+            std::ofstream empty(path, std::ios::binary);
+        }
+        EarthOrientationTable table;
+        expect_true(load_finals2000a_file_status(path, &table)
+                == taiyin::TAIYIN_FILE_ERROR_BAD_FORMAT,
+            "empty EOP file reports bad format", &failures);
+        std::remove(path);
+    }
+
     return failures == 0 ? 0 : 1;
 }

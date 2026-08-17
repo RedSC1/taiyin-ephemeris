@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -93,11 +94,10 @@ public:
     EphemerisSegmentCache& operator=(const EphemerisSegmentCache&) = delete;
 
     bool insert(const EphemerisSegmentCacheKey& key, const EphemerisSegmentCacheData& data) noexcept;
-    // Invokes fn() while the cache read lock is held; the returned data pointer
-    // is only valid for the duration of the call. fn must NOT acquire the cache
-    // write lock (insert/erase/clear) or call a runtime entry point that takes a
-    // write lock, or the writer-preferring rwlock self-deadlocks against the
-    // read lock this thread already holds. Slow callbacks also stall writers.
+    // Pins the cached payload under the read lock, releases the lock, and then
+    // invokes fn(). The returned data pointer is valid only for the duration of
+    // the call. Cache operations and runtime entry points may therefore be
+    // called by fn() without re-entering this cache lock.
     bool with_data(
         const EphemerisSegmentCacheKey& key,
         EphemerisSegmentCacheReadFn fn,
@@ -111,9 +111,26 @@ public:
     size_t entry_count() const noexcept;
 
 private:
+    struct SharedData {
+        void* data;
+        EphemerisSegmentCacheDestroyFn destroy;
+        bool owned;
+
+        SharedData(void* data_value, EphemerisSegmentCacheDestroyFn destroy_value)
+            : data(data_value), destroy(destroy_value), owned(false) {}
+
+        ~SharedData() noexcept {
+            if (owned && data && destroy) {
+                destroy(data);
+            }
+        }
+    };
+
+    typedef std::shared_ptr<SharedData> SharedDataPtr;
+
     struct Slot {
         EphemerisSegmentCacheKey key;
-        EphemerisSegmentCacheData data;
+        SharedDataPtr data;
         bool occupied;
         bool used;
 
@@ -126,17 +143,17 @@ private:
     bool insert_into_empty_slot(
         size_t slot_index,
         const EphemerisSegmentCacheKey& key,
-        const EphemerisSegmentCacheData& data
+        const SharedDataPtr& data
     ) noexcept;
     bool replace_slot(
         size_t slot_index,
         const EphemerisSegmentCacheKey& key,
-        const EphemerisSegmentCacheData& data
+        const SharedDataPtr& data,
+        SharedDataPtr* retired
     ) noexcept;
     bool find_empty_slot(size_t* out_slot_index) const noexcept;
     bool select_clock_victim(size_t* out_slot_index) noexcept;
-    void destroy_slot(Slot* slot) noexcept;
-    void destroy_data(EphemerisSegmentCacheData* data) noexcept;
+    void release_slot(Slot* slot, SharedDataPtr* retired) noexcept;
     void advance_hand() noexcept;
 
     mutable WriterPreferredRwLock lock_;

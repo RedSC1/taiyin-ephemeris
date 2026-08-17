@@ -136,6 +136,15 @@ int main(int argc, char** argv) {
         return fail("BaZi-disabled build advertises the BaZi capability");
     }
 #endif
+#if TAIYIN_TEST_EXPECT_ZIWEI && !defined(TAIYIN_TEST_MODULAR_C_API)
+    if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_ZIWEI) == 0u) {
+        return fail("Ziwei-enabled build does not advertise its capability");
+    }
+#elif !TAIYIN_TEST_EXPECT_ZIWEI && !defined(TAIYIN_TEST_MODULAR_C_API)
+    if ((taiyin_get_capabilities() & TAIYIN_CAPABILITY_ZIWEI) != 0u) {
+        return fail("Ziwei-disabled build advertises the Ziwei capability");
+    }
+#endif
     if (strcmp(taiyin_status_name(TAIYIN_ERROR_INVALID_ARGUMENT),
                "TAIYIN_ERROR_INVALID_ARGUMENT") != 0) {
         return fail("status name mismatch");

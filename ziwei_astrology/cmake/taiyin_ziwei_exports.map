@@ -1,0 +1,6 @@
+{
+    global:
+        taiyin_ziwei_*;
+    local:
+        *;
+};

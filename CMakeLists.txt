@@ -59,6 +59,11 @@ option(
     OFF
 )
 option(
+    TAIYIN_BUILD_ZIWEI_EXTENSION
+    "Build the optional Ziwei Doushu rule extension"
+    OFF
+)
+option(
     TAIYIN_BUILD_MODULAR_C_API
     "Build the aggregate base C API library and optional shared extensions"
     OFF
@@ -77,6 +82,12 @@ if(TAIYIN_BUILD_BAZI_EXTENSION
     AND NOT TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS)
     message(FATAL_ERROR
         "TAIYIN_BUILD_BAZI_EXTENSION requires "
+        "TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON")
+endif()
+if(TAIYIN_BUILD_ZIWEI_EXTENSION
+    AND NOT TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS)
+    message(FATAL_ERROR
+        "TAIYIN_BUILD_ZIWEI_EXTENSION requires "
         "TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON")
 endif()
 set(CMAKE_CXX_STANDARD 11)
@@ -410,6 +421,9 @@ enable_testing()
 if(TAIYIN_BUILD_BAZI_EXTENSION)
     add_subdirectory(bazi_astrology)
 endif()
+if(TAIYIN_BUILD_ZIWEI_EXTENSION)
+    add_subdirectory(ziwei_astrology)
+endif()
 
 if(TAIYIN_BUILD_MODULAR_C_API)
     install(
@@ -422,6 +436,14 @@ if(TAIYIN_BUILD_MODULAR_C_API)
     if(TAIYIN_BUILD_BAZI_EXTENSION)
         install(
             TARGETS taiyin_bazi
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )
+    endif()
+    if(TAIYIN_BUILD_ZIWEI_EXTENSION)
+        install(
+            TARGETS taiyin_ziwei
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -495,6 +517,17 @@ if(TAIYIN_BUILD_BAZI_EXTENSION)
 else()
     target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_BAZI=0)
     target_compile_definitions(test_c_api_static PRIVATE TAIYIN_TEST_EXPECT_BAZI=0)
+endif()
+if(TAIYIN_BUILD_ZIWEI_EXTENSION)
+    if(TAIYIN_BUILD_MODULAR_C_API)
+        target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_ZIWEI=0)
+    else()
+        target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_ZIWEI=1)
+    endif()
+    target_compile_definitions(test_c_api_static PRIVATE TAIYIN_TEST_EXPECT_ZIWEI=1)
+else()
+    target_compile_definitions(test_c_api PRIVATE TAIYIN_TEST_EXPECT_ZIWEI=0)
+    target_compile_definitions(test_c_api_static PRIVATE TAIYIN_TEST_EXPECT_ZIWEI=0)
 endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(test_c_api_static PRIVATE m)

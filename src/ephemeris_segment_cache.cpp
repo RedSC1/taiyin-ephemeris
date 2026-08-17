@@ -49,44 +49,66 @@ bool EphemerisSegmentCache::insert(
     const EphemerisSegmentCacheKey& key,
     const EphemerisSegmentCacheData& data
 ) noexcept {
-    WriteLockGuard guard(lock_);
-
-    if (max_entries_ == 0 || !data.data) {
+    if (!data.data) {
         return false;
     }
 
-    IndexMap::iterator existing = index_.find(key);
-    if (existing != index_.end()) {
-        return replace_slot(existing->second, key, data);
-    }
-
-    size_t slot_index = 0;
-    if (find_empty_slot(&slot_index)) {
-        return insert_into_empty_slot(slot_index, key, data);
-    }
-
+    SharedDataPtr candidate;
     try {
-        if (slots_.size() < max_entries_) {
-            Slot slot;
-            slot.key = key;
-            slot.data = data;
-            slot.occupied = true;
-            slot.used = true;
-            slots_.push_back(slot);
-            index_[key] = slots_.size() - 1;
-            return true;
-        }
+        candidate = std::make_shared<SharedData>(data.data, data.destroy);
     } catch (...) {
-        if (!slots_.empty() && slots_.back().occupied && slots_.back().key == key) {
-            slots_.pop_back();
-        }
         return false;
+    }
+    SharedDataPtr retired;
+    bool inserted = false;
+
+    {
+        WriteLockGuard guard(lock_);
+
+        if (max_entries_ == 0) {
+            return false;
+        }
+
+        IndexMap::iterator existing = index_.find(key);
+        if (existing != index_.end()) {
+            inserted = replace_slot(existing->second, key, candidate, &retired);
+        } else {
+            size_t slot_index = 0;
+            if (find_empty_slot(&slot_index)) {
+                inserted = insert_into_empty_slot(slot_index, key, candidate);
+            } else {
+                try {
+                    if (slots_.size() < max_entries_) {
+                        Slot slot;
+                        slot.key = key;
+                        slot.data = candidate;
+                        slot.occupied = true;
+                        slot.used = true;
+                        slots_.push_back(slot);
+                        try {
+                            index_[key] = slots_.size() - 1;
+                            candidate->owned = true;
+                            inserted = true;
+                        } catch (...) {
+                            slots_.pop_back();
+                        }
+                    }
+                } catch (...) {
+                }
+
+                if (!inserted && slots_.size() >= max_entries_) {
+                    if (!select_clock_victim(&slot_index)) {
+                        return false;
+                    }
+                    inserted = replace_slot(slot_index, key, candidate, &retired);
+                }
+            }
+        }
     }
 
-    if (!select_clock_victim(&slot_index)) {
-        return false;
-    }
-    return replace_slot(slot_index, key, data);
+    // retired is released after the cache write lock, so a user-supplied
+    // destroy callback may safely call back into the cache/runtime.
+    return inserted;
 }
 
 bool EphemerisSegmentCache::with_data(
@@ -98,17 +120,21 @@ bool EphemerisSegmentCache::with_data(
         return false;
     }
 
-    ReadLockGuard guard(lock_);
-    IndexMap::iterator it = index_.find(key);
-    if (it == index_.end() || it->second >= slots_.size()) {
-        return false;
-    }
+    SharedDataPtr pinned;
+    {
+        ReadLockGuard guard(lock_);
+        IndexMap::iterator it = index_.find(key);
+        if (it == index_.end() || it->second >= slots_.size()) {
+            return false;
+        }
 
-    const Slot& slot = slots_[it->second];
-    if (!slot.occupied || !slot.data.data) {
-        return false;
+        const Slot& slot = slots_[it->second];
+        if (!slot.occupied || !slot.data || !slot.data->data) {
+            return false;
+        }
+        pinned = slot.data;
     }
-    return fn(slot.data.data, user);
+    return fn(pinned->data, user);
 }
 
 bool EphemerisSegmentCache::contains(const EphemerisSegmentCacheKey& key) const noexcept {
@@ -117,27 +143,33 @@ bool EphemerisSegmentCache::contains(const EphemerisSegmentCacheKey& key) const 
 }
 
 bool EphemerisSegmentCache::erase(const EphemerisSegmentCacheKey& key) noexcept {
-    WriteLockGuard guard(lock_);
+    SharedDataPtr retired;
+    bool erased = false;
+    {
+        WriteLockGuard guard(lock_);
 
-    IndexMap::iterator it = index_.find(key);
-    if (it == index_.end() || it->second >= slots_.size()) {
-        return false;
+        IndexMap::iterator it = index_.find(key);
+        if (it == index_.end() || it->second >= slots_.size()) {
+            return false;
+        }
+        Slot& slot = slots_[it->second];
+        index_.erase(it);
+        release_slot(&slot, &retired);
+        erased = true;
     }
-    Slot& slot = slots_[it->second];
-    index_.erase(it);
-    destroy_slot(&slot);
-    return true;
+    return erased;
 }
 
 void EphemerisSegmentCache::clear() noexcept {
-    WriteLockGuard guard(lock_);
+    std::vector<Slot> retired;
+    {
+        WriteLockGuard guard(lock_);
 
-    for (size_t i = 0; i < slots_.size(); ++i) {
-        destroy_slot(&slots_[i]);
+        retired.swap(slots_);
+        index_.clear();
+        hand_ = 0;
     }
-    slots_.clear();
-    index_.clear();
-    hand_ = 0;
+    // Payload deleters run when retired is destroyed, after releasing lock_.
 }
 
 size_t EphemerisSegmentCache::max_entries() const noexcept {
@@ -153,7 +185,7 @@ size_t EphemerisSegmentCache::entry_count() const noexcept {
 bool EphemerisSegmentCache::insert_into_empty_slot(
     size_t slot_index,
     const EphemerisSegmentCacheKey& key,
-    const EphemerisSegmentCacheData& data
+    const SharedDataPtr& data
 ) noexcept {
     if (slot_index >= slots_.size()) {
         return false;
@@ -169,15 +201,17 @@ bool EphemerisSegmentCache::insert_into_empty_slot(
     slot.data = data;
     slot.occupied = true;
     slot.used = true;
+    data->owned = true;
     return true;
 }
 
 bool EphemerisSegmentCache::replace_slot(
     size_t slot_index,
     const EphemerisSegmentCacheKey& key,
-    const EphemerisSegmentCacheData& data
+    const SharedDataPtr& data,
+    SharedDataPtr* retired
 ) noexcept {
-    if (slot_index >= slots_.size()) {
+    if (slot_index >= slots_.size() || !retired) {
         return false;
     }
 
@@ -201,11 +235,12 @@ bool EphemerisSegmentCache::replace_slot(
         return false;
     }
 
-    destroy_data(&slot.data);
+    retired->swap(slot.data);
     slot.key = key;
     slot.data = data;
     slot.occupied = true;
     slot.used = true;
+    data->owned = true;
     return true;
 }
 
@@ -250,28 +285,17 @@ bool EphemerisSegmentCache::select_clock_victim(size_t* out_slot_index) noexcept
     return false;
 }
 
-void EphemerisSegmentCache::destroy_slot(Slot* slot) noexcept {
-    if (!slot) {
+void EphemerisSegmentCache::release_slot(
+    Slot* slot,
+    SharedDataPtr* retired
+) noexcept {
+    if (!slot || !retired) {
         return;
     }
-    destroy_data(&slot->data);
+    retired->swap(slot->data);
     slot->key = EphemerisSegmentCacheKey();
     slot->occupied = false;
     slot->used = false;
-}
-
-void EphemerisSegmentCache::destroy_data(EphemerisSegmentCacheData* data) noexcept {
-    if (!data || !data->data) {
-        if (data) {
-            data->destroy = 0;
-        }
-        return;
-    }
-    if (data->destroy) {
-        data->destroy(data->data);
-    }
-    data->data = 0;
-    data->destroy = 0;
 }
 
 void EphemerisSegmentCache::advance_hand() noexcept {

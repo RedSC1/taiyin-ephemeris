@@ -12,6 +12,7 @@
 #define TAIYIN_C_CHINESE_CALENDAR_API
 #define TAIYIN_C_GANZHI_API
 #define TAIYIN_C_BAZI_API
+#define TAIYIN_C_ZIWEI_API
 #elif defined(TAIYIN_C_CORE_BUILD)
 #define TAIYIN_C_CORE_API __declspec(dllexport)
 #define TAIYIN_C_API TAIYIN_C_CORE_API
@@ -19,6 +20,7 @@
 #define TAIYIN_C_CHINESE_CALENDAR_API __declspec(dllimport)
 #define TAIYIN_C_GANZHI_API __declspec(dllimport)
 #define TAIYIN_C_BAZI_API __declspec(dllimport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllimport)
 #elif defined(TAIYIN_C_ASTROLOGY_BUILD)
 #define TAIYIN_C_CORE_API __declspec(dllimport)
 #define TAIYIN_C_ASTROLOGY_API __declspec(dllexport)
@@ -26,6 +28,7 @@
 #define TAIYIN_C_CHINESE_CALENDAR_API __declspec(dllimport)
 #define TAIYIN_C_GANZHI_API __declspec(dllimport)
 #define TAIYIN_C_BAZI_API __declspec(dllimport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllimport)
 #elif defined(TAIYIN_C_CHINESE_CALENDAR_BUILD)
 #define TAIYIN_C_CORE_API __declspec(dllimport)
 #define TAIYIN_C_ASTROLOGY_API __declspec(dllimport)
@@ -33,6 +36,7 @@
 #define TAIYIN_C_API TAIYIN_C_CHINESE_CALENDAR_API
 #define TAIYIN_C_GANZHI_API __declspec(dllimport)
 #define TAIYIN_C_BAZI_API __declspec(dllimport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllimport)
 #elif defined(TAIYIN_C_GANZHI_BUILD)
 #define TAIYIN_C_CORE_API __declspec(dllimport)
 #define TAIYIN_C_ASTROLOGY_API __declspec(dllimport)
@@ -40,6 +44,7 @@
 #define TAIYIN_C_GANZHI_API __declspec(dllexport)
 #define TAIYIN_C_API TAIYIN_C_GANZHI_API
 #define TAIYIN_C_BAZI_API __declspec(dllimport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllimport)
 #elif defined(TAIYIN_C_BAZI_BUILD)
 #define TAIYIN_C_CORE_API __declspec(dllimport)
 #define TAIYIN_C_ASTROLOGY_API __declspec(dllimport)
@@ -47,6 +52,15 @@
 #define TAIYIN_C_GANZHI_API __declspec(dllimport)
 #define TAIYIN_C_BAZI_API __declspec(dllexport)
 #define TAIYIN_C_API TAIYIN_C_BAZI_API
+#define TAIYIN_C_ZIWEI_API __declspec(dllimport)
+#elif defined(TAIYIN_C_ZIWEI_BUILD)
+#define TAIYIN_C_CORE_API __declspec(dllimport)
+#define TAIYIN_C_ASTROLOGY_API __declspec(dllimport)
+#define TAIYIN_C_CHINESE_CALENDAR_API __declspec(dllimport)
+#define TAIYIN_C_GANZHI_API __declspec(dllimport)
+#define TAIYIN_C_BAZI_API __declspec(dllimport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllexport)
+#define TAIYIN_C_API TAIYIN_C_ZIWEI_API
 #elif defined(TAIYIN_C_BUILD)
 #define TAIYIN_C_API __declspec(dllexport)
 #define TAIYIN_C_CORE_API __declspec(dllexport)
@@ -54,6 +68,7 @@
 #define TAIYIN_C_CHINESE_CALENDAR_API __declspec(dllexport)
 #define TAIYIN_C_GANZHI_API __declspec(dllexport)
 #define TAIYIN_C_BAZI_API __declspec(dllexport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllexport)
 #else
 #define TAIYIN_C_API __declspec(dllimport)
 #define TAIYIN_C_CORE_API __declspec(dllimport)
@@ -61,6 +76,7 @@
 #define TAIYIN_C_CHINESE_CALENDAR_API __declspec(dllimport)
 #define TAIYIN_C_GANZHI_API __declspec(dllimport)
 #define TAIYIN_C_BAZI_API __declspec(dllimport)
+#define TAIYIN_C_ZIWEI_API __declspec(dllimport)
 #endif
 #define TAIYIN_C_CALL __cdecl
 #else
@@ -70,6 +86,7 @@
 #define TAIYIN_C_CHINESE_CALENDAR_API TAIYIN_C_API
 #define TAIYIN_C_GANZHI_API TAIYIN_C_API
 #define TAIYIN_C_BAZI_API TAIYIN_C_API
+#define TAIYIN_C_ZIWEI_API TAIYIN_C_API
 #define TAIYIN_C_CALL
 #endif
 
@@ -103,7 +120,8 @@ enum taiyin_capability {
     TAIYIN_CAPABILITY_SPLIT_TIME = 1ull << 14,
     TAIYIN_CAPABILITY_CHINESE_CALENDAR = 1ull << 15,
     TAIYIN_CAPABILITY_BAZI = 1ull << 16,
-    TAIYIN_CAPABILITY_GANZHI_CALENDAR = 1ull << 17
+    TAIYIN_CAPABILITY_GANZHI_CALENDAR = 1ull << 17,
+    TAIYIN_CAPABILITY_ZIWEI = 1ull << 18
 };
 
 typedef int32_t taiyin_status;
