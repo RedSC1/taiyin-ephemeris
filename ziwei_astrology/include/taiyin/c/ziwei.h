@@ -142,7 +142,10 @@ typedef struct taiyin_ziwei_flow_summary {
     int32_t small_limit_virtual_age;
     uint8_t small_limit_stem;
     uint8_t small_limit_branch;
-    uint8_t reserved[2];
+    // 0=Zi through 11=Hai; independently resolved calendar month building.
+    // Occupies an existing trailing reserved byte to preserve this C ABI.
+    uint8_t target_month_building_branch;
+    uint8_t reserved[1];
 } taiyin_ziwei_flow_summary;
 
 /* Physical-branch filters for direct birth-time reverse lookup.  Set a field

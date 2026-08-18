@@ -118,6 +118,7 @@ void copy_year(
         target.is_leap = source.months[i].is_leap;
         target.day_count = source.months[i].day_count;
         target.month_name = source.months[i].month_name;
+        target.month_building_branch = source.months[i].month_building_branch;
         target.first_civil_day_number =
             source.months[i].first_civil_day_number;
         taiyin_c_internal::from_cpp_split_jd(

@@ -175,7 +175,12 @@ uint8_t solar_month_from_branch(Branch branch) noexcept {
 }
 
 struct MonthIdentity {
+    int32_t lunar_year;
+    uint8_t month;
+    uint8_t is_leap;
+    uint8_t month_name;
     int64_t first_day;
+    uint8_t month_building_branch;
 };
 
 bool earlier_month(
@@ -185,17 +190,43 @@ bool earlier_month(
     return lhs.first_day < rhs.first_day;
 }
 
-Status resolve_lunar_month_sequence(
+bool matches_lunar_month(
+    const MonthIdentity& month,
+    const chinese_calendar::LunarDate& lunar
+) noexcept {
+    return month.lunar_year == lunar.year
+        && month.month == lunar.month
+        && month.is_leap == lunar.is_leap
+        && month.month_name == lunar.month_name;
+}
+
+// Resolves two deliberately separate facts about a physical lunation:
+//
+// * sequence: its chronological slot in the labelled lunar year, used by the
+//   Liu-Nian Dou-Jun palace progression; and
+// * month-building branch: the continuous calendar branch assigned by calcY:
+//   winter-solstice month is Zi, ordinary months advance, and the selected
+//   intercalary month repeats its predecessor.  calcY has already applied the
+//   civil-day Zhong-Qi rule and the 13-month winter-to-winter condition, so
+//   this adapter must not infer a branch from a potentially ambiguous list of
+//   Zhong-Qi events (a lunar month can contain two).
+//
+// They are equal only in ordinary years.  In particular, treating a no-Qi
+// leap month as the next sequential Jian would shift every later lunar-month
+// stem by one.
+Status resolve_lunar_month_metadata(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const SplitJulianDate& target_instant_utc,
     const chinese_calendar::LunarDate& lunar,
-    uint8_t* out,
+    uint8_t* out_sequence,
     bool* out_collapsed_to_leap_twelve,
+    Branch* out_month_building_branch,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (calendar == NULL
-        || out == NULL
-        || out_collapsed_to_leap_twelve == NULL) {
+        || out_sequence == NULL
+        || out_collapsed_to_leap_twelve == NULL
+        || out_month_building_branch == NULL) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     *out_collapsed_to_leap_twelve = false;
@@ -221,7 +252,11 @@ Status resolve_lunar_month_sequence(
         const int64_t target_first_day = (first_jd + 0.5).day_number;
 
         std::vector<MonthIdentity> months;
-        const double offsets[3] = {-220.0, 0.0, 220.0};
+        // calcY(target) is authoritative when overlapping windows temporarily
+        // give a lunation different historical labels.  The target's LunarDate
+        // below selects its matching record; other windows only fill the
+        // surrounding chronological sequence.
+        const double offsets[3] = {0.0, -220.0, 220.0};
         for (std::size_t probe = 0u; probe < 3u; ++probe) {
             chinese_calendar::ChineseCalendarYear year;
             status = chinese_calendar::calcY(
@@ -231,13 +266,25 @@ Status resolve_lunar_month_sequence(
             for (std::size_t i = 0u; i < year.month_count; ++i) {
                 const chinese_calendar::ChineseCalendarMonth& month =
                     year.months[i];
-                if (month.lunar_year != lunar.year) continue;
                 MonthIdentity identity = {
+                    month.lunar_year,
+                    month.month,
+                    month.is_leap,
+                    month.month_name,
                     month.first_civil_day_number,
+                    month.month_building_branch,
                 };
                 bool duplicate = false;
                 for (std::size_t j = 0u; j < months.size(); ++j) {
                     if (months[j].first_day == identity.first_day) {
+                        // A duplicate lunation can straddle calcY's historical
+                        // year/reform window.  Prefer the identity selected by
+                        // toLunar() for this target, instead of retaining an
+                        // earlier probe's tentative label and branch.
+                        if (matches_lunar_month(identity, lunar)
+                            && !matches_lunar_month(months[j], lunar)) {
+                            months[j] = identity;
+                        }
                         duplicate = true;
                         break;
                     }
@@ -246,25 +293,36 @@ Status resolve_lunar_month_sequence(
             }
         }
         std::sort(months.begin(), months.end(), earlier_month);
+        std::size_t target_index = months.size();
+        uint8_t sequence = 0u;
         for (std::size_t i = 0u; i < months.size(); ++i) {
             if (months[i].first_day == target_first_day) {
-                // Ziwei's flow-month model is bounded to one optional leap
-                // month. Historical reform windows can expose a fourteenth
-                // (or later) physical month in one labelled lunar year. The
-                // established compatibility rule keeps those dates
-                // chartable by collapsing the overflow occurrence onto the
-                // thirteenth slot and treating it as leap month twelve. This
-                // is a Ziwei-domain normalization only; the calendar layer
-                // retains the exact historical month identity for roundtrip.
-                if (i >= 13u) {
-                    *out = 13u;
-                    *out_collapsed_to_leap_twelve = true;
-                    return TAIYIN_STATUS_OK;
-                }
-                *out = static_cast<uint8_t>(i + 1u);
-                return TAIYIN_STATUS_OK;
+                target_index = i;
+                break;
             }
+            if (months[i].lunar_year == lunar.year) ++sequence;
         }
+        if (target_index == months.size() || target_index + 1u >= months.size()
+            || months[target_index].lunar_year != lunar.year) {
+            return TAIYIN_ERROR_INTERNAL;
+        }
+        ++sequence;
+
+        // Ziwei's flow-month model is bounded to one optional leap month.
+        // Historical reform windows can expose a fourteenth (or later)
+        // physical month in one labelled lunar year.  Preserve its physical
+        // Zhong-Qi-derived branch, but normalize only its Ziwei sequence.
+        if (sequence > 13u) {
+            sequence = 13u;
+            *out_collapsed_to_leap_twelve = true;
+        }
+        *out_sequence = sequence;
+        if (months[target_index].month_building_branch >= 12u) {
+            return TAIYIN_ERROR_INTERNAL;
+        }
+        *out_month_building_branch = static_cast<Branch>(
+            months[target_index].month_building_branch);
+        return TAIYIN_STATUS_OK;
     } catch (const std::bad_alloc&) {
         return TAIYIN_ERROR_OUT_OF_MEMORY;
     } catch (...) {
@@ -340,6 +398,7 @@ Status resolve_flow_from_calendar(
     if (status != TAIYIN_STATUS_OK) return status;
 
     ResolvedFlow result = {};
+    Branch lunar_month_building_branch = Branch::Yin;
     if (options.boundary == PillarBoundary::Lunar) {
         // Flow years retain the physical lunar-year label on both sides of
         // the comparison. Natal leap-month policy may map a birth leap month
@@ -355,14 +414,16 @@ Status resolve_flow_from_calendar(
         result.target_day = lunar.day;
         result.target_month_is_leap = lunar.is_leap != 0u;
         bool collapsed_to_leap_twelve = false;
-        status = resolve_lunar_month_sequence(
+        status = resolve_lunar_month_metadata(
             calendar,
             target_instant_utc,
             lunar,
             &result.target_month_sequence,
             &collapsed_to_leap_twelve,
+            &lunar_month_building_branch,
             diagnostic);
         if (status != TAIYIN_STATUS_OK) return status;
+        result.target_month_building_branch = lunar_month_building_branch;
         if (collapsed_to_leap_twelve) {
             result.target_month = 12u;
             result.target_month_is_leap = true;
@@ -382,6 +443,7 @@ Status resolve_flow_from_calendar(
             target_pillars.month.branch);
         result.target_month_sequence = result.target_month;
         result.target_month_is_leap = false;
+        result.target_month_building_branch = target_pillars.month.branch;
         uint16_t solar_day = 0u;
         status = detail::calculate_solar_day_from_previous_jie(
             calendar,
@@ -421,15 +483,28 @@ Status resolve_flow_from_calendar(
     status = make_flow_year(
         natal, result.effective_target_year, &result.year);
     if (status != TAIYIN_STATUS_OK) return status;
-    status = make_flow_month(
-        natal,
-        result.effective_target_year,
-        result.target_month,
-        result.target_month_sequence,
-        result.target_month_is_leap,
-        birth.facts.effective_lunar_month,
-        birth.facts.solar_term_pillars.hour.branch,
-        &result.month);
+    if (options.boundary == PillarBoundary::Lunar) {
+        status = make_flow_month_from_lunar_month_branch(
+            natal,
+            result.effective_target_year,
+            result.target_month,
+            result.target_month_sequence,
+            result.target_month_is_leap,
+            lunar_month_building_branch,
+            birth.facts.effective_lunar_month,
+            birth.facts.solar_term_pillars.hour.branch,
+            &result.month);
+    } else {
+        status = make_flow_month(
+            natal,
+            result.effective_target_year,
+            result.target_month,
+            result.target_month_sequence,
+            result.target_month_is_leap,
+            birth.facts.effective_lunar_month,
+            birth.facts.solar_term_pillars.hour.branch,
+            &result.month);
+    }
     if (status != TAIYIN_STATUS_OK) return status;
     status = make_flow_day(
         natal,

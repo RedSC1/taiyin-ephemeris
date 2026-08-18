@@ -120,6 +120,23 @@ Status make_flow_month(
     FlowMonthLimit* out
 ) noexcept;
 
+// Calendar-backed callers that know the physical lunisolar month construction
+// should use this form.  The monthly stem is derived by Wu-Hu-Dun from the
+// supplied month-building branch (the Zhong-Qi assigned to the lunar month,
+// or the preceding Zhong-Qi for a leap/no-Zhong-Qi lunar month).  The flow-palace
+// branch remains the independently derived Liu-Nian Dou-Jun position.
+Status make_flow_month_from_lunar_month_branch(
+    const NatalChart& natal,
+    int32_t physical_year,
+    uint8_t logical_month,
+    uint8_t sequence,
+    bool is_leap,
+    Branch lunar_month_branch,
+    uint8_t birth_effective_month,
+    Branch birth_hour,
+    FlowMonthLimit* out
+) noexcept;
+
 Status make_flow_day(
     const NatalChart& natal,
     const FlowMonthLimit& month,

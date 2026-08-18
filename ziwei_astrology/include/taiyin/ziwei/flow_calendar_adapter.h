@@ -24,6 +24,10 @@ struct ResolvedFlow {
     int32_t effective_target_year;
     uint8_t target_month;
     uint8_t target_month_sequence;
+    // Physical month-building branch resolved from the calendar's Zhong-Qi
+    // civil-day assignment.  This is distinct from month.limit.coordinate
+    // .branch, which is the Liu-Nian Dou-Jun palace branch.
+    Branch target_month_building_branch;
     uint8_t target_day;
     uint8_t target_hour_index;
     RatHourSegment target_rat_hour_segment;

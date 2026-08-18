@@ -147,6 +147,19 @@ int main() {
     expect(!is_valid(Ganzhi{
         month.limit.coordinate.stem, month.limit.coordinate.branch}),
         "flow month fixture is intentionally not a sexagenary pair", &failures);
+    expect(make_flow_month(
+        natal,
+        2025,
+        12u,
+        13u,
+        true,
+        4u,
+        Branch::Chou,
+        &month) == TAIYIN_STATUS_OK
+        && month.limit.coordinate.stem == Stem::Geng
+        && month.limit.coordinate.branch == Branch::Mao,
+        "legacy thirteenth month preserves its sequence-based Wu-Hu-Dun stem",
+        &failures);
 
     FlowDayLimit day;
     expect(make_flow_day(natal, month, 2u, Stem::Yi, &day)

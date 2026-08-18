@@ -8,10 +8,10 @@ or localized labels. Every record starts with:
 [format_version, record_kind, ...]
 ```
 
-Version 3 uses kind `1` for a `Chart` and kind `2` for `ResolvedFlow`. Star
+Version 4 uses kind `1` for a `Chart` and kind `2` for `ResolvedFlow`. Star
 positions use `-1` when the star is absent from a particular layer.
 
-## Chart, version 3
+## Chart, version 4
 
 ```text
 version, kind, star_count, flow_count,
@@ -36,14 +36,15 @@ The total length is:
 Layers must be contiguous from Decade. Invalid or internally inconsistent
 charts are rejected rather than serialized ambiguously.
 
-## ResolvedFlow, version 3
+## ResolvedFlow, version 4
 
-The fixed 49-value record contains:
+The fixed 50-value record contains:
 
 ```text
 version, kind,
 effective_birth_year, effective_target_year,
-target_month, target_month_sequence, target_day, target_hour_index,
+target_month, target_month_sequence, target_month_building_branch,
+target_day, target_hour_index,
 target_rat_hour_segment,
 target_month_is_leap,
 
@@ -63,6 +64,9 @@ hour_index, rat_hour_segment
 ```
 
 Rat-hour segment encoding is `0=None`, `1=Unified`, `2=Early`, `3=Late`.
+Month-building branch encoding is `0=Zi` through `11=Hai`; it is the resolved
+calendar month-building branch and is distinct from the Liu-Nian Dou-Jun
+branch stored in the month limit coordinate.
 Each natal transformation mask uses bits 0--3 for birth-year Lu/Quan/Ke/Ji,
 bits 4--7 for centrifugal/self, and bits 8--11 for centripetal marks.
 

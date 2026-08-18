@@ -276,6 +276,9 @@ int main(int argc, char** argv) {
             taiyin_ziwei_flow_summary_init(&flow_summary);
             taiyin_ziwei_transform_set_init(&flow_transforms);
             taiyin_calendar_datetime_init(&next_clock);
+            if (sizeof(taiyin_ziwei_flow_summary) != 36u) {
+                return fail("flow summary retains its original C ABI size");
+            }
             if (!encode_china_standard(
                     2023, 3u, 25u, 10u, 30u,
                     &target_clock, &target_instant)) {
@@ -305,6 +308,7 @@ int main(int argc, char** argv) {
                 || flow_summary.effective_target_year != 2023
                 || flow_summary.target_month != 2u
                 || flow_summary.target_month_sequence != 3u
+                || flow_summary.target_month_building_branch != 3u
                 || !flow_summary.target_month_is_leap
                 || taiyin_ziwei_chart_get_flow_star_position(
                     chart, TAIYIN_ZIWEI_FLOW_YEAR, ziwei, &flow_position)

@@ -115,6 +115,11 @@ struct ChineseCalendarMonth {
     uint8_t is_leap;
     uint8_t day_count;
     uint8_t month_name;
+    // 0=Zi through 11=Hai.  This is the continuous calendar month-building
+    // branch: the winter-solstice month is Zi, ordinary months advance one
+    // branch, and an intercalary month repeats its predecessor.  It remains
+    // distinct from the historical written month label above.
+    uint8_t month_building_branch;
     int64_t first_civil_day_number;
     SplitJulianDate astronomical_new_moon_jd_ut;
 

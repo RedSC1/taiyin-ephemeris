@@ -179,6 +179,7 @@ Status dump_resolved_flow_numeric(
         || flow.target_month < 1u || flow.target_month > 12u
         || flow.target_month_sequence < 1u
         || flow.target_month_sequence > 13u
+        || !is_valid(flow.target_month_building_branch)
         || flow.target_day < 1u || flow.target_day > kMaxFlowDayIndex
         || flow.target_hour_index >= kBranchCount
         || !is_valid(flow.target_rat_hour_segment)
@@ -204,13 +205,14 @@ Status dump_resolved_flow_numeric(
     }
     try {
         std::vector<int64_t> result;
-        result.reserve(49u);
+        result.reserve(50u);
         result.push_back(kNumericDumpFormatVersion);
         result.push_back(static_cast<uint8_t>(NumericDumpKind::ResolvedFlow));
         result.push_back(flow.effective_birth_year);
         result.push_back(flow.effective_target_year);
         result.push_back(flow.target_month);
         result.push_back(flow.target_month_sequence);
+        result.push_back(to_index(flow.target_month_building_branch));
         result.push_back(flow.target_day);
         result.push_back(flow.target_hour_index);
         result.push_back(to_index(flow.target_rat_hour_segment));

@@ -87,6 +87,52 @@ FlowCoordinate palace_coordinate(
     return result;
 }
 
+Status make_flow_month_with_month_stem_offset(
+    const NatalChart& natal,
+    int32_t physical_year,
+    uint8_t logical_month,
+    uint8_t sequence,
+    bool is_leap,
+    int month_stem_offset,
+    uint8_t birth_effective_month,
+    Branch birth_hour,
+    FlowMonthLimit* out
+) noexcept {
+    if (out == NULL
+        || !natal_is_valid(natal)
+        || logical_month < 1u || logical_month > 12u
+        || sequence < 1u || sequence > 13u
+        || month_stem_offset < 0 || month_stem_offset > 12
+        || birth_effective_month < 1u || birth_effective_month > 12u
+        || !is_valid(birth_hour)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    const Stem year_stem = stem_for_year(physical_year);
+    const Branch year_life = branch_for_year(physical_year);
+    const Branch doujun = advance_branch(
+        year_life,
+        -static_cast<int>(birth_effective_month - 1u)
+            + static_cast<int>(to_index(birth_hour)));
+    const Branch target = advance_branch(doujun, sequence - 1u);
+    const int start_tiger = (to_index(year_stem) % 5u) * 2u + 2u;
+    const Stem month_stem = static_cast<Stem>(
+        normalized(start_tiger + month_stem_offset, 10));
+
+    FlowMonthLimit result;
+    result.year = physical_year;
+    result.month = logical_month;
+    result.sequence = sequence;
+    result.is_leap = is_leap;
+    result.doujun = doujun;
+    const FlowCoordinate coordinate = {month_stem, target};
+    if (!make_limit_coordinate(
+            natal, FlowLevel::Month, coordinate, &result.limit)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    *out = result;
+    return TAIYIN_STATUS_OK;
+}
+
 }  // namespace
 
 Status make_decade_by_index(
@@ -271,38 +317,54 @@ Status make_flow_month(
     Branch birth_hour,
     FlowMonthLimit* out
 ) noexcept {
-    if (out == NULL
-        || !natal_is_valid(natal)
-        || logical_month < 1u || logical_month > 12u
-        || sequence < 1u || sequence > 13u
-        || birth_effective_month < 1u || birth_effective_month > 12u
-        || !is_valid(birth_hour)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
-    }
-    const Stem year_stem = stem_for_year(physical_year);
-    const Branch year_life = branch_for_year(physical_year);
-    const Branch doujun = advance_branch(
-        year_life,
-        -static_cast<int>(birth_effective_month - 1u)
-            + static_cast<int>(to_index(birth_hour)));
-    const Branch target = advance_branch(doujun, sequence - 1u);
-    const int start_tiger = (to_index(year_stem) % 5u) * 2u + 2u;
-    const Stem month_stem = static_cast<Stem>(
-        (start_tiger + sequence - 1u) % 10u);
+    // This legacy entry point intentionally retains the sequence-derived
+    // Wu-Hu-Dun offset.  In particular sequence 13 represents the thirteenth
+    // physical month and advances the stem by twelve positions; reducing it
+    // to a twelve-branch value would incorrectly wrap it back to Yin.
+    return make_flow_month_with_month_stem_offset(
+        natal,
+        physical_year,
+        logical_month,
+        sequence,
+        is_leap,
+        static_cast<int>(sequence) - 1,
+        birth_effective_month,
+        birth_hour,
+        out);
+}
 
-    FlowMonthLimit result;
-    result.year = physical_year;
-    result.month = logical_month;
-    result.sequence = sequence;
-    result.is_leap = is_leap;
-    result.doujun = doujun;
-    const FlowCoordinate coordinate = {month_stem, target};
-    if (!make_limit_coordinate(
-            natal, FlowLevel::Month, coordinate, &result.limit)) {
+Status make_flow_month_from_lunar_month_branch(
+    const NatalChart& natal,
+    int32_t physical_year,
+    uint8_t logical_month,
+    uint8_t sequence,
+    bool is_leap,
+    Branch lunar_month_branch,
+    uint8_t birth_effective_month,
+    Branch birth_hour,
+    FlowMonthLimit* out
+) noexcept {
+    if (!is_valid(lunar_month_branch)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    *out = result;
-    return TAIYIN_STATUS_OK;
+    // Normalize in the twelve-branch cycle *before* applying the ten-stem
+    // cycle.  Chou is one branch before Yin numerically, but is the twelfth
+    // month-building position and therefore advances the Wu-Hu-Dun stem by
+    // eleven steps rather than subtracting one.
+    const int month_offset = normalized(
+        static_cast<int>(to_index(lunar_month_branch))
+            - static_cast<int>(to_index(Branch::Yin)),
+        12);
+    return make_flow_month_with_month_stem_offset(
+        natal,
+        physical_year,
+        logical_month,
+        sequence,
+        is_leap,
+        month_offset,
+        birth_effective_month,
+        birth_hour,
+        out);
 }
 
 Status make_flow_day(

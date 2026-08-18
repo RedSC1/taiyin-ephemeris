@@ -187,8 +187,10 @@ int main() {
         &leap_twelve_flow, &diagnostic) == TAIYIN_STATUS_OK,
         "flow at an AsNext leap-twelfth birth is not before birth", &failures);
 
-    // This target is leap second month, day four. It verifies that the
-    // adapter uses the real in-year sequence (3), not the displayed month (2).
+    // This target is leap second month, day four.  Its physical sequence is
+    // three for the Liu-Nian Dou-Jun palace progression, but it has no
+    // Zhong-Qi, so its Wu-Hu-Dun stem must repeat the preceding Mao-built
+    // month rather than advance as a third ordinary month.
     const CalendarDateTime target_clock = {2023, 3, 25, 10, 30, 0.0};
     SplitJulianDate target_instant;
     expect(encode_china_standard(target_clock, &target_instant),
@@ -214,7 +216,10 @@ int main() {
         && lunar.target_hour_index == 5u,
         "resolve leap-month calendar coordinates", &failures);
 
-    // Independent oracle: ziwei_core 0.13.0 ZiweiLimitManager.setPhysicalDate.
+    // The historical Dart engine advanced the month stem by sequence through
+    // a leap month.  The calendar-backed adapter intentionally differs here:
+    // it derives the lunar flow-month stem from the contained/preceding
+    // Zhong-Qi, while keeping the physical sequence for Dou-Jun.
     expect(lunar.decade.index == 2u
         && lunar.decade.limit.coordinate.stem == Stem::Xin
         && lunar.decade.limit.coordinate.branch == Branch::You
@@ -223,7 +228,7 @@ int main() {
         && lunar.small_limit.coordinate.branch == Branch::Si
         && lunar.year.limit.coordinate.stem == Stem::Gui
         && lunar.year.limit.coordinate.branch == Branch::Mao
-        && lunar.month.limit.coordinate.stem == Stem::Bing
+        && lunar.month.limit.coordinate.stem == Stem::Yi
         && lunar.month.limit.coordinate.branch == Branch::Hai
         && lunar.day.limit.coordinate.stem == Stem::Ren
         && lunar.day.limit.coordinate.branch == Branch::Yin
@@ -301,10 +306,13 @@ int main() {
         "chart dump carries a versioned self-describing prefix", &failures);
     expect(dump_resolved_flow_numeric(installed, &flow_dump)
             == TAIYIN_STATUS_OK
-        && flow_dump.size() == 49u
+        && flow_dump.size() == 50u
         && flow_dump[0] == kNumericDumpFormatVersion
         && flow_dump[1]
-            == static_cast<uint8_t>(NumericDumpKind::ResolvedFlow),
+            == static_cast<uint8_t>(NumericDumpKind::ResolvedFlow)
+        && flow_dump[6]
+            == static_cast<int64_t>(to_index(
+                installed.target_month_building_branch)),
         "resolved-flow dump has stable fixed-width layout", &failures);
     ResolvedFlow malformed_dump = installed;
     malformed_dump.target_month_sequence = 14u;
@@ -313,6 +321,12 @@ int main() {
             == TAIYIN_ERROR_INVALID_ARGUMENT
         && flow_dump == preserved_dump,
         "failed dump validation leaves caller output unchanged", &failures);
+    malformed_dump = installed;
+    malformed_dump.target_month_building_branch = static_cast<Branch>(12u);
+    expect(dump_resolved_flow_numeric(malformed_dump, &flow_dump)
+            == TAIYIN_ERROR_INVALID_ARGUMENT
+        && flow_dump == preserved_dump,
+        "resolved-flow dump validates its month-building branch", &failures);
 
     FlowResolutionOptions solar_options = lunar_options;
     solar_options.boundary = PillarBoundary::SolarTerm;
@@ -488,8 +502,68 @@ int main() {
         && leap_eleven.target_month == 11u
         && leap_eleven.target_month_sequence == 12u
         && leap_eleven.target_month_is_leap
+        && leap_eleven.target_month_building_branch == Branch::Zi
         && leap_eleven.target_day == 1u,
         "resolve late-year leap-month sequence", &failures);
+
+    // calcY owns the continuous month-building sequence.  This must not be
+    // reconstructed by selecting a Zhong-Qi in the Ziwei adapter: a lunar
+    // month can contain two Zhong-Qi, while the calendar rule is anchored at
+    // the winter-solstice month and repeats exactly the selected leap month.
+    chinese_calendar::ChineseCalendarYear leap_calendar_year;
+    expect(chinese_calendar::calcY(
+            &calendar, leap_eleven_instant, &leap_calendar_year, &diagnostic)
+            == TAIYIN_STATUS_OK,
+        "calculate leap-eleven calendar year", &failures);
+    bool continuous_month_building = leap_calendar_year.month_count > 0u
+        && leap_calendar_year.months[0].month_building_branch
+            == static_cast<uint8_t>(Branch::Zi);
+    bool saw_intercalary_month = false;
+    for (std::size_t i = 1u;
+         i < leap_calendar_year.month_count;
+         ++i) {
+        const chinese_calendar::ChineseCalendarMonth& previous =
+            leap_calendar_year.months[i - 1u];
+        const chinese_calendar::ChineseCalendarMonth& current =
+            leap_calendar_year.months[i];
+        const uint8_t expected_branch = static_cast<uint8_t>(
+            (previous.month_building_branch
+                + (current.is_leap != 0u ? 0u : 1u)) % 12u);
+        continuous_month_building = continuous_month_building
+            && current.month_building_branch == expected_branch;
+        saw_intercalary_month = saw_intercalary_month
+            || current.is_leap != 0u;
+    }
+    expect(continuous_month_building && saw_intercalary_month,
+        "calcY keeps a winter-solstice-anchored branch sequence across leap months",
+        &failures);
+
+    // Historical written month labels are not month-building branches.  At
+    // the Qin/Han transition this month is labeled from the Zhuanxu calendar
+    // convention, while its physical winter-solstice-anchored building branch
+    // remains Si (3).
+    chinese_calendar::ChineseCalendarYear qin_han_calendar_year;
+    expect(chinese_calendar::calcY(
+            &calendar,
+            SplitJulianDate(INT64_C(1640788), 0.0),
+            &qin_han_calendar_year,
+            &diagnostic) == TAIYIN_STATUS_OK,
+        "calculate Qin/Han transition calendar year", &failures);
+    bool found_qin_han_month = false;
+    bool qin_han_branch_matches = false;
+    for (std::size_t i = 0u;
+         i < qin_han_calendar_year.month_count;
+         ++i) {
+        const chinese_calendar::ChineseCalendarMonth& month =
+            qin_han_calendar_year.months[i];
+        if (month.first_civil_day_number != INT64_C(1640788)) continue;
+        found_qin_han_month = true;
+        qin_han_branch_matches = month.month_building_branch == 3u;
+        break;
+    }
+    expect(found_qin_han_month && qin_han_branch_matches,
+        "early historical building branch follows physical winter sequence",
+        &failures);
 
     // Historical reform red zones can contain more than thirteen structural
     // month labels. Ziwei keeps those physical dates chartable by collapsing
@@ -592,7 +666,7 @@ int main() {
         {"before lunar new year", {2024, 2, 9, 22, 0, 0.0},
             PillarBoundary::Lunar, &birth, &natal,
             2023, 12u, 13u, false, 30u, 11u,
-            {9u, 3u, 2u, 9u, 9u, 2u, 9u, 1u}},
+            {9u, 3u, 1u, 9u, 9u, 2u, 9u, 1u}},
         {"after lunar new year", {2024, 2, 10, 1, 0, 0.0},
             PillarBoundary::Lunar, &birth, &natal,
             2024, 1u, 1u, false, 1u, 1u,
@@ -600,19 +674,19 @@ int main() {
         {"pre-Taichu", {-104, 1, 3, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
             -105, 11u, 2u, false, 27u, 6u,
-            {1u, 11u, 5u, 0u, 3u, 2u, 2u, 8u}},
+            {1u, 11u, 4u, 0u, 3u, 2u, 2u, 8u}},
         {"Taichu", {-103, 1, 20, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
             -104, 11u, 2u, false, 27u, 6u,
-            {2u, 0u, 7u, 1u, 6u, 3u, 8u, 9u}},
+            {2u, 0u, 6u, 1u, 6u, 3u, 8u, 9u}},
         {"Xin alternate twelve", {23, 12, 2, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
             23, 12u, 12u, false, 1u, 6u,
-            {9u, 7u, 1u, 6u, 3u, 6u, 2u, 0u}},
+            {9u, 7u, 0u, 6u, 3u, 6u, 2u, 0u}},
         {"Xin ordinary twelve", {24, 1, 12, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
             23, 12u, 13u, false, 13u, 6u,
-            {9u, 7u, 2u, 7u, 4u, 7u, 4u, 1u}},
+            {9u, 7u, 1u, 7u, 4u, 7u, 4u, 1u}},
         {"Jingchu 28-day month end", {237, 4, 11, 12, 0, 0.0},
             PillarBoundary::Lunar, &ancient_birth, &ancient_natal,
             237, 2u, 2u, false, 28u, 6u,
@@ -628,7 +702,7 @@ int main() {
         {"Wu Zetian alternate one", {690, 2, 15, 12, 0, 0.0},
             PillarBoundary::Lunar, &ancient_birth, &ancient_natal,
             690, 1u, 3u, false, 1u, 6u,
-            {6u, 2u, 6u, 2u, 5u, 2u, 6u, 8u}},
+            {6u, 2u, 4u, 2u, 5u, 2u, 6u, 8u}},
         {"Tang renamed first month", {761, 12, 2, 12, 0, 0.0},
             PillarBoundary::Lunar, &ancient_birth, &ancient_natal,
             762, 1u, 1u, false, 1u, 6u,
@@ -636,7 +710,7 @@ int main() {
         {"Tang reform end", {762, 3, 30, 12, 0, 0.0},
             PillarBoundary::Lunar, &ancient_birth, &ancient_natal,
             762, 5u, 5u, false, 1u, 6u,
-            {8u, 2u, 2u, 4u, 6u, 4u, 8u, 10u}},
+            {8u, 2u, 0u, 4u, 6u, 4u, 8u, 10u}},
     };
     for (std::size_t i = 0u;
          i < sizeof(boundary_probes) / sizeof(boundary_probes[0]); ++i) {
@@ -743,6 +817,71 @@ int main() {
         expect(layers_complete,
             "boundary flow chart keeps five complete 44-star layers",
             &failures);
+    }
+
+    // In historical reform eras, the written lunar month name is not a safe
+    // proxy for its month-building branch.  These records lock the separate
+    // Zhong-Qi/civil-day result and the Wu-Hu-Dun stem derived from the
+    // *labelled lunar year's* stem.  In particular, Xin's alternate
+    // "twelfth month" is Jian-Zi, hence Gui-year Jia-Zi, rather than a
+    // month stem inferred from the written "twelve" label.
+    struct HistoricalMonthBuildingProbe {
+        const char* label;
+        CalendarDateTime clock;
+        const ResolvedBirth* birth;
+        const NatalChart* natal;
+        int32_t lunar_year;
+        Branch month_building_branch;
+        Stem month_stem;
+    };
+    const HistoricalMonthBuildingProbe historical_month_building_probes[] = {
+        {"pre-Taichu Jian-Zi", {-104, 1, 3, 12, 0, 0.0},
+            &reform_birth, &reform_natal, -105, Branch::Zi, Stem::Wu},
+        {"Taichu Jian-Zi", {-103, 1, 20, 12, 0, 0.0},
+            &reform_birth, &reform_natal, -104, Branch::Zi, Stem::Geng},
+        {"Xin alternate twelve is Jian-Zi", {23, 12, 2, 12, 0, 0.0},
+            &reform_birth, &reform_natal, 23, Branch::Zi, Stem::Jia},
+        {"Xin ordinary twelve is Jian-Chou", {24, 1, 12, 12, 0, 0.0},
+            &reform_birth, &reform_natal, 23, Branch::Chou, Stem::Yi},
+        {"Wu Zhou alternate one is Jian-Yin", {690, 2, 15, 12, 0, 0.0},
+            &ancient_birth, &ancient_natal, 690, Branch::Yin, Stem::Wu},
+        {"Tang reform month is Jian-Chen", {762, 3, 30, 12, 0, 0.0},
+            &ancient_birth, &ancient_natal, 762, Branch::Chen, Stem::Jia},
+    };
+    for (std::size_t i = 0u;
+         i < sizeof(historical_month_building_probes)
+                 / sizeof(historical_month_building_probes[0]);
+         ++i) {
+        const HistoricalMonthBuildingProbe& probe =
+            historical_month_building_probes[i];
+        SplitJulianDate probe_instant;
+        ResolvedFlow probe_flow;
+        const Status status = encode_china_standard(probe.clock, &probe_instant)
+                ? resolve_flow_from_calendar(
+                    &calendar,
+                    *probe.birth,
+                    *probe.natal,
+                    probe_instant,
+                    probe.clock,
+                    lunar_options,
+                    &probe_flow,
+                    &diagnostic)
+                : TAIYIN_ERROR_INVALID_ARGUMENT;
+        const bool matches = status == TAIYIN_STATUS_OK
+                && probe_flow.effective_target_year == probe.lunar_year
+                && probe_flow.target_month_building_branch
+                    == probe.month_building_branch
+                && probe_flow.month.limit.coordinate.stem == probe.month_stem;
+        if (!matches && status == TAIYIN_STATUS_OK) {
+            std::cerr << "historical month-building mismatch: "
+                      << probe.label << " actual year="
+                      << probe_flow.effective_target_year << " branch="
+                      << static_cast<int>(to_index(
+                          probe_flow.target_month_building_branch))
+                      << " stem=" << static_cast<int>(to_index(
+                          probe_flow.month.limit.coordinate.stem)) << '\n';
+        }
+        expect(matches, probe.label, &failures);
     }
 
     // Mismatched birth/natal inputs must fail before changing an existing

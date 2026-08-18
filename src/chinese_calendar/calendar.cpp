@@ -40,6 +40,12 @@ double quiet_nan() noexcept {
     return std::numeric_limits<double>::quiet_NaN();
 }
 
+int normalized_index(int value, int modulus) noexcept {
+    int result = value % modulus;
+    if (result < 0) result += modulus;
+    return result;
+}
+
 SplitJulianDate invalid_split_jd() noexcept {
     return SplitJulianDate(0, quiet_nan());
 }
@@ -674,6 +680,40 @@ uint8_t month_number_from_sequence(int sequence) noexcept {
     return kMonthNumbers[normalized];
 }
 
+int resolve_physical_month_sequences(
+    const ChineseCalendarYear& year,
+    int* out_sequences
+) noexcept {
+    if (out_sequences == NULL) return -1;
+    for (std::size_t i = 0u;
+         i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT;
+         ++i) {
+        out_sequences[i] = static_cast<int>(i);
+    }
+
+    // A physical month-building sequence is always anchored to the lunar
+    // month containing the first winter solstice (Zi).  When this solstice
+    // interval holds thirteen months, the first month without a Zhong-Qi
+    // repeats its predecessor; this is deliberately independent from any
+    // historical written month-number convention.
+    if (year.new_moons[13].civil_day_number
+        > year.solar_terms[24].civil_day_number) {
+        return -1;
+    }
+    int leap_index = 1;
+    while (leap_index < 13
+        && year.new_moons[leap_index + 1].civil_day_number
+            > year.solar_terms[2 * leap_index].civil_day_number) {
+        ++leap_index;
+    }
+    for (int i = leap_index;
+         i < static_cast<int>(TAIYIN_CHINESE_CALENDAR_MONTH_COUNT);
+         ++i) {
+        --out_sequences[i];
+    }
+    return leap_index;
+}
+
 void assign_lunar_years(ChineseCalendarYear* out) noexcept {
     int year_starts[TAIYIN_CHINESE_CALENDAR_MONTH_COUNT] = {};
     int year_start_count = 0;
@@ -722,6 +762,8 @@ Status assign_early_historical_months(
     int year_hint,
     ChineseCalendarYear* out
 ) noexcept {
+    int physical_sequences[TAIYIN_CHINESE_CALENDAR_MONTH_COUNT] = {};
+    (void) resolve_physical_month_sequences(*out, physical_sequences);
     int64_t year_starts[3] = {};
     uint8_t base_months[3] = {};
     uint8_t special_names[3] = {};
@@ -783,6 +825,8 @@ Status assign_early_historical_months(
         // windows.
         const int winter_year_shift = base_months[era_index] == 11 ? 1 : 0;
         month.lunar_year = year_hint + era_index - 1 - winter_year_shift;
+        month.month_building_branch = static_cast<uint8_t>(
+            normalized_index(physical_sequences[i], 12));
         if (month_offset < 12) {
             month.month = month_number_from_sequence(
                 month_offset + base_months[era_index]);
@@ -838,25 +882,14 @@ Status assign_months(
         return assign_early_historical_months(context, year_hint, out);
     }
 
-    int leap_index = -1;
-    if (out->new_moons[13].civil_day_number
-        <= out->solar_terms[24].civil_day_number) {
-        int i = 1;
-        while (i < 13
-            && out->new_moons[i + 1].civil_day_number
-                > out->solar_terms[2 * i].civil_day_number) {
-            ++i;
-        }
-        leap_index = i;
-        for (; i < static_cast<int>(TAIYIN_CHINESE_CALENDAR_MONTH_COUNT); ++i) {
-            --sequence[i];
-        }
-    }
+    const int leap_index = resolve_physical_month_sequences(*out, sequence);
     out->leap_month_index = static_cast<int8_t>(leap_index);
 
     for (std::size_t i = 0; i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT; ++i) {
         ChineseCalendarMonth& month = out->months[i];
         int month_sequence = sequence[i];
+        month.month_building_branch = static_cast<uint8_t>(
+            normalized_index(month_sequence, 12));
         month.month = month_number_from_sequence(month_sequence);
         month.is_leap = leap_index >= 0
                 && static_cast<int>(i) == leap_index
@@ -984,6 +1017,7 @@ ChineseCalendarMonth::ChineseCalendarMonth() noexcept
       is_leap(0),
       day_count(0),
       month_name(TAIYIN_CHINESE_MONTH_NAME_NORMAL),
+      month_building_branch(0xffu),
       first_civil_day_number(0),
       astronomical_new_moon_jd_ut(invalid_split_jd()) {}
 

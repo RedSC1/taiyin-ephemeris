@@ -567,7 +567,9 @@ int main(int argc, char** argv) {
             || specific_term.index_from_winter_solstice != 3
             || calendar_year.leap_month_index != 1
             || calendar_year.months[1].month != 11
-            || calendar_year.months[1].is_leap == 0) {
+            || calendar_year.months[1].is_leap == 0
+            || calendar_year.months[0].month_building_branch != 0u
+            || calendar_year.months[1].month_building_branch != 0u) {
             taiyin_chinese_calendar_context_destroy(calendar_context);
             taiyin_context_destroy(context);
             return fail("Chinese calendar C API failed");

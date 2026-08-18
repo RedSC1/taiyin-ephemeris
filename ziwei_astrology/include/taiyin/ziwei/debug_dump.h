@@ -10,7 +10,7 @@
 namespace taiyin {
 namespace ziwei {
 
-constexpr uint32_t kNumericDumpFormatVersion = 3u;
+constexpr uint32_t kNumericDumpFormatVersion = 4u;
 
 enum class NumericDumpKind : uint8_t {
     Chart = 1,

@@ -89,6 +89,10 @@ typedef struct taiyin_chinese_calendar_month {
     uint8_t is_leap;
     uint8_t day_count;
     uint8_t month_name;
+    // 0=Zi through 11=Hai.  Kept in the former alignment padding so existing
+    // field offsets and the C ABI layout remain unchanged.
+    uint8_t month_building_branch;
+    uint8_t reserved[3];
     int64_t first_civil_day_number;
     taiyin_split_julian_date astronomical_new_moon_jd_ut;
 } taiyin_chinese_calendar_month;

@@ -181,6 +181,8 @@ void copy_flow_summary(
     out->effective_target_year = source.effective_target_year;
     out->target_month = source.target_month;
     out->target_month_sequence = source.target_month_sequence;
+    out->target_month_building_branch =
+        taiyin::ziwei::to_index(source.target_month_building_branch);
     out->target_day = source.target_day;
     out->target_hour_index = source.target_hour_index;
     out->target_rat_hour_segment =
@@ -314,6 +316,7 @@ void TAIYIN_C_CALL taiyin_ziwei_flow_summary_init(
     if (!value) return;
     value->target_month = 0xffu;
     value->target_month_sequence = 0xffu;
+    value->target_month_building_branch = 0xffu;
     value->target_day = 0xffu;
     value->target_hour_index = 0xffu;
     value->target_rat_hour_segment = 0xffu;
