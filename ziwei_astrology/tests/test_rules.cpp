@@ -119,6 +119,43 @@ int main() {
             == taiyin::TAIYIN_ERROR_INVALID_ARGUMENT,
         "brightness query rejects an invalid StarId", &failures);
 
+    {
+        ZiweiDataCatalog catalog(rules_path);
+        const ZiweiContext water_earth = catalog.create_context();
+        ZiweiOptionSelection selection;
+        selection.longevity = "option2";
+        const ZiweiContext fire_earth = catalog.create_context(selection);
+        StarId changsheng = kInvalidStarId;
+        water_earth.star_registry().find("changsheng", &changsheng);
+        Anchors earth_anchors = sample_anchors();
+        earth_anchors.bureau = Bureau::Earth5;
+        Branch earth_position = Branch::Zi;
+        expect(water_earth.selected_options().longevity == "option1"
+                && fire_earth.selected_options().longevity == "option2",
+            "twelve-life-stage option defaults independently to option1",
+            &failures);
+        expect(evaluate_placement(
+                water_earth.compiled_tables().placement.natal[changsheng],
+                sample_facts(), earth_anchors, Branch::Hai, &earth_position)
+                && earth_position == Branch::Shen,
+            "water/earth convention starts earth-five at Shen", &failures);
+        expect(evaluate_placement(
+                fire_earth.compiled_tables().placement.natal[changsheng],
+                sample_facts(), earth_anchors, Branch::Hai, &earth_position)
+                && earth_position == Branch::Yin,
+            "fire/earth convention starts earth-five at Yin", &failures);
+        bool partial_override_threw = false;
+        try {
+            ZiweiOptionSelection invalid;
+            invalid.placement["changsheng"] = "option2";
+            catalog.create_context(invalid);
+        } catch (const RuleLoadError&) {
+            partial_override_threw = true;
+        }
+        expect(partial_override_threw,
+            "life stages reject a partial placement override", &failures);
+    }
+
     const Anchors anchors = sample_anchors();
     const CalendarFacts facts = sample_facts();
     Branch position = Branch::Zi;

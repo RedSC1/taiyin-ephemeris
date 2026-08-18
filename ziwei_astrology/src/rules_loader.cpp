@@ -45,6 +45,21 @@ namespace {
 
 std::atomic<uint64_t> g_catalog_generation(1u);
 
+const char* kLongevityStarKeys[] = {
+    "changsheng", "muyu", "guandai", "linguan", "diwang", "shuai",
+    "bing", "si", "mu", "jue", "tai", "yang",
+};
+
+const std::size_t kLongevityStarCount =
+    sizeof(kLongevityStarKeys) / sizeof(kLongevityStarKeys[0]);
+
+bool is_longevity_star_key(const std::string& key) noexcept {
+    for (std::size_t i = 0u; i < kLongevityStarCount; ++i) {
+        if (key == kLongevityStarKeys[i]) return true;
+    }
+    return false;
+}
+
 RuleLoadError semantic_error(const std::string& filename,
     const std::string& path, const std::string& detail) {
     return RuleLoadError(filename + ": " + path + ": " + detail);
@@ -312,6 +327,14 @@ std::string choose_option(
                                       : inherited->second;
 }
 
+std::string choose_component_option(
+    const std::string& override_option,
+    const std::string& profile_option
+) {
+    if (!override_option.empty()) return override_option;
+    return profile_option.empty() ? std::string("option1") : profile_option;
+}
+
 template <typename T>
 const T& require_variant(
     const detail::ZiweiCatalogSnapshot& snapshot,
@@ -377,7 +400,8 @@ void validate_profile_defaults(
         const bool known = it->first == "placement"
             || it->first == "brightness"
             || it->first == "sihua"
-            || it->first == "masters";
+            || it->first == "masters"
+            || it->first == "longevity";
         if (!known) {
             throw semantic_error(filename, "defaults." + it->first,
                 "unknown rule component");
@@ -389,6 +413,45 @@ void validate_profile_defaults(
         if (it->first == "masters" && !has_master_resource) {
             throw semantic_error(filename, "defaults.masters",
                 "masters resource is not available");
+        }
+    }
+}
+
+void validate_longevity_variants(
+    const std::string& filename,
+    const std::unordered_map<std::string, PlacementRule>& variants
+) {
+    std::unordered_map<std::string, std::size_t> option_counts;
+    for (std::unordered_map<std::string, PlacementRule>::const_iterator it =
+            variants.begin(); it != variants.end(); ++it) {
+        const std::string::size_type separator = it->first.find('\n');
+        if (separator == std::string::npos) {
+            throw semantic_error(filename, "placements",
+                "internal longevity variant key is malformed");
+        }
+        if (!is_longevity_star_key(it->first.substr(0u, separator))) continue;
+        ++option_counts[it->first.substr(separator + 1u)];
+    }
+    if (option_counts.empty()) {
+        // Minimal maintainer fixtures may define a catalog without the
+        // twelve-life-stage stars at all.
+        return;
+    }
+    for (std::unordered_map<std::string, std::size_t>::const_iterator option =
+            option_counts.begin(); option != option_counts.end(); ++option) {
+        if (option->second != kLongevityStarCount) {
+            throw semantic_error(filename, "placements",
+                "option '" + option->first
+                    + "' must define every one of the 12 life stages");
+        }
+        for (std::size_t i = 0u; i < kLongevityStarCount; ++i) {
+            if (variants.find(std::string(kLongevityStarKeys[i]) + "\n"
+                    + option->first)
+                    == variants.end()) {
+                throw semantic_error(filename, "placements",
+                    "option '" + option->first
+                        + "' is missing '" + kLongevityStarKeys[i] + "'");
+            }
         }
     }
 }
@@ -421,6 +484,10 @@ void validate_profile_selection_keys(
             if (!registry.find(it->first, &ignored)) {
                 throw semantic_error(filename, name + "." + it->first,
                     "unknown star key");
+            }
+            if (name == "placement" && is_longevity_star_key(it->first)) {
+                throw semantic_error(filename, name + "." + it->first,
+                    "twelve-life-stage stars must use the longevity option");
             }
         }
     }
@@ -460,6 +527,11 @@ void validate_override_keys(
                         + "." + it->first,
                     "unknown star key");
             }
+            if (component == 0u && is_longevity_star_key(it->first)) {
+                throw semantic_error(snapshot.profile_filename,
+                    std::string("overrides.placement.") + it->first,
+                    "twelve-life-stage stars must use the longevity option");
+            }
         }
     }
     for (std::unordered_map<std::string, std::string>::const_iterator it =
@@ -492,15 +564,20 @@ void compile_context(
     ZiweiOptionSelection selected;
     for (StarId id = 0u; id < compiled.star_count; ++id) {
         const std::string& star = snapshot->registry.at(id).key;
-        const std::string placement_option = choose_option(
-            overrides.placement,
-            overrides.placement_default,
-            snapshot->profile_selection.placement,
-            star);
+        const bool is_longevity = id < compiled.natal_star_count
+            && is_longevity_star_key(star);
+        const std::string placement_option = is_longevity
+            ? choose_component_option(
+                overrides.longevity, snapshot->profile_selection.longevity)
+            : choose_option(
+                overrides.placement,
+                overrides.placement_default,
+                snapshot->profile_selection.placement,
+                star);
         const PlacementRule placement = require_variant(
             *snapshot,
             snapshot->placement_variants,
-            "placement",
+            is_longevity ? "longevity" : "placement",
             star,
             placement_option);
         if (id < compiled.natal_star_count) {
@@ -508,7 +585,8 @@ void compile_context(
         } else {
             compiled.placement.flow.push_back(placement);
         }
-        selected.placement[star] = placement_option;
+        if (is_longevity) selected.longevity = placement_option;
+        else selected.placement[star] = placement_option;
 
         const std::string brightness_option = choose_option(
             overrides.brightness,
@@ -621,6 +699,9 @@ std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
                     "duplicate star/option entry '" + star + "/" + option + "'");
             }
         }
+
+        validate_longevity_variants(
+            placement_filename, snapshot->placement_variants);
 
         const toml::array& brightness_entries =
             brightness_root.at("brightness").as_array();
@@ -742,6 +823,8 @@ std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
         }
         snapshot->profile_selection.masters =
             default_option(profile, "masters");
+        snapshot->profile_selection.longevity =
+            default_option(profile, "longevity");
 
         CompiledRules default_compiled;
         ZiweiOptionSelection default_selected;
@@ -770,6 +853,7 @@ ZiweiOptionSelection::ZiweiOptionSelection()
       brightness_default(),
       sihua_default(),
       masters(),
+      longevity(),
       placement(),
       brightness(),
       sihua() {}

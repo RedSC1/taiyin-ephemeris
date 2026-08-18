@@ -25,6 +25,9 @@ struct ZiweiOptionSelection {
     std::string brightness_default;
     std::string sihua_default;
     std::string masters;
+    // One coherent table choice for the twelve life stages.  Unlike ordinary
+    // placements, these stars must never be selected independently.
+    std::string longevity;
     std::unordered_map<std::string, std::string> placement;
     std::unordered_map<std::string, std::string> brightness;
     std::unordered_map<std::string, std::string> sihua;

@@ -226,6 +226,10 @@ bool apply_override(
         if (has_key) return false;
         out->masters = option;
         return true;
+    case TAIYIN_ZIWEI_OPTION_LONGEVITY:
+        if (has_key) return false;
+        out->longevity = option;
+        return true;
     default:
         return false;
     }

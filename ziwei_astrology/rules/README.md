@@ -4,6 +4,9 @@
 
 - `stars.toml`: stable star declaration order and categories;
 - `placement.toml`: final branch answer tables;
+- `placement.toml` also carries the inseparable twelve-life-stage table as
+  `longevity`: `option1` is water/earth shared Changsheng; `option2` is
+  fire/earth shared Changsheng;
 - `brightness.toml`: twelve-branch brightness tables;
 - `sihua.toml`: independently selectable ten-stem Si-Hua rows;
 - `masters.toml`: life-master and body-master tables.
@@ -62,6 +65,12 @@ rule dimension. Profiles are convenience selections, not monolithic school
 presets. A resource is rejected rather than partially loaded when it contains
 duplicates, missing selected options, invalid shapes, unknown stars, or values
 outside their finite domains.
+
+The twelve life stages are one exception to per-star selection: a `longevity`
+choice selects all of Changsheng through Yang as one coherent table. It cannot
+mix the twelve rows from different options. The bundled default is `option1`:
+wood starts at Hai, fire at Yin, metal at Si, and water and earth at Shen.
+`option2` changes only earth five bureau, making it start at Yin with fire.
 
 Calendar-source policies are deliberately not encoded as table-option names.
 五虎遁, natal Si-Hua, body master, and flow limits can independently choose

@@ -19,7 +19,9 @@ enum taiyin_ziwei_option_component {
     TAIYIN_ZIWEI_OPTION_PLACEMENT = 0,
     TAIYIN_ZIWEI_OPTION_BRIGHTNESS = 1,
     TAIYIN_ZIWEI_OPTION_SIHUA = 2,
-    TAIYIN_ZIWEI_OPTION_MASTERS = 3
+    TAIYIN_ZIWEI_OPTION_MASTERS = 3,
+    /* A whole-table choice for Changsheng through Yang. key must be NULL. */
+    TAIYIN_ZIWEI_OPTION_LONGEVITY = 4
 };
 
 enum taiyin_ziwei_gender {

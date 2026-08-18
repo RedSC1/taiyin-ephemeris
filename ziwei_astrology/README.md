@@ -10,8 +10,8 @@ The implementation deliberately separates three stages:
 2. `compute_anchors()` produces the stable 31 numeric anchors. Body palace is
    returned as chart metadata because it is not one of those 31 anchors.
 3. `ZiweiDataCatalog` parses a TOML profile once. One or more lightweight
-   `ZiweiContext` values select independent placement, brightness, Si-Hua, and
-   master options from that immutable catalog snapshot. Every official
+   `ZiweiContext` values select independent placement, twelve-life-stage,
+   brightness, Si-Hua, and master options from that immutable catalog snapshot. Every official
    placement is already flattened into a final 1D, 2D, or fixed 3D answer
    table. Runtime placement only computes a row-major index and reads the
    resulting branch.
@@ -21,6 +21,12 @@ The bundled default rules are migrated from the author's MIT-licensed Dart
 tables, 命主/身主 tables, and the default ten-stem Si-Hua table. All old offset,
 direction, and pipeline operations are evaluated by the offline migration
 tool; none of those operations exists in the runtime schema.
+
+The twelve life stages are a coherent option dimension: `option1` uses the
+water/earth-shared Changsheng convention (the default); `option2` uses the
+fire/earth-shared convention. Selecting `option2` changes only the earth-five
+bureau's Changsheng through Yang placement, never the principal stars or
+Si-Hua.
 
 ## Build
 

@@ -14,7 +14,8 @@ depends on the base `taiyin` runtime; aggregate builds include it in `taiyin`.
 ## TOML data and calculation contexts
 
 `ZiweiDataCatalog(profile_path)` parses a profile and all variants in its
-independent star, placement, brightness, Si-Hua, and optional master resources.
+independent star, placement, twelve-life-stage, brightness, Si-Hua, and
+optional master resources.
 It is the heavy, reloadable file-owning layer. Keep it alive and call
 `create_context()` for the default profile selections or
 `create_context(selection)` for overrides. Context creation does not reread
@@ -23,8 +24,12 @@ TOML.
 `ZiweiContext` is the lightweight immutable calculation view. Access its
 `star_registry()` for metadata and its `compiled_tables()` for chart and flow
 functions. An empty `ZiweiOptionSelection` inherits the profile; missing
-profile selections resolve to `option1`. Placement, brightness, and Si-Hua
-options remain independent.
+profile selections resolve to `option1`. Placement, twelve-life-stage,
+brightness, and Si-Hua options remain independent. `longevity` is intentionally
+one whole-table option rather than twelve per-star overrides: it selects a
+coherent Changsheng-through-Yang sequence. The bundled `option1` is water/earth
+shared Changsheng; `option2` is fire/earth shared Changsheng and changes only
+the earth-five bureau sequence.
 
 `ZiweiDataCatalog::reload()` has a strong exception guarantee and atomically
 publishes a new immutable snapshot. Existing contexts continue using their old
