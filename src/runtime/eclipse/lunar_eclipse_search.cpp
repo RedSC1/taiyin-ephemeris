@@ -3,6 +3,7 @@
 #include "runtime/eclipse/eclipse_time.h"
 #include "runtime/eclipse/lunar_shadow_geometry.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/time.h"
 
 #include <algorithm>
@@ -91,14 +92,14 @@ SplitJulianDate meeus_max_jd(double k) {
 
     // F1 = F - 0.02665 * sin(Omega), in degrees (Meeus ch.52).
     const double F1_deg = meeus_f_normalized(k)
-                          - 0.02665 * std::sin(Omega * M_PI / 180.0);
+                          - 0.02665 * std::sin(Omega * TAIYIN_PI / 180.0);
 
     // Convert to radians for trig calls.
-    const double M_rad       = M * M_PI / 180.0;
-    const double M_prime_rad = M_prime * M_PI / 180.0;
-    const double F1_rad      = F1_deg * M_PI / 180.0;
-    const double A1_rad      = A1 * M_PI / 180.0;
-    const double Omega_rad   = Omega * M_PI / 180.0;
+    const double M_rad       = M * TAIYIN_PI / 180.0;
+    const double M_prime_rad = M_prime * TAIYIN_PI / 180.0;
+    const double F1_rad      = F1_deg * TAIYIN_PI / 180.0;
+    const double A1_rad      = A1 * TAIYIN_PI / 180.0;
+    const double Omega_rad   = Omega * TAIYIN_PI / 180.0;
 
     // Max-eclipse time correction (Meeus 52.1), lunar constants.
     tjd += (-0.4065 * std::sin(M_prime_rad)

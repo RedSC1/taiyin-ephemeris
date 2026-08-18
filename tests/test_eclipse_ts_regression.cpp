@@ -3,6 +3,8 @@
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/runtime/eclipse_search.h"
+
+#include "taiyin/angle.h"
 #include "taiyin/runtime/native_context.h"
 #include "taiyin/runtime/runtime.h"
 #include "taiyin/status.h"
@@ -48,7 +50,7 @@ double angular_difference(double a, double b) {
 }
 
 double coordinate_delta_degrees(double actual_lat, double actual_lon, double expected_lat, double expected_lon) {
-    const double mean_lat = (actual_lat + expected_lat) * M_PI / 360.0;
+    const double mean_lat = (actual_lat + expected_lat) * taiyin::TAIYIN_PI / 360.0;
     return std::hypot(actual_lat - expected_lat, angular_difference(actual_lon, expected_lon) * std::cos(mean_lat));
 }
 

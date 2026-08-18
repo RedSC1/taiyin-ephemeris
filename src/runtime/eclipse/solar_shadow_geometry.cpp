@@ -1,5 +1,7 @@
 #include "runtime/eclipse/solar_shadow_geometry.h"
 
+#include "taiyin/angle.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -28,10 +30,10 @@ double quadratic_form_oblate_mixed(
 }
 
 double normalize_signed_radians(double value) noexcept {
-    const double two_pi = 2.0 * M_PI;
-    value = std::fmod(value + M_PI, two_pi);
+    const double two_pi = 2.0 * TAIYIN_PI;
+    value = std::fmod(value + TAIYIN_PI, two_pi);
     if (value < 0.0) value += two_pi;
-    return value - M_PI;
+    return value - TAIYIN_PI;
 }
 
 Vector3 point_on_generator(
@@ -341,7 +343,7 @@ bool maximize_solar_circular_cone_earth_discriminant(
     // the following refinement, rather than dense sampling, supplies the
     // grazing-contact accuracy.
     constexpr int coarse_count = 24;
-    const double coarse_step = 2.0 * M_PI / static_cast<double>(coarse_count);
+    const double coarse_step = 2.0 * TAIYIN_PI / static_cast<double>(coarse_count);
     double best_angle = 0.0;
     double best_value = -std::numeric_limits<double>::infinity();
     SolarGeneratorEarthIntersection best_intersection;

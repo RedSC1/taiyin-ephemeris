@@ -6,6 +6,8 @@
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/runtime/eclipse_search.h"
+
+#include "taiyin/angle.h"
 #include "taiyin/runtime/lunar_limb.h"
 #include "taiyin/runtime/native_context.h"
 #include "taiyin/runtime/runtime.h"
@@ -113,12 +115,12 @@ taiyin::SplitJulianDate meeus_max_jd(double k) {
             - 0.000000150 * t3
             + 0.00000000073 * t4);
     const double f1 = (meeus_f_normalized(k)
-                       - 0.02665 * std::sin(omega * M_PI / 180.0))
-        * M_PI / 180.0;
-    const double mr = m * M_PI / 180.0;
-    const double mpr = m_prime * M_PI / 180.0;
-    const double a1r = a1 * M_PI / 180.0;
-    const double orad = omega * M_PI / 180.0;
+                       - 0.02665 * std::sin(omega * taiyin::TAIYIN_PI / 180.0))
+        * taiyin::TAIYIN_PI / 180.0;
+    const double mr = m * taiyin::TAIYIN_PI / 180.0;
+    const double mpr = m_prime * taiyin::TAIYIN_PI / 180.0;
+    const double a1r = a1 * taiyin::TAIYIN_PI / 180.0;
+    const double orad = omega * taiyin::TAIYIN_PI / 180.0;
     result += (-0.4065 * std::sin(mpr)
                + 0.1727 * e * std::sin(mr)
                + 0.0161 * std::sin(2.0 * mpr)

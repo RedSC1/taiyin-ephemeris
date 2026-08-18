@@ -6,6 +6,7 @@
 #include "runtime/eclipse/solar_route_geometry.h"
 #include "runtime/eclipse/solar_apparent_snapshot.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/earth_rotation.h"
@@ -164,11 +165,11 @@ Status route_frame_from_besselian_elements(
             &gast)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
-    const double mu = e.mu_deg * M_PI / 180.0;
-    const double dec = e.d_deg * M_PI / 180.0;
+    const double mu = e.mu_deg * TAIYIN_PI / 180.0;
+    const double dec = e.d_deg * TAIYIN_PI / 180.0;
     const double ra = gast - mu;
-    out->right_ascension_offset_rad = ra - M_PI / 2.0;
-    out->pole_rotation_rad = M_PI / 2.0 + dec;
+    out->right_ascension_offset_rad = ra - TAIYIN_PI / 2.0;
+    out->pole_rotation_rad = TAIYIN_PI / 2.0 + dec;
     out->gast_rad = gast;
     return TAIYIN_STATUS_OK;
 }
@@ -199,9 +200,9 @@ RouteSurfaceVelocity route_surface_shadow_velocity(
     RouteSurfaceVelocity out{};
     double z = 1.0 - x * x - y * y;
     z = z < 0.0 ? 0.0 : std::sqrt(z);
-    out.vx_surface = 2.0 * M_PI
+    out.vx_surface = 2.0 * TAIYIN_PI
         * (std::sin(shadow_declination_frame_rad) * z - std::cos(shadow_declination_frame_rad) * y);
-    out.vy_surface = 2.0 * M_PI * x * std::cos(shadow_declination_frame_rad);
+    out.vy_surface = 2.0 * TAIYIN_PI * x * std::cos(shadow_declination_frame_rad);
     out.vx_relative = vx_per_day - out.vx_surface;
     out.vy_relative = vy_per_day - out.vy_surface;
     out.speed = std::hypot(out.vx_relative, out.vy_relative);
@@ -245,10 +246,10 @@ RouteBoundaryPoint route_shadow_boundary_point(
             y -= (y - shadow_y) * z / shadow_z;
         }
         const double relative_x = velocity_x_per_day
-            - 2.0 * M_PI * (std::sin(frame.pole_rotation_rad) * z
+            - 2.0 * TAIYIN_PI * (std::sin(frame.pole_rotation_rad) * z
                 - std::cos(frame.pole_rotation_rad) * y);
         const double relative_y = velocity_y_per_day
-            - 2.0 * M_PI * std::cos(frame.pole_rotation_rad) * x;
+            - 2.0 * TAIYIN_PI * std::cos(frame.pole_rotation_rad) * x;
         const double speed = std::hypot(relative_x, relative_y);
         if (!(speed > 0.0)) return out;
         sin_angle = side_sign * relative_y / speed;
@@ -523,9 +524,9 @@ double geodetic_bearing_rad(
     double latitude1_deg,
     double longitude1_deg
 ) noexcept {
-    const double lat0 = latitude0_deg * M_PI / 180.0;
-    const double lat1 = latitude1_deg * M_PI / 180.0;
-    const double dlon = normalize_signed_degrees(longitude1_deg - longitude0_deg) * M_PI / 180.0;
+    const double lat0 = latitude0_deg * TAIYIN_PI / 180.0;
+    const double lat1 = latitude1_deg * TAIYIN_PI / 180.0;
+    const double dlon = normalize_signed_degrees(longitude1_deg - longitude0_deg) * TAIYIN_PI / 180.0;
     const double y = std::sin(dlon) * std::cos(lat1);
     const double x = std::cos(lat0) * std::sin(lat1)
         - std::sin(lat0) * std::cos(lat1) * std::cos(dlon);
@@ -543,10 +544,10 @@ bool local_tangent_coordinates_km(
         || !out_east_km || !out_north_km) {
         return false;
     }
-    const double lat0 = center.latitude_deg * M_PI / 180.0;
-    const double lat1 = point.latitude_deg * M_PI / 180.0;
+    const double lat0 = center.latitude_deg * TAIYIN_PI / 180.0;
+    const double lat1 = point.latitude_deg * TAIYIN_PI / 180.0;
     const double dlat = lat1 - lat0;
-    const double dlon = normalize_signed_degrees(point.longitude_deg - center.longitude_deg) * M_PI / 180.0;
+    const double dlon = normalize_signed_degrees(point.longitude_deg - center.longitude_deg) * TAIYIN_PI / 180.0;
     const double s_dlat = std::sin(0.5 * dlat);
     const double s_dlon = std::sin(0.5 * dlon);
     const double a = s_dlat * s_dlat + std::cos(lat0) * std::cos(lat1) * s_dlon * s_dlon;
@@ -581,8 +582,8 @@ bool offset_geodetic_point_km(
     }
     const double angular_distance = distance_km / TAIYIN_WGS84_A_KM;
     const double bearing = std::atan2(east_km, north_km);
-    const double lat0 = center.latitude_deg * M_PI / 180.0;
-    const double lon0 = center.longitude_deg * M_PI / 180.0;
+    const double lat0 = center.latitude_deg * TAIYIN_PI / 180.0;
+    const double lon0 = center.longitude_deg * TAIYIN_PI / 180.0;
     const double sin_lat0 = std::sin(lat0);
     const double cos_lat0 = std::cos(lat0);
     const double sin_d = std::sin(angular_distance);
@@ -592,8 +593,8 @@ bool offset_geodetic_point_km(
     const double lon = lon0 + std::atan2(
         std::sin(bearing) * sin_d * cos_lat0,
         cos_d - sin_lat0 * std::sin(lat));
-    *out_longitude_deg = normalize_degrees(lon * 180.0 / M_PI + 180.0) - 180.0;
-    *out_latitude_deg = lat * 180.0 / M_PI;
+    *out_longitude_deg = normalize_degrees(lon * 180.0 / TAIYIN_PI + 180.0) - 180.0;
+    *out_latitude_deg = lat * 180.0 / TAIYIN_PI;
     return std::isfinite(*out_longitude_deg) && std::isfinite(*out_latitude_deg);
 }
 
@@ -612,8 +613,8 @@ Status eval_profiled_route_contour_scalar(
     }
     RouteBoundaryPoint point{};
     point.valid = true;
-    point.longitude_rad = longitude_deg * M_PI / 180.0;
-    point.latitude_rad = latitude_deg * M_PI / 180.0;
+    point.longitude_rad = longitude_deg * TAIYIN_PI / 180.0;
+    point.latitude_rad = latitude_deg * TAIYIN_PI / 180.0;
     double moon_radius_ratio = NAN;
     Status status = route_lunar_limb_radius_ratio(
         geometry, frame, point, away_from_sun, &moon_radius_ratio);
@@ -669,8 +670,8 @@ Status polish_profiled_route_boundary(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     SolarEclipsePathPoint current{};
-    current.longitude_deg = point->longitude_rad * 180.0 / M_PI;
-    current.latitude_deg = point->latitude_rad * 180.0 / M_PI;
+    current.longitude_deg = point->longitude_rad * 180.0 / TAIYIN_PI;
+    current.latitude_deg = point->latitude_rad * 180.0 / TAIYIN_PI;
 
     constexpr double kGradientStepKm = 0.25;
     constexpr double kMaxCorrectionKm = 5.0;
@@ -687,8 +688,8 @@ Status polish_profiled_route_boundary(
             &scalar);
         if (status != TAIYIN_STATUS_OK) return status;
         if (std::fabs(scalar) <= kResidualToleranceRad) {
-            point->longitude_rad = current.longitude_deg * M_PI / 180.0;
-            point->latitude_rad = current.latitude_deg * M_PI / 180.0;
+            point->longitude_rad = current.longitude_deg * TAIYIN_PI / 180.0;
+            point->latitude_rad = current.latitude_deg * TAIYIN_PI / 180.0;
             return TAIYIN_STATUS_OK;
         }
 
@@ -754,8 +755,8 @@ Status polish_profiled_route_boundary(
         }
         if (correction_norm < 0.002) break;
     }
-    point->longitude_rad = current.longitude_deg * M_PI / 180.0;
-    point->latitude_rad = current.latitude_deg * M_PI / 180.0;
+    point->longitude_rad = current.longitude_deg * TAIYIN_PI / 180.0;
+    point->latitude_rad = current.latitude_deg * TAIYIN_PI / 180.0;
     double final_scalar = NAN;
     const Status final_status = eval_profiled_route_contour_scalar(
         geometry,
@@ -979,8 +980,8 @@ Status fill_route_path_point_rad(
         context,
         jd_tt,
         flags,
-        longitude_rad * 180.0 / M_PI,
-        latitude_rad * 180.0 / M_PI,
+        longitude_rad * 180.0 / TAIYIN_PI,
+        latitude_rad * 180.0 / TAIYIN_PI,
         out,
         diagnostic
     );
@@ -1035,8 +1036,8 @@ void fill_geodetic_path_point_rad(
     init_path_point(out);
     out->jd_tt = jd_tt;
     out->jd_ut = jd_ut;
-    out->longitude_deg = normalize_degrees(longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
-    out->latitude_deg = latitude_rad * 180.0 / M_PI;
+    out->longitude_deg = normalize_degrees(longitude_rad * 180.0 / TAIYIN_PI + 180.0) - 180.0;
+    out->latitude_deg = latitude_rad * 180.0 / TAIYIN_PI;
     out->elevation_m = 0.0;
 }
 
@@ -1494,11 +1495,11 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
 
     solar_route_geometry::Frame I;
     if (apparent_snapshot) {
-        const double mu = e.mu_deg * M_PI / 180.0;
-        const double dec = e.d_deg * M_PI / 180.0;
+        const double mu = e.mu_deg * TAIYIN_PI / 180.0;
+        const double dec = e.d_deg * TAIYIN_PI / 180.0;
         const double ra = apparent_snapshot->gast_rad - mu;
-        I.right_ascension_offset_rad = ra - M_PI / 2.0;
-        I.pole_rotation_rad = M_PI / 2.0 + dec;
+        I.right_ascension_offset_rad = ra - TAIYIN_PI / 2.0;
+        I.pole_rotation_rad = TAIYIN_PI / 2.0 + dec;
         I.gast_rad = apparent_snapshot->gast_rad;
     } else {
         st = route_frame_from_besselian_elements(context, jd_tt, e, &I, diagnostic);
@@ -1701,8 +1702,8 @@ static Status compute_solar_eclipse_route_row_from_elements_tt(
                 st = refine_local_solar_inner_contact_duration_tt(
                     context,
                     jd_tt,
-                    center.longitude_rad * 180.0 / M_PI,
-                    center.latitude_rad * 180.0 / M_PI,
+                    center.longitude_rad * 180.0 / TAIYIN_PI,
+                    center.latitude_rad * 180.0 / TAIYIN_PI,
                     0.0,
                     flags,
                     out->duration_seconds,
@@ -2548,9 +2549,9 @@ Status append_route_limit_endpoint(
     Status st = eclipse_tt_to_ut(*context, point.jd_tt, &point.jd_ut, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     point.curve_kind = curve_kind;
-    point.latitude_deg = endpoint.endpoint_latitude_rad * 180.0 / M_PI;
+    point.latitude_deg = endpoint.endpoint_latitude_rad * 180.0 / TAIYIN_PI;
     point.longitude_deg = normalize_degrees(
-        endpoint.endpoint_longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
+        endpoint.endpoint_longitude_rad * 180.0 / TAIYIN_PI + 180.0) - 180.0;
     try {
         out_points->push_back(point);
     } catch (const std::bad_alloc&) {
@@ -2575,9 +2576,9 @@ Status append_route_limit_point(
     Status st = eclipse_tt_to_ut(*context, point.jd_tt, &point.jd_ut, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     point.curve_kind = curve_kind;
-    point.latitude_deg = boundary.latitude_rad * 180.0 / M_PI;
+    point.latitude_deg = boundary.latitude_rad * 180.0 / TAIYIN_PI;
     point.longitude_deg = normalize_degrees(
-        boundary.longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
+        boundary.longitude_rad * 180.0 / TAIYIN_PI + 180.0) - 180.0;
     try {
         out_points->push_back(point);
     } catch (const std::bad_alloc&) {
@@ -2613,7 +2614,7 @@ Status append_route_center_endpoint(
     const double x = entering ? crossing.bx : crossing.ax;
     const double y = entering ? crossing.by : crossing.ay;
     solar_route_geometry::Frame endpoint_frame = frame;
-    endpoint_frame.gast_rad -= distance / speed * 2.0 * M_PI;
+    endpoint_frame.gast_rad -= distance / speed * 2.0 * TAIYIN_PI;
     const solar_route_geometry::SurfacePoint endpoint = solar_route_geometry::fundamental_to_geodetic(
         x, y, 0.0, endpoint_frame, true);
     if (!endpoint.valid) return TAIYIN_STATUS_OK;
@@ -2623,9 +2624,9 @@ Status append_route_center_endpoint(
     Status st = eclipse_tt_to_ut(*context, point.jd_tt, &point.jd_ut, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     point.curve_kind = TAIYIN_SOLAR_ROUTE_CURVE_CENTER_LINE;
-    point.latitude_deg = endpoint.latitude_rad * 180.0 / M_PI;
+    point.latitude_deg = endpoint.latitude_rad * 180.0 / TAIYIN_PI;
     point.longitude_deg = normalize_degrees(
-        endpoint.longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
+        endpoint.longitude_rad * 180.0 / TAIYIN_PI + 180.0) - 180.0;
     try {
         out_points->push_back(point);
     } catch (const std::bad_alloc&) {
@@ -2649,9 +2650,9 @@ Status append_route_horizon_point(
     Status st = eclipse_tt_to_ut(*context, jd_tt, &point.jd_ut, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     point.curve_kind = curve_kind;
-    point.latitude_deg = horizon.latitude_rad * 180.0 / M_PI;
+    point.latitude_deg = horizon.latitude_rad * 180.0 / TAIYIN_PI;
     point.longitude_deg = normalize_degrees(
-        horizon.longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
+        horizon.longitude_rad * 180.0 / TAIYIN_PI + 180.0) - 180.0;
     try {
         out_points->push_back(point);
     } catch (const std::bad_alloc&) {
@@ -2675,9 +2676,9 @@ Status append_route_geo_point(
     Status st = eclipse_tt_to_ut(*context, jd_tt, &point.jd_ut, nullptr, diagnostic);
     if (st != TAIYIN_STATUS_OK) return st;
     point.curve_kind = curve_kind;
-    point.latitude_deg = geo.latitude_rad * 180.0 / M_PI;
+    point.latitude_deg = geo.latitude_rad * 180.0 / TAIYIN_PI;
     point.longitude_deg = normalize_degrees(
-        geo.longitude_rad * 180.0 / M_PI + 180.0) - 180.0;
+        geo.longitude_rad * 180.0 / TAIYIN_PI + 180.0) - 180.0;
     try {
         out_points->push_back(point);
     } catch (const std::bad_alloc&) {
@@ -2754,7 +2755,7 @@ Status append_core_horizon_curve_tt(
             context, sample_jd_tt, elements, &frame, diagnostic);
         if (sample_status != TAIYIN_STATUS_OK) return sample_status;
         const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
-        const double shadow_declination = frame.pole_rotation_rad - M_PI / 2.0;
+        const double shadow_declination = frame.pole_rotation_rad - TAIYIN_PI / 2.0;
         const double projected_axis_ratio = earth_axis_ratio * (
             1.0
             + (1.0 - earth_axis_ratio * earth_axis_ratio)
@@ -3029,7 +3030,7 @@ double route_curve_point_distance_squared(
     const SolarEclipseRouteCurvePoint& a,
     const SolarEclipseRouteCurvePoint& b
 ) noexcept {
-    const double mean_latitude_rad = 0.5 * (a.latitude_deg + b.latitude_deg) * M_PI / 180.0;
+    const double mean_latitude_rad = 0.5 * (a.latitude_deg + b.latitude_deg) * TAIYIN_PI / 180.0;
     const double dx = normalize_signed_degrees(b.longitude_deg - a.longitude_deg)
         * std::cos(mean_latitude_rad);
     const double dy = b.latitude_deg - a.latitude_deg;
@@ -3186,7 +3187,7 @@ Status append_solar_eclipse_route_curve_span_tt(
         SplitJulianDate sample_jd = scan_end_jd_tt;
         if (sample_index != scan_steps) {
             if (endpoint_dense_sampling) {
-                const double phase = M_PI * static_cast<double>(sample_index)
+                const double phase = TAIYIN_PI * static_cast<double>(sample_index)
                     / static_cast<double>(scan_steps);
                 const double fraction = 0.5 - 0.5 * std::cos(phase);
                 sample_jd = scan_start_jd_tt
@@ -3219,7 +3220,7 @@ Status append_solar_eclipse_route_curve_span_tt(
                 context, sample_jd, elements, &frame, diagnostic);
             if (st != TAIYIN_STATUS_OK) return st;
             const double earth_axis_ratio = TAIYIN_WGS84_B_KM / TAIYIN_WGS84_A_KM;
-            const double shadow_declination = frame.pole_rotation_rad - M_PI / 2.0;
+            const double shadow_declination = frame.pole_rotation_rad - TAIYIN_PI / 2.0;
             const double projected_axis_ratio = earth_axis_ratio * (
                 1.0
                 + (1.0 - earth_axis_ratio * earth_axis_ratio)

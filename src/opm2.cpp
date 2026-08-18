@@ -759,7 +759,7 @@ bool eval_lunar_params(const Opm2EphemerisData* data, size_t segment, double* ou
     }
     const double mid = 0.5 * (a + b);
     const double t = (mid - data->lunar_model.frame_time_origin_jd) / data->lunar_model.frame_time_unit_days;
-    const double w = 2.0 * M_PI / data->lunar_model.frame_period_years;
+    const double w = TAIYIN_TWO_PI / data->lunar_model.frame_period_years;
     if (!std::isfinite(t) || !std::isfinite(w)) {
         return false;
     }

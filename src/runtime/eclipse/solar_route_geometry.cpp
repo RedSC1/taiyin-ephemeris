@@ -2,6 +2,7 @@
 
 #include "runtime/eclipse/solar_shadow_geometry.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/geodetic_constants.h"
 #include "taiyin/math_solvers.h"
 
@@ -14,12 +15,12 @@ namespace runtime {
 namespace solar_route_geometry {
 namespace {
 
-constexpr double kTwoPi = 2.0 * M_PI;
+const double kTwoPi = 2.0 * TAIYIN_PI;
 
 double normalize_signed(double value) noexcept {
-    value = std::fmod(value + M_PI, kTwoPi);
+    value = std::fmod(value + TAIYIN_PI, kTwoPi);
     if (value < 0.0) value += kTwoPi;
-    return value - M_PI;
+    return value - TAIYIN_PI;
 }
 
 struct SurfaceVelocity {

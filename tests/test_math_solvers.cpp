@@ -214,7 +214,7 @@ int main() {
         // sample cell.  The solver must split at the residual minimum rather
         // than relying only on endpoint sign changes.
         constexpr double shallow_ba = 0.99664719;
-        const double shallow_angle = M_PI / 720.0;
+        const double shallow_angle = taiyin::TAIYIN_PI / 720.0;
         const double normal_x_unscaled = std::cos(shallow_angle);
         const double normal_y_unscaled = std::sin(shallow_angle) / shallow_ba;
         const double normal_scale = std::sqrt(
@@ -292,8 +292,8 @@ int main() {
         };
         const auto signed_angle_delta = [](double actual, double expected) {
             double delta = actual - expected;
-            while (delta > M_PI) delta -= 2.0 * M_PI;
-            while (delta < -M_PI) delta += 2.0 * M_PI;
+            while (delta > taiyin::TAIYIN_PI) delta -= 2.0 * taiyin::TAIYIN_PI;
+            while (delta < -taiyin::TAIYIN_PI) delta += 2.0 * taiyin::TAIYIN_PI;
             return delta;
         };
         double before_a = NAN;

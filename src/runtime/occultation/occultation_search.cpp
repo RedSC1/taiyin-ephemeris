@@ -193,7 +193,7 @@ double circle_overlap_area(
     if (d >= r1 + r2) return 0.0;
     if (d <= std::fabs(r1 - r2)) {
         const double r = std::min(r1, r2);
-        return M_PI * r * r;
+        return TAIYIN_PI * r * r;
     }
     double c1 = (d * d + r1 * r1 - r2 * r2) / (2.0 * d * r1);
     double c2 = (d * d + r2 * r2 - r1 * r1) / (2.0 * d * r2);
@@ -231,7 +231,7 @@ LunarOccultationPhenomena phenomena_from_sample(const OccultationSample& sample)
                 sample.moon_radius_rad,
                 sample.target_radius_rad,
                 sample.separation_rad);
-            const double target_area = M_PI * sample.target_radius_rad * sample.target_radius_rad;
+            const double target_area = TAIYIN_PI * sample.target_radius_rad * sample.target_radius_rad;
             if (std::isfinite(overlap) && target_area > 0.0) {
                 const double occulted_fraction = overlap / target_area;
                 const bool total_or_annular =
@@ -2422,7 +2422,7 @@ void offset_geodetic_approx(
 ) noexcept {
     const double earth_radius_km = 6378.1366;
     double lat = latitude_rad + north_km / earth_radius_km;
-    const double limit = 0.5 * M_PI - 1.0e-8;
+    const double limit = 0.5 * TAIYIN_PI - 1.0e-8;
     if (lat > limit) lat = limit;
     if (lat < -limit) lat = -limit;
     const double cos_lat = std::max(1.0e-6, std::fabs(std::cos(lat)));

@@ -5,6 +5,7 @@
 #include "runtime/eclipse/solar_route_geometry.h"
 #include "runtime/apparent/fast_apparent.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/earth_rotation.h"
@@ -136,8 +137,8 @@ Status compute_local_shadow_frame(
         return TAIYIN_ERROR_UNSUPPORTED;
     }
 
-    out->right_ascension_offset_rad = M_PI / 2.0 + axis.x;
-    out->pole_rotation_rad = M_PI / 2.0 - axis.y;
+    out->right_ascension_offset_rad = TAIYIN_PI / 2.0 + axis.x;
+    out->pole_rotation_rad = TAIYIN_PI / 2.0 - axis.y;
     out->gast_rad = gast;
     return TAIYIN_STATUS_OK;
 }
@@ -392,17 +393,17 @@ Status eval_local_topocentric_geometry_from_vectors(
     const double moon_dist_km = norm3(topo_moon);
     const double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
 
-    *out_separation_deg = angular_separation_rad(topo_sun, topo_moon) * 180.0 / M_PI;
-    *out_sun_radius_deg = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / M_PI;
-    *out_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / M_PI;
+    *out_separation_deg = angular_separation_rad(topo_sun, topo_moon) * 180.0 / TAIYIN_PI;
+    *out_sun_radius_deg = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / TAIYIN_PI;
+    *out_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / TAIYIN_PI;
 
     const Vector3 topo_sun_au = {
         topo_sun[0] / kAuKm, topo_sun[1] / kAuKm, topo_sun[2] / kAuKm};
     const double lst_rad = sidereal_rad + longitude_rad;
     const HorizontalCoordinates horiz = topocentric_position_to_horizontal(
         topo_sun_au, lst_rad, latitude_rad);
-    *out_sun_altitude_deg = horiz.altitude_rad * 180.0 / M_PI;
-    *out_sun_azimuth_deg = horiz.azimuth_rad * 180.0 / M_PI;
+    *out_sun_altitude_deg = horiz.altitude_rad * 180.0 / TAIYIN_PI;
+    *out_sun_azimuth_deg = horiz.azimuth_rad * 180.0 / TAIYIN_PI;
     return TAIYIN_STATUS_OK;
 }
 
@@ -499,8 +500,8 @@ Status eval_local_topocentric_separation_radii(
     const double sun_dist_km = norm3(topo_sun);
     const double moon_dist_km = norm3(topo_moon);
     double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
-    const double smooth_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / M_PI;
-    const double sun_radius_deg = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / M_PI;
+    const double smooth_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / TAIYIN_PI;
+    const double sun_radius_deg = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / TAIYIN_PI;
     if (use_lunar_limb) {
         const bool away_from_sun = inner_contact && smooth_moon_radius_deg < sun_radius_deg;
         st = eval_directional_moon_radius_km(
@@ -514,9 +515,9 @@ Status eval_local_topocentric_separation_radii(
         if (st != TAIYIN_STATUS_OK) return st;
     }
 
-    *out_separation_deg = angular_separation_rad(topo_sun, topo_moon) * 180.0 / M_PI;
+    *out_separation_deg = angular_separation_rad(topo_sun, topo_moon) * 180.0 / TAIYIN_PI;
     *out_sun_radius_deg = sun_radius_deg;
-    *out_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / M_PI;
+    *out_moon_radius_deg = std::atan2(moon_radius, moon_dist_km) * 180.0 / TAIYIN_PI;
     return TAIYIN_STATUS_OK;
 }
 
@@ -543,9 +544,9 @@ double solar_obscuration(double separation_deg, double sun_radius_deg, double mo
         return moon_radius_deg >= sun_radius_deg ? 1.0
             : (moon_radius_deg * moon_radius_deg) / (sun_radius_deg * sun_radius_deg);
     }
-    const double d = separation_deg * M_PI / 180.0;
-    const double r_sun = sun_radius_deg * M_PI / 180.0;
-    const double r_moon = moon_radius_deg * M_PI / 180.0;
+    const double d = separation_deg * TAIYIN_PI / 180.0;
+    const double r_sun = sun_radius_deg * TAIYIN_PI / 180.0;
+    const double r_moon = moon_radius_deg * TAIYIN_PI / 180.0;
     const double sun_part = r_sun * r_sun * std::acos(clamp_unit(
         (d * d + r_sun * r_sun - r_moon * r_moon) / (2.0 * d * r_sun)));
     const double moon_part = r_moon * r_moon * std::acos(clamp_unit(
@@ -554,7 +555,7 @@ double solar_obscuration(double separation_deg, double sun_radius_deg, double mo
         - 0.5 * std::sqrt(std::max(0.0,
             (-d + r_sun + r_moon) * (d + r_sun - r_moon)
             * (d - r_sun + r_moon) * (d + r_sun + r_moon)));
-    return lens / (M_PI * r_sun * r_sun);
+    return lens / (TAIYIN_PI * r_sun * r_sun);
 }
 
 Status compute_local_solar_circumstances_from_apparent_snapshot_tt(
@@ -579,8 +580,8 @@ Status compute_local_solar_circumstances_from_apparent_snapshot_tt(
         snapshot.moon_km,
         snapshot.sun_km,
         &snapshot.gast_rad,
-        longitude_deg * M_PI / 180.0,
-        latitude_deg * M_PI / 180.0,
+        longitude_deg * TAIYIN_PI / 180.0,
+        latitude_deg * TAIYIN_PI / 180.0,
         height_m,
         &out->center_separation_deg,
         &out->sun_angular_radius_deg,
@@ -669,8 +670,8 @@ Status eval_local_topocentric_xy(
     const double moon_dist_km = norm3(topo_moon);
     const double moon_radius = moon_radius_km(context->eclipse_moon_radius_model_id);
 
-    const double sr = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / M_PI;
-    const double mr = std::atan2(moon_radius, moon_dist_km) * 180.0 / M_PI;
+    const double sr = std::atan2(kSunRadiusKm, sun_dist_km) * 180.0 / TAIYIN_PI;
+    const double mr = std::atan2(moon_radius, moon_dist_km) * 180.0 / TAIYIN_PI;
 
     const double sun_ra = std::atan2(topo_sun[1], topo_sun[0]);
     const double sun_dec = std::atan2(topo_sun[2], std::hypot(topo_sun[0], topo_sun[1]));
@@ -678,12 +679,12 @@ Status eval_local_topocentric_xy(
     const double moon_dec = std::atan2(topo_moon[2], std::hypot(topo_moon[0], topo_moon[1]));
 
     double dlon = moon_ra - sun_ra;
-    if (dlon > M_PI) dlon -= 2.0 * M_PI;
-    if (dlon < -M_PI) dlon += 2.0 * M_PI;
+    if (dlon > TAIYIN_PI) dlon -= 2.0 * TAIYIN_PI;
+    if (dlon < -TAIYIN_PI) dlon += 2.0 * TAIYIN_PI;
     const double avg_dec = (moon_dec + sun_dec) / 2.0;
 
-    *out_x_deg = dlon * std::cos(avg_dec) * 180.0 / M_PI;
-    *out_y_deg = (moon_dec - sun_dec) * 180.0 / M_PI;
+    *out_x_deg = dlon * std::cos(avg_dec) * 180.0 / TAIYIN_PI;
+    *out_y_deg = (moon_dec - sun_dec) * 180.0 / TAIYIN_PI;
     *out_sun_radius_deg = sr;
     *out_moon_radius_deg = mr;
     *out_sun_ra_rad = sun_ra;
@@ -695,8 +696,8 @@ Status eval_local_topocentric_xy(
     const double lst_rad = sidereal_rad + longitude_rad;
     HorizontalCoordinates horiz = topocentric_position_to_horizontal(
         topo_sun_au, lst_rad, latitude_rad);
-    *out_sun_altitude_deg = horiz.altitude_rad * 180.0 / M_PI;
-    *out_sun_azimuth_deg = horiz.azimuth_rad * 180.0 / M_PI;
+    *out_sun_altitude_deg = horiz.altitude_rad * 180.0 / TAIYIN_PI;
+    *out_sun_azimuth_deg = horiz.azimuth_rad * 180.0 / TAIYIN_PI;
     return TAIYIN_STATUS_OK;
 }
 
@@ -973,14 +974,14 @@ Status seed_local_besselian_polynomial(
     const Vector3 fixed_m = geodetic_to_ecef_m(longitude_rad, latitude_rad, height_m);
     const double rho_cos_phi = std::hypot(fixed_m.x, fixed_m.y) / (TAIYIN_WGS84_A_KM * 1000.0);
     const double rho_sin_phi = fixed_m.z / (TAIYIN_WGS84_A_KM * 1000.0);
-    const double lon_deg = longitude_rad * 180.0 / M_PI;
+    const double lon_deg = longitude_rad * 180.0 / TAIYIN_PI;
 
     auto metric = [&](double t_hours, double* value) -> Status {
         SolarBesselianElements e;
         const Status s = evaluate_solar_besselian_polynomial(poly, t_hours, &e);
         if (s != TAIYIN_STATUS_OK) return s;
-        const double h = normalize_degrees_local(e.mu_deg + lon_deg) * M_PI / 180.0;
-        const double d = e.d_deg * M_PI / 180.0;
+        const double h = normalize_degrees_local(e.mu_deg + lon_deg) * TAIYIN_PI / 180.0;
+        const double d = e.d_deg * TAIYIN_PI / 180.0;
         const double xi = rho_cos_phi * std::sin(h);
         const double eta = rho_sin_phi * std::cos(d) - rho_cos_phi * std::cos(h) * std::sin(d);
         const double dx = xi - e.x;
@@ -1054,7 +1055,7 @@ LocalBesselianObserver make_local_besselian_observer(
     LocalBesselianObserver out;
     out.rho_cos_phi = std::hypot(fixed_m.x, fixed_m.y) / (TAIYIN_WGS84_A_KM * 1000.0);
     out.rho_sin_phi = fixed_m.z / (TAIYIN_WGS84_A_KM * 1000.0);
-    out.longitude_deg = longitude_rad * 180.0 / M_PI;
+    out.longitude_deg = longitude_rad * 180.0 / TAIYIN_PI;
     return out;
 }
 
@@ -1068,8 +1069,8 @@ Status eval_local_besselian_contact_scalar(
     SolarBesselianElements e;
     const Status st = evaluate_solar_besselian_polynomial(poly, t_hours, &e);
     if (st != TAIYIN_STATUS_OK) return st;
-    const double h = normalize_degrees_local(e.mu_deg + observer.longitude_deg) * M_PI / 180.0;
-    const double d = e.d_deg * M_PI / 180.0;
+    const double h = normalize_degrees_local(e.mu_deg + observer.longitude_deg) * TAIYIN_PI / 180.0;
+    const double d = e.d_deg * TAIYIN_PI / 180.0;
     const double xi = observer.rho_cos_phi * std::sin(h);
     const double eta = observer.rho_sin_phi * std::cos(d)
         - observer.rho_cos_phi * std::cos(h) * std::sin(d);
@@ -1336,8 +1337,8 @@ Status refine_local_solar_inner_contact_duration_tt(
         diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    const double longitude_rad = longitude_deg * M_PI / 180.0;
-    const double latitude_rad = latitude_deg * M_PI / 180.0;
+    const double longitude_rad = longitude_deg * TAIYIN_PI / 180.0;
+    const double latitude_rad = latitude_deg * TAIYIN_PI / 180.0;
     const double seed_half_days = 0.5 * seed_duration_seconds / 86400.0;
     SplitJulianDate c2_jd_tt = invalid_jd();
     SplitJulianDate c3_jd_tt = invalid_jd();
@@ -1411,8 +1412,8 @@ Status complete_local_solar_eclipse_contacts_from_max(
         }
     }
 
-    const double lon_rad = longitude_deg * M_PI / 180.0;
-    const double lat_rad = latitude_deg * M_PI / 180.0;
+    const double lon_rad = longitude_deg * TAIYIN_PI / 180.0;
+    const double lat_rad = latitude_deg * TAIYIN_PI / 180.0;
     const SplitJulianDate best_jd = out->maximum_jd_tt;
     const bool write_contacts = include_contacts(flags) || flags == 0;
     constexpr double kContactWindowHalfDays = 6.0 / 24.0;
@@ -1506,8 +1507,8 @@ Status complete_local_solar_eclipse_contacts_from_max(
                 jd_ut_c, contact_jd, &gast)) {
             const double hour_angle = gast + lon_rad - csra;
             const double q = std::atan2(std::sin(hour_angle), std::tan(csdec) * std::cos(lat_rad) - std::sin(lat_rad) * std::cos(hour_angle));
-            *pa_deg = pa * 180.0 / M_PI;
-            *va_deg = (pa - q) * 180.0 / M_PI;
+            *pa_deg = pa * 180.0 / TAIYIN_PI;
+            *va_deg = (pa - q) * 180.0 / TAIYIN_PI;
         }
     };
     if (split_julian_date_is_finite(out->contact_jd_tt[TAIYIN_LOCAL_SOLAR_CONTACT_C1])) {
@@ -1701,8 +1702,8 @@ Status solve_local_solar_eclipse_at_tt_with_besselian_seed(
     out->sun_altitude_deg = std::nan("");
     out->sun_azimuth_deg = std::nan("");
 
-    const double lon_rad = longitude_deg * M_PI / 180.0;
-    const double lat_rad = latitude_deg * M_PI / 180.0;
+    const double lon_rad = longitude_deg * TAIYIN_PI / 180.0;
+    const double lat_rad = latitude_deg * TAIYIN_PI / 180.0;
     SplitJulianDate best_jd = jd_tt;
 
     if (split_julian_date_is_finite(local_max_seed_jd_tt) && std::fabs(local_max_seed_jd_tt - jd_tt) <= 1.0) {
@@ -1924,8 +1925,8 @@ Status compute_local_solar_circumstances_tt_with_options(
         context, jd_tt,
         flags,
         corrections,
-        longitude_deg * M_PI / 180.0,
-        latitude_deg * M_PI / 180.0,
+        longitude_deg * TAIYIN_PI / 180.0,
+        latitude_deg * TAIYIN_PI / 180.0,
         height_m,
         &separation, &sun_radius, &moon_radius,
         &sun_alt, &sun_az, diagnostic);
@@ -2100,8 +2101,8 @@ Status probe_local_solar_eclipse_for_search(
     *out_possible = true;
     *out_best_jd_tt = jd_seed_tt;
 
-    const double lon_rad = longitude_deg * M_PI / 180.0;
-    const double lat_rad = latitude_deg * M_PI / 180.0;
+    const double lon_rad = longitude_deg * TAIYIN_PI / 180.0;
+    const double lat_rad = latitude_deg * TAIYIN_PI / 180.0;
     LocalSolarProbeTable table;
     Status seed_status = build_local_solar_probe_table(
         context,
@@ -2184,8 +2185,8 @@ Status compute_local_solar_eclipse_boundary_tt(
     out->penumbra_south_longitude_deg = std::nan("");
     out->umbra_width_km = std::nan("");
 
-    const double lon_rad = longitude_deg * M_PI / 180.0;
-    const double lat_rad = latitude_deg * M_PI / 180.0;
+    const double lon_rad = longitude_deg * TAIYIN_PI / 180.0;
+    const double lat_rad = latitude_deg * TAIYIN_PI / 180.0;
 
     ConeVertex umbra_vertex, penumbra_vertex;
     Status st = compute_cone_vertices(context, jd_tt, &umbra_vertex, &penumbra_vertex, diagnostic);
@@ -2201,8 +2202,8 @@ Status compute_local_solar_eclipse_boundary_tt(
     {
         solar_route_geometry::SurfacePoint center = solar_route_geometry::shadow_axis_to_geodetic(M.x, M.y, I, true);
         if (center.valid) {
-            out->center_longitude_deg = center.longitude_rad * 180.0 / M_PI;
-            out->center_latitude_deg = center.latitude_rad * 180.0 / M_PI;
+            out->center_longitude_deg = center.longitude_rad * 180.0 / TAIYIN_PI;
+            out->center_latitude_deg = center.latitude_rad * 180.0 / TAIYIN_PI;
             LocalXYState ls;
             Status s2 = eval_local_shadow_xy(context, jd_tt, lon_rad, lat_rad, &ls, diagnostic);
             if (s2 == TAIYIN_STATUS_OK) {
@@ -2246,8 +2247,8 @@ Status compute_local_solar_eclipse_boundary_tt(
             M.x, M.y, M.z, vx, vy, side, radius, I,
             kPenumbralMoonRadiusRatio, earth_axis_ratio);
         if (!p.valid) return TAIYIN_STATUS_OK;
-        *out_lon_deg = p.longitude_rad * 180.0 / M_PI;
-        *out_lat_deg = p.latitude_rad * 180.0 / M_PI;
+        *out_lon_deg = p.longitude_rad * 180.0 / TAIYIN_PI;
+        *out_lat_deg = p.latitude_rad * 180.0 / TAIYIN_PI;
         return TAIYIN_STATUS_OK;
     };
 
@@ -2261,9 +2262,9 @@ Status compute_local_solar_eclipse_boundary_tt(
     if (st != TAIYIN_STATUS_OK) return st;
 
     if (std::isfinite(out->umbra_north_latitude_deg) && std::isfinite(out->umbra_south_latitude_deg)) {
-        const double dlon = (out->umbra_north_longitude_deg - out->umbra_south_longitude_deg) * M_PI / 180.0;
-        const double dlat = (out->umbra_north_latitude_deg - out->umbra_south_latitude_deg) * M_PI / 180.0;
-        const double avg_lat = (out->umbra_north_latitude_deg + out->umbra_south_latitude_deg) / 2.0 * M_PI / 180.0;
+        const double dlon = (out->umbra_north_longitude_deg - out->umbra_south_longitude_deg) * TAIYIN_PI / 180.0;
+        const double dlat = (out->umbra_north_latitude_deg - out->umbra_south_latitude_deg) * TAIYIN_PI / 180.0;
+        const double avg_lat = (out->umbra_north_latitude_deg + out->umbra_south_latitude_deg) / 2.0 * TAIYIN_PI / 180.0;
         out->umbra_width_km = TAIYIN_WGS84_A_KM * std::sqrt(
             dlon * dlon * std::cos(avg_lat) * std::cos(avg_lat) + dlat * dlat);
     }

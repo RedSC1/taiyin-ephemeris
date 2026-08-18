@@ -6,6 +6,7 @@
 #include "runtime/eclipse/solar_shadow_geometry.h"
 #include "runtime/eclipse/solar_route_geometry.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/earth_rotation.h"
@@ -130,8 +131,8 @@ SplitJulianDate solar_meeus_new_moon_jd(int k) noexcept {
             + 0.0001337 * T2
             - 0.000000150 * T3
             + 0.00000000073 * T4);
-    tjd += -0.4075 * std::sin(M_prime * M_PI / 180.0)
-           + 0.1721 * E * std::sin(M * M_PI / 180.0);
+    tjd += -0.4075 * std::sin(M_prime * TAIYIN_PI / 180.0)
+           + 0.1721 * E * std::sin(M * TAIYIN_PI / 180.0);
     return tjd;
 }
 
@@ -295,7 +296,7 @@ Status compute_besselian_shadow_geometry_tt(
     const double tan_f2 = (kSunRadiusKm - moon_radius) / sun_moon_km;
     const double l1 = (moon_radius + zeta_km * tan_f1) / TAIYIN_WGS84_A_KM;
     const double l2 = (moon_radius - zeta_km * tan_f2) / TAIYIN_WGS84_A_KM;
-    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / M_PI;
+    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / TAIYIN_PI;
 
     out->t_hours = t_hours;
     out->x = x;
@@ -304,14 +305,14 @@ Status compute_besselian_shadow_geometry_tt(
     out->d_deg = dec_deg;
     out->l1 = l1;
     out->l2 = l2;
-    out->f1_deg = std::atan(tan_f1) * 180.0 / M_PI;
-    out->f2_deg = std::atan(tan_f2) * 180.0 / M_PI;
+    out->f1_deg = std::atan(tan_f1) * 180.0 / TAIYIN_PI;
+    out->f2_deg = std::atan(tan_f2) * 180.0 / TAIYIN_PI;
     out->tan_f1 = tan_f1;
     out->tan_f2 = tan_f2;
     out->gamma = std::hypot(x, y);
     if (out_axis_ra_deg) {
         *out_axis_ra_deg = normalize_degrees(
-            std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / M_PI);
+            std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / TAIYIN_PI);
     }
     return TAIYIN_STATUS_OK;
 }
@@ -345,7 +346,7 @@ Status compute_besselian_elements_tt(
         return TAIYIN_ERROR_UNSUPPORTED;
     }
     out->mu_deg = normalize_degrees(
-        gast_rad * 180.0 / M_PI - axis_ra_deg);
+        gast_rad * 180.0 / TAIYIN_PI - axis_ra_deg);
     return TAIYIN_STATUS_OK;
 }
 
@@ -659,13 +660,13 @@ Status frame_from_elements(
     if (st != TAIYIN_STATUS_OK) return st;
     double gast = 0.0;
     if (!context_gast_rad(context, jd_ut, jd_tt, &gast)) return TAIYIN_ERROR_UNSUPPORTED;
-    const double mu = e.mu_deg * M_PI / 180.0;
-    const double dec = e.d_deg * M_PI / 180.0;
+    const double mu = e.mu_deg * TAIYIN_PI / 180.0;
+    const double dec = e.d_deg * TAIYIN_PI / 180.0;
     const double ra = gast - mu;
     // The polynomial axis is Moon minus Sun, while route geometry follows the
     // shadow direction from Sun through Moon. Convert the frame explicitly.
-    out->right_ascension_offset_rad = ra - M_PI / 2.0;
-    out->pole_rotation_rad = M_PI / 2.0 + dec;
+    out->right_ascension_offset_rad = ra - TAIYIN_PI / 2.0;
+    out->pole_rotation_rad = TAIYIN_PI / 2.0 + dec;
     out->gast_rad = gast;
     return TAIYIN_STATUS_OK;
 }
@@ -713,8 +714,8 @@ Status eval_global_geometry(
     out->central = center.valid;
     out->central_discriminant = center.line_discriminant;
     if (center.valid) {
-        out->longitude_deg = center.longitude_rad * 180.0 / M_PI;
-        out->latitude_deg = center.latitude_rad * 180.0 / M_PI;
+        out->longitude_deg = center.longitude_rad * 180.0 / TAIYIN_PI;
+        out->latitude_deg = center.latitude_rad * 180.0 / TAIYIN_PI;
     }
     return TAIYIN_STATUS_OK;
 }
@@ -752,7 +753,7 @@ double partial_cone_discriminant_poly(
             moon_radius_km(context->eclipse_moon_radius_model_id)
                 / TAIYIN_WGS84_A_KM,
             e.l1,
-            M_PI / 2.0 + e.d_deg * M_PI / 180.0,
+            TAIYIN_PI / 2.0 + e.d_deg * TAIYIN_PI / 180.0,
             kEarthAxisRatio,
             &tangency)
         || !tangency.valid) {
@@ -780,7 +781,7 @@ double central_discriminant_poly(const SolarBesselianPolynomial& poly, double t_
     SolarBesselianElements e;
     if (evaluate_polynomial(&poly, t_hours, &e) != TAIYIN_STATUS_OK) return std::nan("");
 
-    const double w = M_PI / 2.0 + e.d_deg * M_PI / 180.0;
+    const double w = TAIYIN_PI / 2.0 + e.d_deg * TAIYIN_PI / 180.0;
     const double p = std::cos(w);
     const double q = std::sin(w);
     const double x1 = -e.x;
@@ -876,9 +877,9 @@ Vector3 ellipsoid_surface_from_parametric_km(
 }
 
 double normalize_radians_signed(double value) noexcept {
-    value = std::fmod(value + M_PI, 2.0 * M_PI);
-    if (value < 0.0) value += 2.0 * M_PI;
-    return value - M_PI;
+    value = std::fmod(value + TAIYIN_PI, 2.0 * TAIYIN_PI);
+    if (value < 0.0) value += 2.0 * TAIYIN_PI;
+    return value - TAIYIN_PI;
 }
 
 Status eval_profiled_penumbral_surface_margin_km(
@@ -967,9 +968,9 @@ Status minimize_profiled_penumbral_surface_margin_km(
             for (int longitude_direction = -1; longitude_direction <= 1; ++longitude_direction) {
                 if (latitude_direction == 0 && longitude_direction == 0) continue;
                 const double candidate_latitude = std::max(
-                    -M_PI / 2.0,
+                    -TAIYIN_PI / 2.0,
                     std::min(
-                        M_PI / 2.0,
+                        TAIYIN_PI / 2.0,
                         latitude + static_cast<double>(latitude_direction) * step_rad));
                 const double candidate_longitude = normalize_radians_signed(
                     longitude
@@ -1027,7 +1028,7 @@ double exact_scalar(
         if (!intersect_solar_shadow_axis_with_oblate_earth(
                 -e.x,
                 e.y,
-                M_PI / 2.0 + e.d_deg * M_PI / 180.0,
+                TAIYIN_PI / 2.0 + e.d_deg * TAIYIN_PI / 180.0,
                 0.0,
                 kEarthAxisRatio,
                 &center)) {
@@ -1095,7 +1096,7 @@ double exact_scalar(
                 moon_radius_km(context->eclipse_moon_radius_model_id)
                     / TAIYIN_WGS84_A_KM,
                 e.l1,
-                M_PI / 2.0 + e.d_deg * M_PI / 180.0,
+                TAIYIN_PI / 2.0 + e.d_deg * TAIYIN_PI / 180.0,
                 kEarthAxisRatio,
                 &tangency)
             || !tangency.valid) {
@@ -1917,7 +1918,7 @@ Status solve_solar_eclipse_direct_for_meeus_k(
             moon_radius_km(context->eclipse_moon_radius_model_id)
                 / TAIYIN_WGS84_A_KM,
             greatest.l2,
-            M_PI / 2.0 + greatest.d_deg * M_PI / 180.0,
+            TAIYIN_PI / 2.0 + greatest.d_deg * TAIYIN_PI / 180.0,
             kEarthAxisRatio,
             &core_tangency)) {
         return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;

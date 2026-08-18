@@ -4,6 +4,7 @@
 #include "runtime/eclipse/solar_apparent_snapshot.h"
 #include "runtime/apparent/fast_apparent.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/dispatch.h"
 #include "taiyin/earth_rotation.h"
@@ -280,8 +281,8 @@ Status compute_solar_besselian_elements_tt_impl(
     const double tan_f2 = (kSunRadiusKm - moon_radius) / sun_moon_km;
     const double l1 = (moon_radius + zeta_km * tan_f1) / TAIYIN_WGS84_A_KM;
     const double l2 = (moon_radius - zeta_km * tan_f2) / TAIYIN_WGS84_A_KM;
-    const double ra_deg = normalize_degrees(std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / M_PI);
-    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / M_PI;
+    const double ra_deg = normalize_degrees(std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / TAIYIN_PI);
+    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / TAIYIN_PI;
     SplitJulianDate jd_ut;
     const Status time_status = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
     if (time_status != TAIYIN_STATUS_OK) return time_status;
@@ -289,7 +290,7 @@ Status compute_solar_besselian_elements_tt_impl(
     if (!context_gast_rad(context, jd_ut, jd_tt, &gast_rad)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
-    const double gast_deg = normalize_degrees(gast_rad * 180.0 / M_PI);
+    const double gast_deg = normalize_degrees(gast_rad * 180.0 / TAIYIN_PI);
 
     out->t_hours = t_hours;
     out->x = x;
@@ -299,8 +300,8 @@ Status compute_solar_besselian_elements_tt_impl(
     out->mu_deg = normalize_degrees(gast_deg - ra_deg);
     out->l1 = l1;
     out->l2 = l2;
-    out->f1_deg = std::atan(tan_f1) * 180.0 / M_PI;
-    out->f2_deg = std::atan(tan_f2) * 180.0 / M_PI;
+    out->f1_deg = std::atan(tan_f1) * 180.0 / TAIYIN_PI;
+    out->f2_deg = std::atan(tan_f2) * 180.0 / TAIYIN_PI;
     out->tan_f1 = tan_f1;
     out->tan_f2 = tan_f2;
     out->gamma = std::hypot(x, y);
@@ -401,8 +402,8 @@ Status compute_solar_besselian_elements_and_velocity_tt_impl(
     const double tan_f2 = (kSunRadiusKm - moon_radius) / sun_moon_km;
     const double l1 = (moon_radius + zeta_km * tan_f1) / TAIYIN_WGS84_A_KM;
     const double l2 = (moon_radius - zeta_km * tan_f2) / TAIYIN_WGS84_A_KM;
-    const double ra_deg = normalize_degrees(std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / M_PI);
-    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / M_PI;
+    const double ra_deg = normalize_degrees(std::atan2(axis_unit[1], axis_unit[0]) * 180.0 / TAIYIN_PI);
+    const double dec_deg = std::asin(clamp_unit(axis_unit[2])) * 180.0 / TAIYIN_PI;
     SplitJulianDate jd_ut;
     const Status time_status = eclipse_tt_to_ut(*context, jd_tt, &jd_ut, nullptr, diagnostic);
     if (time_status != TAIYIN_STATUS_OK) return time_status;
@@ -418,11 +419,11 @@ Status compute_solar_besselian_elements_and_velocity_tt_impl(
     out->y = y;
     out->zeta = zeta_km / TAIYIN_WGS84_A_KM;
     out->d_deg = dec_deg;
-    out->mu_deg = normalize_degrees(gast_rad * 180.0 / M_PI - ra_deg);
+    out->mu_deg = normalize_degrees(gast_rad * 180.0 / TAIYIN_PI - ra_deg);
     out->l1 = l1;
     out->l2 = l2;
-    out->f1_deg = std::atan(tan_f1) * 180.0 / M_PI;
-    out->f2_deg = std::atan(tan_f2) * 180.0 / M_PI;
+    out->f1_deg = std::atan(tan_f1) * 180.0 / TAIYIN_PI;
+    out->f2_deg = std::atan(tan_f2) * 180.0 / TAIYIN_PI;
     out->tan_f1 = tan_f1;
     out->tan_f2 = tan_f2;
     out->gamma = std::hypot(x, y);

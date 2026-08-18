@@ -2,6 +2,8 @@
 #include "runtime/eclipse/solar_route_geometry.h"
 #include "runtime/eclipse/solar_shadow_geometry.h"
 
+#include "taiyin/angle.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -21,8 +23,8 @@ bool close(double actual, double expected, double tolerance) {
 
 double signed_angle_delta(double actual, double expected) {
     double delta = actual - expected;
-    while (delta > M_PI) delta -= 2.0 * M_PI;
-    while (delta < -M_PI) delta += 2.0 * M_PI;
+    while (delta > taiyin::TAIYIN_PI) delta -= 2.0 * taiyin::TAIYIN_PI;
+    while (delta < -taiyin::TAIYIN_PI) delta += 2.0 * taiyin::TAIYIN_PI;
     return delta;
 }
 
@@ -137,7 +139,7 @@ int main() {
         }
         double dense_best = -INFINITY;
         for (int index = 0; index < 8192; ++index) {
-            const double angle = 2.0 * M_PI
+            const double angle = 2.0 * taiyin::TAIYIN_PI
                 * static_cast<double>(index) / 8192.0;
             const SolarShadowGenerator generator =
                 make_solar_circular_cone_generator(
@@ -178,7 +180,7 @@ int main() {
 
         int compared = 0;
         for (int index = 0; index < 1440; ++index) {
-            const double theta = 2.0 * M_PI
+            const double theta = 2.0 * taiyin::TAIYIN_PI
                 * static_cast<double>(index) / 1440.0;
             const SolarShadowGenerator generator =
                 make_solar_circular_cone_generator(
@@ -264,7 +266,7 @@ int main() {
         };
         int compared = 0;
         for (int index = 0; index < 720; ++index) {
-            const double theta = 2.0 * M_PI
+            const double theta = 2.0 * taiyin::TAIYIN_PI
                 * static_cast<double>(index) / 720.0;
             const SolarShadowGenerator generator =
                 make_solar_circular_cone_generator(

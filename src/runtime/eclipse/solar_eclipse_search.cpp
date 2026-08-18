@@ -5,6 +5,7 @@
 #include "runtime/eclipse/solar_eclipse_direct_solver.h"
 #include "runtime/core/native_context_checks.h"
 
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/time.h"
 
@@ -145,8 +146,8 @@ SplitJulianDate solar_meeus_new_moon_jd(int k) {
             + 0.0001337 * T2
             - 0.000000150 * T3
             + 0.00000000073 * T4);
-    tjd += -0.4075 * std::sin(M_prime * M_PI / 180.0)
-           + 0.1721 * E * std::sin(M * M_PI / 180.0);
+    tjd += -0.4075 * std::sin(M_prime * TAIYIN_PI / 180.0)
+           + 0.1721 * E * std::sin(M * TAIYIN_PI / 180.0);
     return tjd;
 }
 
