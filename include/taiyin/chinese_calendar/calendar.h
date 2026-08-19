@@ -33,6 +33,19 @@ enum ChineseCalendarDayBoundaryMode {
     TAIYIN_CHINESE_CALENDAR_MEAN_SOLAR_MERIDIAN = 1,
 };
 
+enum GanzhiPillarHistoricalMode {
+    // Four-pillars solar-term boundaries follow the calendar arrangement
+    // mode: the historical profile in historical mode, modern-ephemeris
+    // instants otherwise. This is the default.
+    TAIYIN_GANZHI_PILLAR_HISTORICAL_FOLLOW_CALENDAR = 0,
+    // Always use modern-ephemeris solar-term instants for pillar boundaries.
+    TAIYIN_GANZHI_PILLAR_HISTORICAL_OFF = 1,
+    // Assign pillar solar-term boundary days from the historical profile and
+    // normalize each boundary to the assigned civil day's 00:00 (UTC+08, the
+    // profile's own convention), never a pseudo-precise modern instant.
+    TAIYIN_GANZHI_PILLAR_HISTORICAL_ON = 2,
+};
+
 enum ChineseCalendarMonthName {
     TAIYIN_CHINESE_MONTH_NAME_NORMAL = 0,
     TAIYIN_CHINESE_MONTH_NAME_THIRTEEN = 1,
@@ -52,7 +65,7 @@ struct ChineseCalendarConfig {
     int32_t mode;
     int32_t day_boundary_mode;
     int32_t utc_offset_minutes;
-    int32_t reserved;
+    int32_t pillar_historical_mode;
     double calendar_meridian_deg;
 
     ChineseCalendarConfig() noexcept;

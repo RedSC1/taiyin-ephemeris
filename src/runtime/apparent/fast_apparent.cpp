@@ -751,6 +751,7 @@ Status eval_body_2_correction_epoch_sample(
     eval_context.route_rules = context->route_rules;
     eval_context.epoch_state_cache = &context->ephemeris_state_cache;
     eval_context.epoch_jd_tdb = jd_tdb;
+    eval_context.source_tracker = context->source_tracker;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data[2] = {};
@@ -934,6 +935,7 @@ Status eval_body_correction_epoch_sample(
     eval_context.route_rules = context->route_rules;
     eval_context.epoch_state_cache = &context->ephemeris_state_cache;
     eval_context.epoch_jd_tdb = jd_tdb;
+    eval_context.source_tracker = context->source_tracker;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data = {};
@@ -1379,6 +1381,7 @@ Status eval_fast_apparent_body_2_tdb(
     eval_context.route_rules = context->route_rules;
     eval_context.epoch_state_cache = &context->ephemeris_state_cache;
     eval_context.epoch_jd_tdb = jd_tdb;
+    eval_context.source_tracker = context->source_tracker;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data[2] = {};
@@ -1767,6 +1770,7 @@ Status eval_fast_apparent_body_tdb(
     eval_context.route_rules = context->route_rules;
     eval_context.epoch_state_cache = &context->ephemeris_state_cache;
     eval_context.epoch_jd_tdb = jd_tdb;
+    eval_context.source_tracker = context->source_tracker;
 
     const uint32_t target_components = runtime_components_for_fast_apparent_flags(apparent_options.flags);
     RuntimeCompiledBlockData target_data = {};

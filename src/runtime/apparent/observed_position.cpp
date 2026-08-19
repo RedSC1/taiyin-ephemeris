@@ -443,6 +443,7 @@ Status calc_observed_resolved_scales(
     apparent_request.position_flags = static_cast<uint32_t>(
         flags & TAIYIN_OBSERVED_CALCULATION_FLAGS_MASK);
     apparent_request.options = &options;
+    apparent_request.source_tracker = scratch.source_tracker;
 
     MajorBodyApparentBatchResult apparent_result;
     EphemerisEvalDiagnostic batch_diagnostic;

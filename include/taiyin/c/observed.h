@@ -74,7 +74,7 @@ typedef struct taiyin_observed_position {
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_observed_position_init(
     taiyin_observed_position* value
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_observed_bodies_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_ut,
     const int32_t* body_ids,
@@ -83,7 +83,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_ut(
     taiyin_observed_position* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_utc(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_observed_bodies_utc(
     const taiyin_context* context,
     const taiyin_calendar_datetime* datetime_utc,
     const int32_t* body_ids,

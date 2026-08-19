@@ -73,7 +73,7 @@ void copy_search(
 }
 
 template <typename Out, typename CppOut, typename Eval, typename Copy>
-taiyin_status run(
+taiyin_call_result run(
     const taiyin_context* context,
     const taiyin_heliacal_visibility_conditions* conditions,
     Out* out,
@@ -84,17 +84,20 @@ taiyin_status run(
     if (!context || !taiyin_c_internal::valid_struct(conditions)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const taiyin::runtime::HeliacalVisibilityConditions cpp_conditions =
         to_cpp_conditions(*conditions);
     CppOut cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = eval(
-        &cpp_conditions, &cpp_out, diagnostic ? &cpp_diagnostic : nullptr);
+        &tracked.value, &cpp_conditions, &cpp_out,
+        diagnostic ? &cpp_diagnostic : nullptr);
     if (status == taiyin::TAIYIN_STATUS_OK) copy(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // namespace
@@ -133,7 +136,7 @@ void TAIYIN_C_CALL taiyin_heliacal_visibility_search_result_init(
     value->visibility.struct_size = sizeof(value->visibility);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_body_heliacal_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_heliacal_visibility_ut(
     const taiyin_context* context, int32_t body_id,
     const taiyin_split_julian_date* jd_ut,
     uint64_t flags, const taiyin_heliacal_visibility_conditions* conditions,
@@ -141,22 +144,23 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_body_heliacal_visibility_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run<taiyin_heliacal_visibility_result,
                taiyin::runtime::HeliacalVisibilityResult>(
         context, conditions, out, diagnostic,
-        [&](const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
             taiyin::runtime::HeliacalVisibilityResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::calc_body_heliacal_visibility_ut(
-                &context->value, body_id,
+                calc, body_id,
                 taiyin_c_internal::to_cpp_split_jd(*jd_ut), flags,
                 cpp_conditions, cpp_out, cpp_diagnostic);
         }, copy_result);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_star_heliacal_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_heliacal_visibility_ut(
     const taiyin_context* context, const char* star_key,
     const taiyin_split_julian_date* jd_ut,
     uint64_t flags, const taiyin_heliacal_visibility_conditions* conditions,
@@ -165,22 +169,23 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_star_heliacal_visibility_ut(
 ) {
     if (!star_key || star_key[0] == '\0'
         || !taiyin_c_internal::valid_split_jd(jd_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run<taiyin_heliacal_visibility_result,
                taiyin::runtime::HeliacalVisibilityResult>(
         context, conditions, out, diagnostic,
-        [&](const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
             taiyin::runtime::HeliacalVisibilityResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::calc_star_heliacal_visibility_ut(
-                &context->value, star_key,
+                calc, star_key,
                 taiyin_c_internal::to_cpp_split_jd(*jd_ut), flags,
                 cpp_conditions, cpp_out, cpp_diagnostic);
         }, copy_result);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_body_heliacal_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_heliacal_visibility_ut(
     const taiyin_context* context, int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
     int32_t event_kind, double max_search_days, uint64_t flags,
@@ -189,23 +194,24 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_body_heliacal_visibility_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run<taiyin_heliacal_visibility_search_result,
                taiyin::runtime::HeliacalVisibilitySearchResult>(
         context, conditions, out, diagnostic,
-        [&](const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
             taiyin::runtime::HeliacalVisibilitySearchResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_body_heliacal_visibility_ut(
-                &context->value, body_id,
+                calc, body_id,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), event_kind,
                 max_search_days, flags, cpp_conditions, cpp_out,
                 cpp_diagnostic);
         }, copy_search);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_star_heliacal_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_star_heliacal_visibility_ut(
     const taiyin_context* context, const char* star_key,
     const taiyin_split_julian_date* jd_start_ut,
     int32_t event_kind, double max_search_days, uint64_t flags,
@@ -215,16 +221,17 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_star_heliacal_visibility_ut(
 ) {
     if (!star_key || star_key[0] == '\0'
         || !taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run<taiyin_heliacal_visibility_search_result,
                taiyin::runtime::HeliacalVisibilitySearchResult>(
         context, conditions, out, diagnostic,
-        [&](const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const taiyin::runtime::HeliacalVisibilityConditions* cpp_conditions,
             taiyin::runtime::HeliacalVisibilitySearchResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_star_heliacal_visibility_ut(
-                &context->value, star_key,
+                calc, star_key,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), event_kind,
                 max_search_days, flags, cpp_conditions, cpp_out,
                 cpp_diagnostic);

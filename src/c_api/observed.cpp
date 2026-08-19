@@ -24,7 +24,7 @@ bool valid_outputs(
 }
 
 template <typename Eval>
-taiyin_status calc_observed(
+taiyin_call_result calc_observed(
     const taiyin_context* context,
     const int32_t* body_ids,
     size_t body_count,
@@ -35,8 +35,10 @@ taiyin_status calc_observed(
     if (!context || (!body_ids && body_count != 0)
         || (!out_positions && body_count != 0)
         || !valid_outputs(out_positions, diagnostics, body_count)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     try {
         std::vector<int> cpp_ids(body_count);
         std::vector<taiyin::runtime::ObservedPosition> cpp_out(body_count);
@@ -44,6 +46,7 @@ taiyin_status calc_observed(
             diagnostics ? body_count : 0);
         for (size_t i = 0; i < body_count; ++i) cpp_ids[i] = body_ids[i];
         const taiyin::Status status = eval(
+            &tracked.value,
             cpp_ids.empty() ? 0 : cpp_ids.data(),
             cpp_out.empty() ? 0 : cpp_out.data(),
             cpp_diagnostics.empty() ? 0 : cpp_diagnostics.data());
@@ -57,11 +60,13 @@ taiyin_status calc_observed(
                     cpp_diagnostics[i], &diagnostics[i]);
             }
         }
-        return status;
+        return taiyin_c_internal::pack_call_result(status, tracked.flags);
     } catch (const std::bad_alloc&) {
-        return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(
+            taiyin::TAIYIN_ERROR_OUT_OF_MEMORY, tracked.flags);
     } catch (...) {
-        return taiyin::TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(
+            taiyin::TAIYIN_ERROR_INTERNAL, tracked.flags);
     }
 }
 
@@ -81,7 +86,7 @@ void TAIYIN_C_CALL taiyin_observed_position_init(
     taiyin_c_internal::initialize_c_state(&value->apparent.apparent_state);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_observed_bodies_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_ut,
     const int32_t* body_ids,
@@ -91,21 +96,22 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_ut(
     taiyin_ephemeris_diagnostic* diagnostics
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return calc_observed(
         context, body_ids, body_count, out_positions, diagnostics,
-        [&](const int* cpp_ids,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const int* cpp_ids,
             taiyin::runtime::ObservedPosition* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_observed_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 cpp_ids, body_count, flags,
                 cpp_out, cpp_diagnostics);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_observed_bodies_utc(
     const taiyin_context* context,
     const taiyin_calendar_datetime* datetime_utc,
     const int32_t* body_ids,
@@ -115,17 +121,18 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_observed_bodies_utc(
     taiyin_ephemeris_diagnostic* diagnostics
 ) {
     if (!taiyin_c_internal::valid_struct(datetime_utc)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::CalendarDateTime cpp_datetime =
         taiyin_c_internal::to_cpp_datetime(*datetime_utc);
     return calc_observed(
         context, body_ids, body_count, out_positions, diagnostics,
-        [&](const int* cpp_ids,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const int* cpp_ids,
             taiyin::runtime::ObservedPosition* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_observed_utc(
-                &context->value, cpp_datetime, cpp_ids, body_count, flags,
+                calc, cpp_datetime, cpp_ids, body_count, flags,
                 cpp_out, cpp_diagnostics);
         });
 }

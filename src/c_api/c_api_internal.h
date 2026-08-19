@@ -262,6 +262,39 @@ inline taiyin_status out_of_memory() noexcept {
     return static_cast<taiyin_status>(taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
 }
 
+// Single packing authority for C API implementations: every migrated
+// taiyin_call_result return goes through here, never through handwritten
+// shifts.  result_flags comes from the runtime's per-call execution facts
+// (typically a stack-local uint32_t in the wrapper); it is never derived
+// from the rich diagnostic.
+inline taiyin_call_result pack_call_result(
+    taiyin::Status status,
+    uint32_t result_flags = 0u
+) noexcept {
+    return taiyin_make_call_result(static_cast<taiyin_status>(status), result_flags);
+}
+
+// Search-operation helper: owns the operation flags word, the tracker that
+// observes per-(target, center) source-id switches, and a context copy that
+// points at them.  The model_context self-pointer must be reseated after the
+// copy because NativeCalcContext stores it as a raw pointer.
+struct TrackedCalcContext {
+    uint32_t flags = 0u;
+    taiyin::SourceSwitchTracker tracker{&flags};
+    taiyin::runtime::NativeCalcContext value;
+
+    explicit TrackedCalcContext(
+        const taiyin::runtime::NativeCalcContext& source
+    )
+        : value(source) {
+        value.apparent_options.model_context = &value.model_context;
+        value.source_tracker = &tracker;
+    }
+
+    TrackedCalcContext(const TrackedCalcContext&) = delete;
+    TrackedCalcContext& operator=(const TrackedCalcContext&) = delete;
+};
+
 }  // namespace taiyin_c_internal
 
 #endif

@@ -29,9 +29,9 @@ static int encode_china_standard(
     out_clock->hour = hour;
     out_clock->minute = minute;
     out_clock->second = 0.0;
-    return taiyin_julian_day_split(out_clock, &local) == TAIYIN_STATUS_OK
+    return taiyin_julian_day_split(out_clock, &local) >= 0
         && taiyin_add_seconds_to_split_jd(
-            &local, -8.0 * 3600.0, out_instant) == TAIYIN_STATUS_OK;
+            &local, -8.0 * 3600.0, out_instant) >= 0;
 }
 
 int main(int argc, char** argv) {
@@ -61,13 +61,13 @@ int main(int argc, char** argv) {
     runtime_config.load_packaged_data = 0u;
     taiyin_chinese_calendar_config_init_china_standard_historical(
         &calendar_config, 8 * 60);
-    if (taiyin_runtime_initialize(&runtime_config) != TAIYIN_STATUS_OK
-        || taiyin_context_create(&astronomy) != TAIYIN_STATUS_OK
+    if (taiyin_runtime_initialize(&runtime_config) < 0
+        || taiyin_context_create(&astronomy) < 0
         || taiyin_context_set_geocentric_observer(
             astronomy, TAIYIN_BODY_EARTH, TAIYIN_BODY_EARTH)
-            != TAIYIN_STATUS_OK
+            < 0
         || taiyin_chinese_calendar_context_create(
-            astronomy, &calendar_config, &calendar) != TAIYIN_STATUS_OK) {
+            astronomy, &calendar_config, &calendar) < 0) {
         return fail("initialize calendar dependencies");
     }
 
@@ -77,29 +77,29 @@ int main(int argc, char** argv) {
     option_override.option = "option1";
     {
         taiyin_ziwei_data_catalog* missing_catalog = NULL;
-        if (taiyin_ziwei_data_catalog_create(
+        if (taiyin_call_result_status(taiyin_ziwei_data_catalog_create(
                 "definitely-not-a-taiyin-ziwei-profile.toml",
-                &missing_catalog) != TAIYIN_FILE_ERROR_NOT_FOUND
+                &missing_catalog)) != TAIYIN_FILE_ERROR_NOT_FOUND
             || missing_catalog != NULL) {
             return fail("report a missing Ziwei profile as not found");
         }
     }
     if (taiyin_ziwei_data_catalog_create(argv[2], &catalog)
-            != TAIYIN_STATUS_OK
+            < 0
         || !catalog
         || taiyin_ziwei_context_create(
             catalog, &option_override, 1u, &context)
-            != TAIYIN_STATUS_OK
+            < 0
         || !context
         || taiyin_ziwei_star_count(context) != 159u) {
         return fail("create Ziwei catalog and context");
     }
     if (taiyin_ziwei_data_catalog_create(argv[3], &alternate_catalog)
-            != TAIYIN_STATUS_OK
+            < 0
         || !alternate_catalog
         || taiyin_ziwei_context_create(
             alternate_catalog, NULL, 0u, &alternate_context)
-            != TAIYIN_STATUS_OK
+            < 0
         || !alternate_context) {
         return fail("create incompatible Ziwei context");
     }
@@ -110,15 +110,15 @@ int main(int argc, char** argv) {
         size_t required = 0u;
         char key[16];
         if (taiyin_ziwei_find_star(context, "ziwei", &ziwei)
-                != TAIYIN_STATUS_OK
+                < 0
             || ziwei == TAIYIN_ZIWEI_INVALID_STAR_ID
             || taiyin_ziwei_get_star_metadata(
                 context, ziwei, &category, NULL, 0u, &required)
-                != TAIYIN_STATUS_OK
+                < 0
             || required != 6u
             || taiyin_ziwei_get_star_metadata(
                 context, ziwei, &category, key, sizeof(key), &required)
-                != TAIYIN_STATUS_OK
+                < 0
             || strcmp(key, "ziwei") != 0
             || category != TAIYIN_ZIWEI_STAR_MAJOR) {
             return fail("query stable star metadata");
@@ -162,10 +162,10 @@ int main(int argc, char** argv) {
             taiyin_ziwei_birth_options invalid_birth_options = birth_options;
             taiyin_ziwei_chart* rejected_chart = NULL;
             invalid_birth_options.chart_mode = 256;
-            if (taiyin_ziwei_chart_create(
+            if (taiyin_call_result_status(taiyin_ziwei_chart_create(
                     context, calendar, &birth_instant, &birth_clock,
                     TAIYIN_ZIWEI_GENDER_FEMALE, &invalid_birth_options,
-                    &rejected_chart, &diagnostic) != TAIYIN_ERROR_INVALID_ARGUMENT
+                    &rejected_chart, &diagnostic)) != TAIYIN_ERROR_INVALID_ARGUMENT
                 || rejected_chart != NULL) {
                 return fail("reject out-of-range C birth options before enum narrowing");
             }
@@ -173,55 +173,55 @@ int main(int argc, char** argv) {
         if (taiyin_ziwei_chart_create(
                 context, calendar, &birth_instant, &birth_clock,
                 TAIYIN_ZIWEI_GENDER_FEMALE, &birth_options,
-                &chart, &diagnostic) != TAIYIN_STATUS_OK
+                &chart, &diagnostic) < 0
             || !chart
             || taiyin_ziwei_chart_get_anchors(chart, anchors)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_chart_get_summary(
                 chart, &gender, &bureau, &body_palace,
                 &life_master, &body_master, &transforms)
-                != TAIYIN_STATUS_OK
+                < 0
             || gender != TAIYIN_ZIWEI_GENDER_FEMALE
             || bureau > 4u || body_palace > 11u
             || life_master == TAIYIN_ZIWEI_INVALID_STAR_ID
             || body_master == TAIYIN_ZIWEI_INVALID_STAR_ID
             || taiyin_ziwei_find_star(context, "ziwei", &ziwei)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_find_star(context, "lucun", &lucun)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_find_star(context, "hongluan", &hongluan)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_find_star(context, "zuofu", &zuofu)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_chart_get_star_position(chart, ziwei, &position)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_chart_get_star_position(chart, lucun, &lucun_position)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_chart_get_star_position(chart, hongluan, &hongluan_position)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_ziwei_chart_get_star_position(chart, zuofu, &zuofu_position)
-                != TAIYIN_STATUS_OK
+                < 0
             || position == TAIYIN_ZIWEI_INVALID_POSITION
             || taiyin_ziwei_chart_get_star_palace(chart, ziwei, &palace)
-                != TAIYIN_STATUS_OK
+                < 0
             || palace == TAIYIN_ZIWEI_INVALID_POSITION
             || taiyin_ziwei_chart_has_star_transform_mark(
                 chart, TAIYIN_ZIWEI_CENTRIFUGAL_LU, ziwei,
-                &has_transform_mark) != TAIYIN_STATUS_OK
+                &has_transform_mark) < 0
             || has_transform_mark > 1u
             || taiyin_ziwei_chart_get_star_transformation_mask(
-                chart, ziwei, &transformation_mask) != TAIYIN_STATUS_OK
+                chart, ziwei, &transformation_mask) < 0
             || transformation_mask >= (1u << 12)
             || taiyin_ziwei_chart_get_brightness(
-                context, chart, ziwei, &brightness) != TAIYIN_STATUS_OK
-            || taiyin_ziwei_chart_get_brightness(
-                alternate_context, chart, ziwei, &brightness)
+                context, chart, ziwei, &brightness) < 0
+            || taiyin_call_result_status(taiyin_ziwei_chart_get_brightness(
+                alternate_context, chart, ziwei, &brightness))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
             || brightness < TAIYIN_ZIWEI_BRIGHTNESS_NONE
             || brightness > TAIYIN_ZIWEI_BRIGHTNESS_MIAO
             || taiyin_ziwei_chart_get_palace_stars(
                 chart, position, NULL, 0u, &palace_star_count)
-                != TAIYIN_STATUS_OK
+                < 0
             || palace_star_count == 0u) {
             return fail("construct and query natal chart");
         }
@@ -242,12 +242,12 @@ int main(int argc, char** argv) {
             if (taiyin_ziwei_reverse_lookup_tier1(
                     context, calendar, &reverse_request,
                     NULL, 0u, &candidate_count, &diagnostic)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || candidate_count != 1u
                 || taiyin_ziwei_reverse_lookup_tier1(
                     context, calendar, &reverse_request,
                     &candidate, 1u, &candidate_count, &diagnostic)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || candidate_count != 1u
                 || candidate.virtual_time.year != birth_clock.year
                 || candidate.virtual_time.struct_size
@@ -287,10 +287,10 @@ int main(int argc, char** argv) {
             {
                 taiyin_ziwei_flow_options invalid_flow_options = flow_options;
                 invalid_flow_options.boundary = 256;
-                if (taiyin_ziwei_chart_set_flow(
+                if (taiyin_call_result_status(taiyin_ziwei_chart_set_flow(
                         context, calendar, &target_instant, &target_clock,
                         &invalid_flow_options, TAIYIN_ZIWEI_FLOW_HOUR,
-                        chart, &flow_summary, &diagnostic)
+                        chart, &flow_summary, &diagnostic))
                         != TAIYIN_ERROR_INVALID_ARGUMENT) {
                     return fail("reject out-of-range C flow options before enum narrowing");
                 }
@@ -298,11 +298,11 @@ int main(int argc, char** argv) {
             if (taiyin_ziwei_chart_set_flow(
                     context, calendar, &target_instant, &target_clock,
                     &flow_options, TAIYIN_ZIWEI_FLOW_HOUR,
-                    chart, &flow_summary, &diagnostic) != TAIYIN_STATUS_OK
-                || taiyin_ziwei_chart_set_flow(
+                    chart, &flow_summary, &diagnostic) < 0
+                || taiyin_call_result_status(taiyin_ziwei_chart_set_flow(
                     alternate_context, calendar, &target_instant, &target_clock,
                     &flow_options, TAIYIN_ZIWEI_FLOW_HOUR,
-                    chart, &flow_summary, &diagnostic)
+                    chart, &flow_summary, &diagnostic))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
                 || taiyin_ziwei_chart_flow_layer_count(chart) != 5u
                 || flow_summary.effective_target_year != 2023
@@ -312,23 +312,23 @@ int main(int argc, char** argv) {
                 || !flow_summary.target_month_is_leap
                 || taiyin_ziwei_chart_get_flow_star_position(
                     chart, TAIYIN_ZIWEI_FLOW_YEAR, ziwei, &flow_position)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || taiyin_ziwei_chart_get_flow_layer_summary(
                     chart, TAIYIN_ZIWEI_FLOW_YEAR, &flow_life,
-                    &flow_stem, &flow_branch) != TAIYIN_STATUS_OK
+                    &flow_stem, &flow_branch) < 0
                 || flow_life > 11u || flow_stem > 9u || flow_branch > 11u
                 || taiyin_ziwei_chart_get_flow_palace_stars(
                     chart, TAIYIN_ZIWEI_FLOW_YEAR, flow_branch,
-                    NULL, 0u, &flow_palace_star_count) != TAIYIN_STATUS_OK
+                    NULL, 0u, &flow_palace_star_count) < 0
                 || taiyin_ziwei_chart_get_flow_transforms(
                     chart, TAIYIN_ZIWEI_FLOW_YEAR, &flow_transforms)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || taiyin_ziwei_chart_truncate_flow(
-                    chart, TAIYIN_ZIWEI_FLOW_MONTH) != TAIYIN_STATUS_OK
+                    chart, TAIYIN_ZIWEI_FLOW_MONTH) < 0
                 || taiyin_ziwei_chart_flow_layer_count(chart) != 2u
                 || taiyin_ziwei_step_flow_day_target(
                     &target_instant, &target_clock, 1,
-                    &next_instant, &next_clock) != TAIYIN_STATUS_OK
+                    &next_instant, &next_clock) < 0
                 || next_clock.year != 2023 || next_clock.month != 3u
                 || next_clock.day != 26u || next_clock.hour != 10u
                 || next_clock.minute != 30u) {
@@ -340,11 +340,11 @@ int main(int argc, char** argv) {
     {
         const uint64_t old_generation =
             taiyin_ziwei_context_generation(context);
-        if (taiyin_ziwei_data_catalog_reload(catalog) != TAIYIN_STATUS_OK
+        if (taiyin_ziwei_data_catalog_reload(catalog) < 0
             || taiyin_ziwei_data_catalog_generation(catalog) == old_generation
             || taiyin_ziwei_context_generation(context) != old_generation
             || taiyin_ziwei_context_create(
-                catalog, NULL, 0u, &reloaded_context) != TAIYIN_STATUS_OK
+                catalog, NULL, 0u, &reloaded_context) < 0
             || taiyin_ziwei_context_generation(reloaded_context)
                 != taiyin_ziwei_data_catalog_generation(catalog)) {
             return fail("reload immutable catalog snapshot");

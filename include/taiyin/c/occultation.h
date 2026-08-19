@@ -192,7 +192,7 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_lunar_occultation_where_result_init(
     taiyin_lunar_occultation_where_result* value
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_geocentric_lunar_star_occultation_ut(
     const taiyin_context* context,
     const char* star_key,
@@ -201,7 +201,7 @@ taiyin_search_next_geocentric_lunar_star_occultation_ut(
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_local_lunar_star_occultation_ut(
     const taiyin_context* context,
     const char* star_key,
@@ -210,7 +210,7 @@ taiyin_search_next_local_lunar_star_occultation_ut(
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_geocentric_lunar_body_occultation_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -219,7 +219,7 @@ taiyin_search_next_geocentric_lunar_body_occultation_ut(
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_geocentric_lunar_body_occultation_with_radius_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -229,7 +229,7 @@ taiyin_search_next_geocentric_lunar_body_occultation_with_radius_ut(
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_local_lunar_body_occultation_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -238,7 +238,7 @@ taiyin_search_next_local_lunar_body_occultation_ut(
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_local_lunar_body_occultation_with_radius_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -248,7 +248,7 @@ taiyin_search_next_local_lunar_body_occultation_with_radius_ut(
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_compute_lunar_star_occultation_local_visibility_ut(
     const taiyin_context* context,
     const char* star_key,
@@ -257,7 +257,7 @@ taiyin_compute_lunar_star_occultation_local_visibility_ut(
     taiyin_lunar_occultation_local_visibility* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_compute_lunar_body_occultation_local_visibility_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -266,7 +266,7 @@ taiyin_compute_lunar_body_occultation_local_visibility_ut(
     taiyin_lunar_occultation_local_visibility* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_compute_lunar_star_occultation_where_ut(
     const taiyin_context* context,
     const char* star_key,
@@ -275,7 +275,7 @@ taiyin_compute_lunar_star_occultation_where_ut(
     taiyin_lunar_occultation_where_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_compute_lunar_body_occultation_where_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -284,7 +284,7 @@ taiyin_compute_lunar_body_occultation_where_ut(
     taiyin_lunar_occultation_where_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_compute_lunar_body_occultation_where_with_radius_ut(
     const taiyin_context* context,
     int32_t body_id,

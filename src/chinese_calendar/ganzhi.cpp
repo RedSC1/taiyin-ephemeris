@@ -32,6 +32,49 @@ Status status_from_rule_result(int32_t result) noexcept {
     return result == 0 ? TAIYIN_STATUS_OK : TAIYIN_ERROR_INVALID_ARGUMENT;
 }
 
+bool use_historical_pillar_terms(
+    const ChineseCalendarContext& context
+) noexcept {
+    switch (context.config.pillar_historical_mode) {
+    case TAIYIN_GANZHI_PILLAR_HISTORICAL_ON:
+        return true;
+    case TAIYIN_GANZHI_PILLAR_HISTORICAL_OFF:
+        return false;
+    default:
+        return context.config.mode
+            == TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL;
+    }
+}
+
+// The historical profile's civil days are proleptic fixed UTC+08, so the
+// assigned day's boundary instant is D - 5/6 in JD(UT).
+constexpr double kProfileDayOffsetDays = 480.0 / 1440.0;
+
+int64_t profile_civil_day(const SplitJulianDate& jd_ut) noexcept {
+    return (jd_ut + kProfileDayOffsetDays + 0.5).day_number;
+}
+
+// In historical pillar mode a term boundary is the assigned civil day's
+// 00:00 (UTC+08), not the modern-ephemeris instant; a pseudo-precise
+// ancient term time would be deceptive.  Returns false when the profile did
+// not supply this term's day, leaving the precise instant in place.
+bool historical_pillar_boundary(
+    const ChineseCalendarContext& context,
+    const SolarTermEvent& term,
+    SplitJulianDate* out_boundary
+) noexcept {
+    int64_t assigned_day = 0;
+    if (!use_historical_pillar_terms(context)
+        || !internal::historical_profile_term_day(
+            context, term, &assigned_day)) {
+        return false;
+    }
+    runtime::set_operation_flag(
+        &context.astronomy, kResultFlagHistoricalPillarTermsApplied);
+    return normalize_split_julian_date(
+        assigned_day - 1, 0.5 - kProfileDayOffsetDays, out_boundary);
+}
+
 Status calculate_year_pillar(
     const ChineseCalendarContext& context,
     const SplitJulianDate& instant_utc,
@@ -48,7 +91,9 @@ Status calculate_year_pillar(
         diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
-    const double difference_days = instant_utc - li_chun.jd_ut;
+    SplitJulianDate boundary = li_chun.jd_ut;
+    (void) historical_pillar_boundary(context, li_chun, &boundary);
+    const double difference_days = instant_utc - boundary;
     if (!std::isfinite(difference_days)) return TAIYIN_ERROR_INVALID_ARGUMENT;
     const int32_t pillar_year = virtual_time.year
         + (difference_days < -internal::kSolarTermRootEqualityToleranceDays ? -1 : 0);
@@ -66,9 +111,39 @@ Status calculate_month_pillar(
     uint8_t* out,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
+    // Historical pillar mode judges by assigned-day granularity, so select
+    // the candidate jie from one day ahead: a term whose precise instant is
+    // later today still starts its pillar month at today's 00:00.
+    SplitJulianDate query_instant = instant_utc;
+    if (use_historical_pillar_terms(context)) {
+        if (!add_days_to_split_jd(instant_utc, 1.0, &query_instant)) {
+            return TAIYIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
     SolarTermEvent previous_jie;
-    Status status = getPrevJie(&context, instant_utc, &previous_jie, diagnostic);
+    Status status = getPrevJie(&context, query_instant, &previous_jie, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
+
+    SplitJulianDate boundary = previous_jie.jd_ut;
+    const bool historical =
+        historical_pillar_boundary(context, previous_jie, &boundary);
+    // When the profile answered, the pillar month turns at the assigned
+    // day's 00:00; otherwise the precise instant rules, and a candidate
+    // found via the +1 day query shift may still lie in the future.
+    const bool candidate_in_future = historical
+        ? profile_civil_day(boundary) > profile_civil_day(instant_utc)
+        : previous_jie.jd_ut - instant_utc
+            > internal::kSolarTermRootEqualityToleranceDays;
+    if (candidate_in_future) {
+        SplitJulianDate step_back;
+        if (!add_days_to_split_jd(previous_jie.jd_ut, -10.0, &step_back)) {
+            return TAIYIN_ERROR_INVALID_ARGUMENT;
+        }
+        status = getPrevJie(&context, step_back, &previous_jie, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+        SplitJulianDate ignored;
+        (void) historical_pillar_boundary(context, previous_jie, &ignored);
+    }
 
     const uint8_t index = previous_jie.index_from_winter_solstice;
     if ((index & 1u) == 0u) return TAIYIN_ERROR_INTERNAL;

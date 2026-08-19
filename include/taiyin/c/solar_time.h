@@ -22,26 +22,26 @@ typedef struct taiyin_equation_of_time_result {
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_equation_of_time_result_init(
     taiyin_equation_of_time_result* value
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_equation_of_time_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_equation_of_time_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_equation_of_time_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_equation_of_time_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_equation_of_time_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_tt,
     taiyin_equation_of_time_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_local_mean_to_apparent_solar_time(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_local_mean_to_apparent_solar_time(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_local_mean,
     double longitude_rad,
     taiyin_split_julian_date* out_jd_local_apparent,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_local_apparent_to_mean_solar_time(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_local_apparent_to_mean_solar_time(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_local_apparent,
     double longitude_rad,

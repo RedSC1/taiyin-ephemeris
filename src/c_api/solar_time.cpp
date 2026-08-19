@@ -38,7 +38,7 @@ void TAIYIN_C_CALL taiyin_equation_of_time_result_init(
     value->struct_size = sizeof(*value);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_equation_of_time_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_equation_of_time_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_equation_of_time_result* out,
@@ -47,19 +47,20 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_equation_of_time_ut(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::EquationOfTimeResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const taiyin::Status status = taiyin::runtime::calc_equation_of_time_ut(
-        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+        &tracked.value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
         &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_result(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_equation_of_time_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_equation_of_time_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_tt,
     taiyin_equation_of_time_result* out,
@@ -68,19 +69,20 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_equation_of_time_tt(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_tt)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::EquationOfTimeResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const taiyin::Status status = taiyin::runtime::calc_equation_of_time_tt(
-        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+        &tracked.value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
         &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_result(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_local_mean_to_apparent_solar_time(
+taiyin_call_result TAIYIN_C_CALL taiyin_local_mean_to_apparent_solar_time(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_local_mean,
     double longitude_rad,
@@ -90,23 +92,24 @@ taiyin_status TAIYIN_C_CALL taiyin_local_mean_to_apparent_solar_time(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_local_mean)
         || !out_jd_local_apparent
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::SplitJulianDate cpp_out;
     const taiyin::Status status =
         taiyin::runtime::local_mean_to_apparent_solar_time(
-            &context->value,
+            &tracked.value,
             taiyin_c_internal::to_cpp_split_jd(*jd_local_mean),
             longitude_rad, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_split_jd(cpp_out, out_jd_local_apparent);
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_local_apparent_to_mean_solar_time(
+taiyin_call_result TAIYIN_C_CALL taiyin_local_apparent_to_mean_solar_time(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_local_apparent,
     double longitude_rad,
@@ -116,20 +119,21 @@ taiyin_status TAIYIN_C_CALL taiyin_local_apparent_to_mean_solar_time(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_local_apparent)
         || !out_jd_local_mean
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::SplitJulianDate cpp_out;
     const taiyin::Status status =
         taiyin::runtime::local_apparent_to_mean_solar_time(
-            &context->value,
+            &tracked.value,
             taiyin_c_internal::to_cpp_split_jd(*jd_local_apparent),
             longitude_rad, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_split_jd(cpp_out, out_jd_local_mean);
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // extern "C"

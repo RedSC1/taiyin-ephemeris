@@ -21,7 +21,7 @@ typedef struct taiyin_body_phenomena {
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_body_phenomena_init(
     taiyin_body_phenomena* value
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_phenomena_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_phenomena_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_tt,
@@ -29,7 +29,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_phenomena_tt(
     taiyin_body_phenomena* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_phenomena_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_phenomena_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_ut,

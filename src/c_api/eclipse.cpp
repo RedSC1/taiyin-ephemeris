@@ -464,7 +464,7 @@ void copy_summary(
 }
 
 template <typename CppOut, typename COut, typename Eval, typename Copy>
-taiyin_status run_result(
+taiyin_call_result run_result(
     const taiyin_context* context,
     COut* out,
     taiyin_ephemeris_diagnostic* diagnostic,
@@ -473,19 +473,21 @@ taiyin_status run_result(
 ) {
     if (!context || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     CppOut cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
-    const taiyin::Status status =
-        eval(&cpp_out, diagnostic ? &cpp_diagnostic : 0);
+    const taiyin::Status status = eval(
+        &tracked.value, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 template <typename CppOut, typename COut, typename Eval, typename Copy>
-taiyin_status run_array(
+taiyin_call_result run_array(
     const taiyin_context* context,
     COut* out,
     size_t capacity,
@@ -496,14 +498,16 @@ taiyin_status run_array(
 ) {
     if (!context || !out_count || (capacity != 0 && !out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     try {
         std::vector<CppOut> cpp_results(capacity);
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         const taiyin::Status status = eval(
-            capacity ? cpp_results.data() : nullptr, capacity, out_count,
-            diagnostic ? &cpp_diagnostic : 0);
+            &tracked.value, capacity ? cpp_results.data() : nullptr, capacity,
+            out_count, diagnostic ? &cpp_diagnostic : 0);
         if (status == taiyin::TAIYIN_STATUS_OK) {
             const size_t copied = *out_count < capacity ? *out_count : capacity;
             for (size_t i = 0; i < copied; ++i) {
@@ -511,13 +515,15 @@ taiyin_status run_array(
             }
         }
         taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-        return status;
+        return taiyin_c_internal::pack_call_result(status, tracked.flags);
     } catch (const std::bad_alloc&) {
         *out_count = 0;
-        return taiyin_c_internal::out_of_memory();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::out_of_memory(), tracked.flags);
     } catch (...) {
         *out_count = 0;
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(
+            taiyin::TAIYIN_ERROR_INTERNAL, tracked.flags);
     }
 }
 
@@ -585,456 +591,480 @@ void TAIYIN_C_CALL taiyin_solar_besselian_polynomial_init(
     value->max_residual.struct_size = sizeof(value->max_residual);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_solve_lunar_eclipse_at_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_solve_lunar_eclipse_at_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     uint64_t flags,
     taiyin_lunar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LunarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LunarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LunarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::solve_lunar_eclipse_at(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_lunar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_solve_lunar_eclipse_at_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_solve_lunar_eclipse_at_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     uint64_t flags,
     taiyin_lunar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LunarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LunarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LunarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::solve_lunar_eclipse_at_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_lunar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_lunar_eclipse_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_lunar_eclipse_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_tt, uint32_t kind_filter,
     uint64_t flags, taiyin_lunar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LunarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LunarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LunarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_lunar_eclipse_tt(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_tt),
                 kind_filter, flags, cpp_out,
                 cpp_diagnostic);
         }, copy_lunar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_lunar_eclipse_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_lunar_eclipse_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_ut, uint32_t kind_filter,
     uint64_t flags, taiyin_lunar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LunarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LunarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LunarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_lunar_eclipse_ut(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut),
                 kind_filter, flags, cpp_out,
                 cpp_diagnostic);
         }, copy_lunar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_lunar_eclipses_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_lunar_eclipses_tt(
     const taiyin_context* context, const taiyin_split_julian_date* start,
     const taiyin_split_julian_date* end,
     uint32_t kind_filter, uint64_t flags,
     taiyin_lunar_eclipse_result_tt* out, size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::LunarEclipseResult>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::LunarEclipseResult* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LunarEclipseResult* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_lunar_eclipses_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*start),
+                calc, taiyin_c_internal::to_cpp_split_jd(*start),
                 taiyin_c_internal::to_cpp_split_jd(*end), kind_filter, flags,
                 cpp_out, cap, count, cpp_diagnostic);
         }, copy_lunar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_lunar_eclipses_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_lunar_eclipses_ut(
     const taiyin_context* context, const taiyin_split_julian_date* start,
     const taiyin_split_julian_date* end,
     uint32_t kind_filter, uint64_t flags,
     taiyin_lunar_eclipse_result_ut* out, size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::LunarEclipseResultUt>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::LunarEclipseResultUt* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LunarEclipseResultUt* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_lunar_eclipses_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*start),
+                calc, taiyin_c_internal::to_cpp_split_jd(*start),
                 taiyin_c_internal::to_cpp_split_jd(*end), kind_filter, flags,
                 cpp_out, cap, count, cpp_diagnostic);
         }, copy_lunar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_lunar_eclipse_visibility_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_lunar_eclipse_visibility_tt(
     const taiyin_context* context,
     const taiyin_lunar_eclipse_result_tt* eclipse, uint64_t flags,
     taiyin_local_lunar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_struct(eclipse)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::runtime::LunarEclipseResult cpp_eclipse =
         to_cpp_lunar_tt(*eclipse);
     return run_result<taiyin::runtime::LocalLunarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalLunarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalLunarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_local_lunar_eclipse_visibility_tt(
-                &context->value, &cpp_eclipse, flags, cpp_out, cpp_diagnostic);
+                calc, &cpp_eclipse, flags, cpp_out, cpp_diagnostic);
         }, copy_local_lunar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_lunar_eclipse_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_lunar_eclipse_visibility_ut(
     const taiyin_context* context,
     const taiyin_lunar_eclipse_result_ut* eclipse, uint64_t flags,
     taiyin_local_lunar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_struct(eclipse)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::runtime::LunarEclipseResultUt cpp_eclipse =
         to_cpp_lunar_ut(*eclipse);
     return run_result<taiyin::runtime::LocalLunarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalLunarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalLunarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_local_lunar_eclipse_visibility_ut(
-                &context->value, &cpp_eclipse, flags, cpp_out, cpp_diagnostic);
+                calc, &cpp_eclipse, flags, cpp_out, cpp_diagnostic);
         }, copy_local_lunar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_local_lunar_eclipse_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_lunar_eclipse_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_tt, uint32_t kind_filter,
     uint64_t flags, taiyin_local_lunar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalLunarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalLunarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalLunarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_lunar_eclipse_tt(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_tt), kind_filter,
                 flags, cpp_out,
                 cpp_diagnostic);
         }, copy_local_lunar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_local_lunar_eclipse_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_lunar_eclipse_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_ut, uint32_t kind_filter,
     uint64_t flags, taiyin_local_lunar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalLunarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalLunarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalLunarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_lunar_eclipse_ut(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), kind_filter,
                 flags, cpp_out,
                 cpp_diagnostic);
         }, copy_local_lunar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_solve_solar_eclipse_at_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_solve_solar_eclipse_at_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     uint64_t flags,
     taiyin_solar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::solve_solar_eclipse_at(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_solar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_solve_solar_eclipse_at_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_solve_solar_eclipse_at_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     uint64_t flags,
     taiyin_solar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::solve_solar_eclipse_at_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_solar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_eclipse_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_solar_eclipse_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_tt, uint32_t kind_filter,
     uint64_t flags, taiyin_solar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_solar_eclipse_tt(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_tt), kind_filter,
                 flags, cpp_out,
                 cpp_diagnostic);
         }, copy_solar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_eclipse_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_solar_eclipse_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_ut, uint32_t kind_filter,
     uint64_t flags, taiyin_solar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_solar_eclipse_ut(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), kind_filter,
                 flags, cpp_out,
                 cpp_diagnostic);
         }, copy_solar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_eclipses_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_eclipses_tt(
     const taiyin_context* context, const taiyin_split_julian_date* start,
     const taiyin_split_julian_date* end,
     uint32_t kind_filter, uint64_t flags,
     taiyin_solar_eclipse_result_tt* out, size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::SolarEclipseResult>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::SolarEclipseResult* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseResult* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_eclipses_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*start),
+                calc, taiyin_c_internal::to_cpp_split_jd(*start),
                 taiyin_c_internal::to_cpp_split_jd(*end), kind_filter, flags,
                 cpp_out, cap, count, cpp_diagnostic);
         }, copy_solar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_eclipses_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_eclipses_ut(
     const taiyin_context* context, const taiyin_split_julian_date* start,
     const taiyin_split_julian_date* end,
     uint32_t kind_filter, uint64_t flags,
     taiyin_solar_eclipse_result_ut* out, size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::SolarEclipseResultUt>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::SolarEclipseResultUt* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseResultUt* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_eclipses_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*start),
+                calc, taiyin_c_internal::to_cpp_split_jd(*start),
                 taiyin_c_internal::to_cpp_split_jd(*end), kind_filter, flags,
                 cpp_out, cap, count, cpp_diagnostic);
         }, copy_solar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_solve_local_solar_eclipse_at_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_solve_local_solar_eclipse_at_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     uint64_t flags,
     taiyin_local_solar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::solve_local_solar_eclipse_at_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_local_solar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_solve_local_solar_eclipse_at_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_solve_local_solar_eclipse_at_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     uint64_t flags,
     taiyin_local_solar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::solve_local_solar_eclipse_at_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_local_solar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_local_solar_eclipse_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_solar_eclipse_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_tt, uint32_t kind_filter,
     uint64_t flags, taiyin_local_solar_eclipse_result_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseResult>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_solar_eclipse_tt(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_tt), kind_filter,
                 flags, cpp_out,
                 cpp_diagnostic);
         }, copy_local_solar_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_local_solar_eclipse_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_solar_eclipse_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_start_ut, uint32_t kind_filter,
     uint64_t flags, taiyin_local_solar_eclipse_result_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseResultUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseResultUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseResultUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_solar_eclipse_ut(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), kind_filter,
                 flags, cpp_out,
                 cpp_diagnostic);
         }, copy_local_solar_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_circumstances_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_solar_circumstances_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     taiyin_local_solar_eclipse_circumstances_tt* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseCircumstances>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseCircumstances* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseCircumstances* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_local_solar_circumstances_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 cpp_out, cpp_diagnostic);
         }, copy_circumstances_tt);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_circumstances_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_solar_circumstances_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     taiyin_local_solar_eclipse_circumstances_ut* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseCircumstancesUt>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseCircumstancesUt* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseCircumstancesUt* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_local_solar_circumstances_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 cpp_out, cpp_diagnostic);
         }, copy_circumstances_ut);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_besselian_elements_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_besselian_elements_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     double t_hours,
     taiyin_solar_besselian_elements* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarBesselianElements>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarBesselianElements* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarBesselianElements* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_besselian_elements_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 t_hours, cpp_out, cpp_diagnostic);
         }, copy_besselian);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_besselian_polynomial_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_besselian_polynomial_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* center_jd_tt, double span_hours,
     double sample_step_hours, int32_t degree,
     taiyin_solar_besselian_polynomial* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(center_jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(center_jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarBesselianPolynomial>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarBesselianPolynomial* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarBesselianPolynomial* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_besselian_polynomial_tt(
-                &context->value,
+                calc,
                 taiyin_c_internal::to_cpp_split_jd(*center_jd_tt), span_hours,
                 sample_step_hours, degree, cpp_out, cpp_diagnostic);
         }, copy_polynomial);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_evaluate_solar_besselian_polynomial(
+taiyin_call_result TAIYIN_C_CALL taiyin_evaluate_solar_besselian_polynomial(
     const taiyin_solar_besselian_polynomial* polynomial,
     double t_hours,
     taiyin_solar_besselian_elements* out
 ) {
     if (!taiyin_c_internal::valid_struct(polynomial)
         || !taiyin_c_internal::valid_struct(out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::runtime::SolarBesselianPolynomial cpp_polynomial =
         to_cpp_polynomial(*polynomial);
@@ -1043,155 +1073,163 @@ taiyin_status TAIYIN_C_CALL taiyin_evaluate_solar_besselian_polynomial(
         taiyin::runtime::evaluate_solar_besselian_polynomial(
             &cpp_polynomial, t_hours, &cpp_out);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_besselian(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     uint64_t flags,
     taiyin_solar_eclipse_route_row* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseRouteRow>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteRow* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteRow* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_eclipse_route_row_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_route_row);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_row_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     uint64_t flags,
     taiyin_solar_eclipse_route_row* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseRouteRow>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteRow* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteRow* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_eclipse_route_row_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_route_row);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     uint64_t flags,
     taiyin_solar_eclipse_where* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseWhere>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseWhere* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseWhere* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_eclipse_where_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_where);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_where_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     uint64_t flags,
     taiyin_solar_eclipse_where* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::SolarEclipseWhere>(
         context, out, diagnostic,
-        [&](taiyin::runtime::SolarEclipseWhere* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseWhere* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_eclipse_where_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 flags, cpp_out, cpp_diagnostic);
         }, copy_where);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_tt(
     const taiyin_context* context, const taiyin_split_julian_date* start,
     const taiyin_split_julian_date* end,
     double step_minutes, uint64_t flags,
     taiyin_solar_eclipse_route_row* out, size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::SolarEclipseRouteRow>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteRow* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteRow* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_eclipse_route_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*start),
+                calc, taiyin_c_internal::to_cpp_split_jd(*start),
                 taiyin_c_internal::to_cpp_split_jd(*end), step_minutes, flags,
                 cpp_out, cap, count, cpp_diagnostic);
         }, copy_route_row);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_ut(
     const taiyin_context* context, const taiyin_split_julian_date* start,
     const taiyin_split_julian_date* end,
     double step_minutes, uint64_t flags,
     taiyin_solar_eclipse_route_row* out, size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(start) || !taiyin_c_internal::valid_split_jd(end)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::SolarEclipseRouteRow>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteRow* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteRow* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_solar_eclipse_route_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*start),
+                calc, taiyin_c_internal::to_cpp_split_jd(*start),
                 taiyin_c_internal::to_cpp_split_jd(*end), step_minutes, flags,
                 cpp_out, cap, count, cpp_diagnostic);
         }, copy_route_row);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_curves_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_curves_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_near_tt, uint64_t flags,
     size_t route_sample_count, taiyin_solar_eclipse_route_curve_point* out,
     size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_near_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_near_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::SolarEclipseRouteCurvePoint>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteCurvePoint* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteCurvePoint* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_solar_eclipse_route_curves_tt_with_options(
-                    &context->value,
+                    calc,
                     taiyin_c_internal::to_cpp_split_jd(*jd_near_tt), flags,
                     route_sample_count,
                     cpp_out, cap, count, cpp_diagnostic);
         }, copy_curve_point);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_curves_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_curves_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_near_ut, uint64_t flags,
     size_t route_sample_count, taiyin_solar_eclipse_route_curve_point* out,
     size_t capacity, size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_near_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_near_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_array<taiyin::runtime::SolarEclipseRouteCurvePoint>(
         context, out, capacity, out_count, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteCurvePoint* cpp_out, size_t cap,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteCurvePoint* cpp_out, size_t cap,
             size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_solar_eclipse_route_curves_ut_with_options(
-                    &context->value,
+                    calc,
                     taiyin_c_internal::to_cpp_split_jd(*jd_near_ut), flags,
                     route_sample_count,
                     cpp_out, cap, count, cpp_diagnostic);
@@ -1201,7 +1239,7 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_curves_ut(
 }  // extern "C"
 
 template <typename Eval>
-taiyin_status run_product(
+taiyin_call_result run_product(
     const taiyin_context* context,
     taiyin_solar_eclipse_route_product_point* out,
     size_t capacity,
@@ -1212,16 +1250,18 @@ taiyin_status run_product(
 ) {
     if (!context || !out_count || !taiyin_c_internal::valid_struct(summary)
         || (capacity != 0 && !out) || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     try {
         std::vector<taiyin::runtime::SolarEclipseRouteProductPoint> cpp_points(
             capacity);
         taiyin::runtime::SolarEclipseRouteProductSummary cpp_summary;
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         const taiyin::Status status = eval(
-            capacity ? cpp_points.data() : nullptr, capacity, out_count,
-            &cpp_summary, diagnostic ? &cpp_diagnostic : 0);
+            &tracked.value, capacity ? cpp_points.data() : nullptr, capacity,
+            out_count, &cpp_summary, diagnostic ? &cpp_diagnostic : 0);
         if (status == taiyin::TAIYIN_STATUS_OK) {
             const size_t copied = *out_count < capacity ? *out_count : capacity;
             for (size_t i = 0; i < copied; ++i) {
@@ -1233,19 +1273,21 @@ taiyin_status run_product(
             copy_summary(cpp_summary, summary);
         }
         taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-        return status;
+        return taiyin_c_internal::pack_call_result(status, tracked.flags);
     } catch (const std::bad_alloc&) {
         *out_count = 0;
-        return taiyin_c_internal::out_of_memory();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::out_of_memory(), tracked.flags);
     } catch (...) {
         *out_count = 0;
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(
+            taiyin::TAIYIN_ERROR_INTERNAL, tracked.flags);
     }
 }
 
 extern "C" {
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_product_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_product_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_near_tt, uint64_t flags,
     size_t route_sample_count, taiyin_solar_eclipse_route_product_point* out,
@@ -1253,23 +1295,24 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_product_tt(
     taiyin_solar_eclipse_route_product_summary* summary,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_near_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_near_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_product(
         context, out, capacity, out_count, summary, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
             size_t cap, size_t* count,
             taiyin::runtime::SolarEclipseRouteProductSummary* cpp_summary,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_solar_eclipse_route_product_tt_with_options(
-                    &context->value,
+                    calc,
                     taiyin_c_internal::to_cpp_split_jd(*jd_near_tt), flags,
                     route_sample_count,
                     cpp_out, cap, count, cpp_summary, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_product_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_product_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_near_ut, uint64_t flags,
     size_t route_sample_count, taiyin_solar_eclipse_route_product_point* out,
@@ -1277,23 +1320,24 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_product_ut(
     taiyin_solar_eclipse_route_product_summary* summary,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_near_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_near_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_product(
         context, out, capacity, out_count, summary, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
             size_t cap, size_t* count,
             taiyin::runtime::SolarEclipseRouteProductSummary* cpp_summary,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_solar_eclipse_route_product_ut_with_options(
-                    &context->value,
+                    calc,
                     taiyin_c_internal::to_cpp_split_jd(*jd_near_ut), flags,
                     route_sample_count,
                     cpp_out, cap, count, cpp_summary, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_map_product_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_map_product_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_near_tt, uint64_t flags,
     size_t route_sample_count, taiyin_solar_eclipse_route_product_point* out,
@@ -1301,23 +1345,24 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_map_product_tt(
     taiyin_solar_eclipse_route_product_summary* summary,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_near_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_near_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_product(
         context, out, capacity, out_count, summary, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
             size_t cap, size_t* count,
             taiyin::runtime::SolarEclipseRouteProductSummary* cpp_summary,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_solar_eclipse_route_map_product_tt_with_options(
-                    &context->value,
+                    calc,
                     taiyin_c_internal::to_cpp_split_jd(*jd_near_tt), flags,
                     route_sample_count,
                     cpp_out, cap, count, cpp_summary, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_map_product_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_map_product_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_near_ut, uint64_t flags,
     size_t route_sample_count, taiyin_solar_eclipse_route_product_point* out,
@@ -1325,52 +1370,55 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_eclipse_route_map_product_ut(
     taiyin_solar_eclipse_route_product_summary* summary,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_near_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_near_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_product(
         context, out, capacity, out_count, summary, diagnostic,
-        [&](taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarEclipseRouteProductPoint* cpp_out,
             size_t cap, size_t* count,
             taiyin::runtime::SolarEclipseRouteProductSummary* cpp_summary,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_solar_eclipse_route_map_product_ut_with_options(
-                    &context->value,
+                    calc,
                     taiyin_c_internal::to_cpp_split_jd(*jd_near_ut), flags,
                     route_sample_count,
                     cpp_out, cap, count, cpp_summary, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_eclipse_boundary_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_solar_eclipse_boundary_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     double longitude_deg,
     double latitude_deg, taiyin_local_solar_eclipse_boundary* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_tt)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseBoundary>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseBoundary* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseBoundary* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_local_solar_eclipse_boundary_tt(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
                 longitude_deg, latitude_deg, cpp_out, cpp_diagnostic);
         }, copy_boundary);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_eclipse_boundary_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_solar_eclipse_boundary_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     double longitude_deg,
     double latitude_deg, taiyin_local_solar_eclipse_boundary* out,
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
-    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::invalid_argument();
+    if (!taiyin_c_internal::valid_split_jd(jd_ut)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     return run_result<taiyin::runtime::LocalSolarEclipseBoundary>(
         context, out, diagnostic,
-        [&](taiyin::runtime::LocalSolarEclipseBoundary* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::LocalSolarEclipseBoundary* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_local_solar_eclipse_boundary_ut(
-                &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+                calc, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
                 longitude_deg, latitude_deg, cpp_out, cpp_diagnostic);
         }, copy_boundary);
 }

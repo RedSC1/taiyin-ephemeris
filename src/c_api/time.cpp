@@ -196,7 +196,7 @@ void TAIYIN_C_CALL taiyin_split_estimated_time_scales_init(
     value->struct_size = sizeof(*value);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_split_julian_date_from_parts(
+taiyin_call_result TAIYIN_C_CALL taiyin_split_julian_date_from_parts(
     int64_t day_number,
     double day_fraction,
     taiyin_split_julian_date* out
@@ -205,54 +205,54 @@ taiyin_status TAIYIN_C_CALL taiyin_split_julian_date_from_parts(
     if (!out
         || !taiyin::normalize_split_julian_date(
             day_number, day_fraction, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_split_julian_date_from_double(
+taiyin_call_result TAIYIN_C_CALL taiyin_split_julian_date_from_double(
     double jd,
     taiyin_split_julian_date* out
 ) {
     taiyin::SplitJulianDate value;
     if (!out || !taiyin::split_julian_date_from_double(jd, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_split_julian_date_to_double(
+taiyin_call_result TAIYIN_C_CALL taiyin_split_julian_date_to_double(
     const taiyin_split_julian_date* jd,
     double* out_jd
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd) || !out_jd) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const double value =
         taiyin::split_julian_date_to_double(to_cpp_split(*jd));
     if (!std::isfinite(value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     *out_jd = value;
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_julian_day(
+taiyin_call_result TAIYIN_C_CALL taiyin_julian_day(
     const taiyin_calendar_datetime* datetime,
     double* out_jd
 ) {
     if (!taiyin_c_internal::valid_struct(datetime) || !out_jd) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const double jd = taiyin::julian_day(taiyin_c_internal::to_cpp_datetime(*datetime));
-    if (!std::isfinite(jd)) return taiyin_c_internal::invalid_argument();
+    if (!std::isfinite(jd)) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     *out_jd = jd;
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_julian_day_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_julian_day_split(
     const taiyin_calendar_datetime* datetime,
     taiyin_split_julian_date* out_jd
 ) {
@@ -261,25 +261,25 @@ taiyin_status TAIYIN_C_CALL taiyin_julian_day_split(
         || !out_jd
         || !taiyin::julian_day_split(
             taiyin_c_internal::to_cpp_datetime(*datetime), &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_reverse_julian_day(
+taiyin_call_result TAIYIN_C_CALL taiyin_reverse_julian_day(
     double jd,
     taiyin_calendar_datetime* out_datetime
 ) {
     if (!std::isfinite(jd) || !taiyin_c_internal::valid_struct(out_datetime)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin_c_internal::from_cpp_datetime(
         taiyin::reverse_julian_day(jd), out_datetime);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_reverse_julian_day_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_reverse_julian_day_split(
     const taiyin_split_julian_date* jd,
     taiyin_calendar_datetime* out_datetime
 ) {
@@ -287,10 +287,10 @@ taiyin_status TAIYIN_C_CALL taiyin_reverse_julian_day_split(
     if (!taiyin_c_internal::valid_split_jd(jd)
         || !taiyin_c_internal::valid_struct(out_datetime)
         || !taiyin::reverse_julian_day_split(to_cpp_split(*jd), &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin_c_internal::from_cpp_datetime(value, out_datetime);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
 double TAIYIN_C_CALL taiyin_decimal_year_from_jd(double jd) {
@@ -313,7 +313,7 @@ double TAIYIN_C_CALL taiyin_seconds_between_jd(double jd_a, double jd_b) {
     return taiyin::seconds_between_jd(jd_a, jd_b);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_add_seconds_to_split_jd(
+taiyin_call_result TAIYIN_C_CALL taiyin_add_seconds_to_split_jd(
     const taiyin_split_julian_date* jd,
     double seconds,
     taiyin_split_julian_date* out
@@ -322,28 +322,28 @@ taiyin_status TAIYIN_C_CALL taiyin_add_seconds_to_split_jd(
     if (!taiyin_c_internal::valid_split_jd(jd) || !out
         || !taiyin::add_seconds_to_split_jd(
             to_cpp_split(*jd), seconds, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_seconds_between_split_jd(
+taiyin_call_result TAIYIN_C_CALL taiyin_seconds_between_split_jd(
     const taiyin_split_julian_date* jd_a,
     const taiyin_split_julian_date* jd_b,
     double* out_seconds
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_a)
         || !taiyin_c_internal::valid_split_jd(jd_b) || !out_seconds) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const double value = taiyin::seconds_between_split_jd(
         to_cpp_split(*jd_a), to_cpp_split(*jd_b));
     if (!std::isfinite(value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     *out_seconds = value;
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
 double TAIYIN_C_CALL taiyin_estimated_delta_t_seconds_for_decimal_year(
@@ -372,20 +372,20 @@ double TAIYIN_C_CALL taiyin_tdb_to_tt(double jd_tdb, int32_t tdb_model_id) {
         jd_tdb, static_cast<taiyin::TdbModel>(tdb_model_id));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_tai_minus_utc_seconds(
+taiyin_call_result TAIYIN_C_CALL taiyin_tai_minus_utc_seconds(
     const taiyin_calendar_datetime* datetime_utc,
     double* out_seconds
 ) {
     if (!taiyin_c_internal::valid_struct(datetime_utc) || !out_seconds) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     double value = 0.0;
     if (!taiyin::tai_minus_utc_seconds_from_utc(
             taiyin_c_internal::to_cpp_datetime(*datetime_utc), &value)) {
-        return taiyin::TAIYIN_TIME_ERROR_LEAP_SECOND_UNAVAILABLE;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_TIME_ERROR_LEAP_SECOND_UNAVAILABLE);
     }
     *out_seconds = value;
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
 double TAIYIN_C_CALL taiyin_utc_to_tai(
@@ -435,7 +435,7 @@ double TAIYIN_C_CALL taiyin_ut1_to_tt(
     return taiyin::ut1_to_tt_jd(jd_ut1, delta_t_seconds);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_utc_to_tai_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_utc_to_tai_split(
     const taiyin_split_julian_date* jd_utc,
     double tai_minus_utc_seconds,
     taiyin_split_julian_date* out_jd_tai
@@ -444,13 +444,13 @@ taiyin_status TAIYIN_C_CALL taiyin_utc_to_tai_split(
     if (!taiyin_c_internal::valid_split_jd(jd_utc) || !out_jd_tai
         || !taiyin::utc_to_tai_split_jd(
             to_cpp_split(*jd_utc), tai_minus_utc_seconds, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_tai);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_tai_to_tt_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_tai_to_tt_split(
     const taiyin_split_julian_date* jd_tai,
     taiyin_split_julian_date* out_jd_tt
 ) {
@@ -458,13 +458,13 @@ taiyin_status TAIYIN_C_CALL taiyin_tai_to_tt_split(
     if (!taiyin_c_internal::valid_split_jd(jd_tai) || !out_jd_tt
         || !taiyin::tai_to_tt_split_jd(
             to_cpp_split(*jd_tai), &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_tt);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_utc_to_tt_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_utc_to_tt_split(
     const taiyin_split_julian_date* jd_utc,
     double tai_minus_utc_seconds,
     taiyin_split_julian_date* out_jd_tt
@@ -473,13 +473,13 @@ taiyin_status TAIYIN_C_CALL taiyin_utc_to_tt_split(
     if (!taiyin_c_internal::valid_split_jd(jd_utc) || !out_jd_tt
         || !taiyin::utc_to_tt_split_jd(
             to_cpp_split(*jd_utc), tai_minus_utc_seconds, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_tt);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_utc_to_ut1_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_utc_to_ut1_split(
     const taiyin_split_julian_date* jd_utc,
     double dut1_seconds,
     taiyin_split_julian_date* out_jd_ut1
@@ -488,13 +488,13 @@ taiyin_status TAIYIN_C_CALL taiyin_utc_to_ut1_split(
     if (!taiyin_c_internal::valid_split_jd(jd_utc) || !out_jd_ut1
         || !taiyin::utc_to_ut1_split_jd(
             to_cpp_split(*jd_utc), dut1_seconds, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_ut1);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_tt_to_ut1_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_tt_to_ut1_split(
     const taiyin_split_julian_date* jd_tt,
     double delta_t_seconds,
     taiyin_split_julian_date* out_jd_ut1
@@ -503,13 +503,13 @@ taiyin_status TAIYIN_C_CALL taiyin_tt_to_ut1_split(
     if (!taiyin_c_internal::valid_split_jd(jd_tt) || !out_jd_ut1
         || !taiyin::tt_to_ut1_split_jd(
             to_cpp_split(*jd_tt), delta_t_seconds, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_ut1);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ut1_to_tt_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_ut1_to_tt_split(
     const taiyin_split_julian_date* jd_ut1,
     double delta_t_seconds,
     taiyin_split_julian_date* out_jd_tt
@@ -518,13 +518,13 @@ taiyin_status TAIYIN_C_CALL taiyin_ut1_to_tt_split(
     if (!taiyin_c_internal::valid_split_jd(jd_ut1) || !out_jd_tt
         || !taiyin::ut1_to_tt_split_jd(
             to_cpp_split(*jd_ut1), delta_t_seconds, &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_tt);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_tt_to_tdb_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_tt_to_tdb_split(
     const taiyin_split_julian_date* jd_tt,
     int32_t tdb_model_id,
     taiyin_split_julian_date* out_jd_tdb
@@ -534,13 +534,13 @@ taiyin_status TAIYIN_C_CALL taiyin_tt_to_tdb_split(
         || !out_jd_tdb || !valid_tdb_model(tdb_model_id)
         || !taiyin::tt_to_tdb_split_jd(
             to_cpp_split(*jd_tt), cpp_tdb_model(tdb_model_id), &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_tdb);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_tdb_to_tt_split(
+taiyin_call_result TAIYIN_C_CALL taiyin_tdb_to_tt_split(
     const taiyin_split_julian_date* jd_tdb,
     int32_t tdb_model_id,
     taiyin_split_julian_date* out_jd_tt
@@ -550,13 +550,13 @@ taiyin_status TAIYIN_C_CALL taiyin_tdb_to_tt_split(
         || !out_jd_tt || !valid_tdb_model(tdb_model_id)
         || !taiyin::tdb_to_tt_split_jd(
             to_cpp_split(*jd_tdb), cpp_tdb_model(tdb_model_id), &value)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     from_cpp_split(value, out_jd_tt);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_make_precise_time_scales_from_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_precise_time_scales_from_utc(
     const taiyin_calendar_datetime* datetime_utc,
     double tai_minus_utc_seconds,
     double dut1_seconds,
@@ -568,7 +568,7 @@ taiyin_status TAIYIN_C_CALL taiyin_make_precise_time_scales_from_utc(
         || !std::isfinite(tai_minus_utc_seconds)
         || !std::isfinite(dut1_seconds)
         || !valid_tdb_model(tdb_model_id)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::PreciseTimeScales value =
         taiyin::make_precise_time_scales_from_utc(
@@ -577,11 +577,10 @@ taiyin_status TAIYIN_C_CALL taiyin_make_precise_time_scales_from_utc(
             dut1_seconds,
             static_cast<taiyin::TdbModel>(tdb_model_id));
     copy_precise_time_scales(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_make_split_precise_time_scales_from_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_split_precise_time_scales_from_utc(
     const taiyin_calendar_datetime* datetime_utc,
     double tai_minus_utc_seconds,
     double dut1_seconds,
@@ -599,12 +598,12 @@ taiyin_make_split_precise_time_scales_from_utc(
             dut1_seconds,
             cpp_tdb_model(tdb_model_id),
             out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_time_scales_from_utc(
     const taiyin_context* context,
     const taiyin_calendar_datetime* datetime_utc,
     taiyin_precise_time_scales* out,
@@ -614,7 +613,7 @@ taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_utc(
         || !taiyin_c_internal::valid_struct(datetime_utc)
         || !taiyin_c_internal::valid_struct(out)
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::TimeScaleOptions options = taiyin::default_time_scale_options();
     options.allow_utc_out_of_range_estimate =
@@ -631,12 +630,15 @@ taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_utc(
         &value,
         &cpp_diagnostic);
     copy_time_diagnostic(cpp_diagnostic, diagnostic);
-    if (!ok) return time_failure_status(cpp_diagnostic);
+    const uint32_t flags =
+        cpp_diagnostic.fallback_reason != taiyin::TimeScaleFallbackNone
+            ? TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK : 0u;
+    if (!ok) return taiyin_c_internal::pack_call_result(time_failure_status(cpp_diagnostic), flags);
     copy_precise_time_scales(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK, flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
     const taiyin_context* context,
     const taiyin_calendar_datetime* datetime_utc,
     taiyin_split_precise_time_scales* out,
@@ -646,7 +648,7 @@ taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
         || !taiyin_c_internal::valid_struct(datetime_utc)
         || !taiyin_c_internal::valid_struct(out)
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::TimeScaleOptions options = taiyin::default_time_scale_options();
     options.allow_utc_out_of_range_estimate =
@@ -665,7 +667,10 @@ taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
         &value,
         &cpp_diagnostic);
     copy_time_diagnostic(cpp_diagnostic, diagnostic);
-    if (!ok) return time_failure_status(cpp_diagnostic);
+    const uint32_t flags =
+        cpp_diagnostic.fallback_reason != taiyin::TimeScaleFallbackNone
+            ? TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK : 0u;
+    if (!ok) return taiyin_c_internal::pack_call_result(time_failure_status(cpp_diagnostic), flags);
 
     if (cpp_diagnostic.route
         == taiyin::TimeScaleRoute::TimeScaleRoutePreciseUtcEop) {
@@ -675,9 +680,9 @@ taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
                 value.dut1_seconds,
                 cpp_tdb_model(options.tdb_model_id),
                 out)) {
-            return taiyin::TAIYIN_ERROR_INTERNAL;
+            return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL, flags);
         }
-        return taiyin::TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK, flags);
     }
 
     taiyin::SplitJulianDate utc;
@@ -688,7 +693,7 @@ taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
             utc, value.delta_t_seconds, &tt)
         || !taiyin::tt_to_tdb_split_jd(
             tt, cpp_tdb_model(options.tdb_model_id), &tdb)) {
-        return taiyin::TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL, flags);
     }
     taiyin_split_precise_time_scales result;
     taiyin_split_precise_time_scales_init(&result);
@@ -698,10 +703,10 @@ taiyin_status TAIYIN_C_CALL taiyin_make_split_time_scales_from_utc(
     from_cpp_split(tdb, &result.tdb);
     result.delta_t_seconds = value.delta_t_seconds;
     *out = result;
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK, flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_ut_delta_t(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_time_scales_from_ut_delta_t(
     const taiyin_calendar_datetime* datetime_ut,
     double delta_t_seconds,
     int32_t tdb_model_id,
@@ -711,7 +716,7 @@ taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_ut_delta_t(
         || !taiyin_c_internal::valid_struct(out)
         || !std::isfinite(delta_t_seconds)
         || !valid_tdb_model(tdb_model_id)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::EstimatedTimeScales value =
         taiyin::make_time_scales_from_ut_delta_t(
@@ -719,11 +724,10 @@ taiyin_status TAIYIN_C_CALL taiyin_make_time_scales_from_ut_delta_t(
             delta_t_seconds,
             static_cast<taiyin::TdbModel>(tdb_model_id));
     copy_estimated_time_scales(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_make_split_time_scales_from_ut_delta_t(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_split_time_scales_from_ut_delta_t(
     const taiyin_calendar_datetime* datetime_ut,
     double delta_t_seconds,
     int32_t tdb_model_id,
@@ -738,12 +742,12 @@ taiyin_make_split_time_scales_from_ut_delta_t(
             delta_t_seconds,
             cpp_tdb_model(tdb_model_id),
             out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_make_estimated_time_scales_from_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_estimated_time_scales_from_ut(
     const taiyin_calendar_datetime* datetime_ut,
     int32_t tdb_model_id,
     taiyin_estimated_time_scales* out
@@ -751,18 +755,17 @@ taiyin_status TAIYIN_C_CALL taiyin_make_estimated_time_scales_from_ut(
     if (!taiyin_c_internal::valid_struct(datetime_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_tdb_model(tdb_model_id)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::EstimatedTimeScales value =
         taiyin::make_estimated_time_scales_from_ut(
             taiyin_c_internal::to_cpp_datetime(*datetime_ut),
             static_cast<taiyin::TdbModel>(tdb_model_id));
     copy_estimated_time_scales(value, out);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_make_split_estimated_time_scales_from_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_make_split_estimated_time_scales_from_ut(
     const taiyin_calendar_datetime* datetime_ut,
     int32_t tdb_model_id,
     taiyin_split_estimated_time_scales* out
@@ -770,7 +773,7 @@ taiyin_make_split_estimated_time_scales_from_ut(
     if (!taiyin_c_internal::valid_struct(datetime_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_tdb_model(tdb_model_id)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::CalendarDateTime cpp_datetime =
         taiyin_c_internal::to_cpp_datetime(*datetime_ut);
@@ -783,9 +786,9 @@ taiyin_make_split_estimated_time_scales_from_ut(
             delta_t_seconds,
             cpp_tdb_model(tdb_model_id),
             out)) {
-        return taiyin::TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL);
     }
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
 }  // extern "C"

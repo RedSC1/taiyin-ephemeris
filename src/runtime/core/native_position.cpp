@@ -770,7 +770,8 @@ Status calc_position_tdb_once(
     double out[6],
     EphemerisEvalDiagnostic* diagnostic,
     CartesianState* state_out = 0
-) noexcept {
+,
+    uint32_t* result_flags = 0) noexcept {
     clear_position_out(out);
     clear_state_out(state_out);
     if (!context) {
@@ -861,6 +862,8 @@ Status calc_position_tdb_once(
     eval_context.route_rules = ctx.route_rules;
     eval_context.epoch_state_cache = &ctx.ephemeris_state_cache;
     eval_context.epoch_jd_tdb = jd_tdb;
+    eval_context.result_flags = result_flags;
+    eval_context.source_tracker = ctx.source_tracker;
 
     const int ephemeris_origin_id = ctx.center_id;
 
@@ -1127,7 +1130,8 @@ Status calc_position_tdb(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     if (!out) {
         return fail_position(
             out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id,
@@ -1154,16 +1158,20 @@ Status calc_position_tdb(
             context, target_id, jd_tdb, resolved_jd_tt, flags, out, diagnostic);
     }
     const Status status = calc_position_tdb_once(
-        context, target_id, jd_tdb, resolved_jd_tt, flags, out, diagnostic);
+        context, target_id, jd_tdb, resolved_jd_tt, flags, out, diagnostic,
+        0, out_result_flags);
     if (!native_position_should_try_barycenter_approx(target_id, flags, status)) {
         return status;
     }
 
+    set_result_flag(out_result_flags, kResultFlagBarycenterApprox);
+    set_operation_flag(context, kResultFlagBarycenterApprox);
     const int approx_target_id = native_position_barycenter_approx_target(target_id);
     EphemerisEvalDiagnostic approx_diagnostic;
     const uint32_t approx_flags = flags & ~TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX;
     const Status approx_status = calc_position_tdb_once(
-        context, approx_target_id, jd_tdb, resolved_jd_tt, approx_flags, out, &approx_diagnostic);
+        context, approx_target_id, jd_tdb, resolved_jd_tt, approx_flags, out,
+        &approx_diagnostic, 0, out_result_flags);
     if (approx_status != TAIYIN_STATUS_OK) {
         return status;
     }
@@ -1183,7 +1191,8 @@ Status calc_position_tt(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_position_out(out);
     if (!context) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, jd_tt);
@@ -1197,7 +1206,9 @@ Status calc_position_tt(
     if (time_status != TAIYIN_STATUS_OK) {
         return fail_position(out, diagnostic, time_status, target_id, ctx.observer_id, jd_tt);
     }
-    return calc_position_tdb(context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_position_tdb(
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic,
+        out_result_flags);
 }
 
 Status calc_position_ut_delta_t(
@@ -1208,7 +1219,8 @@ Status calc_position_ut_delta_t(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_position_out(out);
     if (!context) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, jd_ut1);
@@ -1228,7 +1240,9 @@ Status calc_position_ut_delta_t(
     if (time_status != TAIYIN_STATUS_OK) {
         return fail_position(out, diagnostic, time_status, target_id, ctx.observer_id, jd_ut1);
     }
-    return calc_position_tdb(context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_position_tdb(
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic,
+        out_result_flags);
 }
 
 Status calc_position_ut(
@@ -1238,7 +1252,8 @@ Status calc_position_ut(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_position_out(out);
     if (!context) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, jd_ut);
@@ -1262,7 +1277,8 @@ Status calc_position_ut(
             out, diagnostic, time_status, target_id, ctx.observer_id, jd_ut);
     }
     return calc_position_tdb(
-        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic,
+        out_result_flags);
 }
 
 Status calc_position_utc(
@@ -1272,7 +1288,8 @@ Status calc_position_utc(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_position_out(out);
     if (!context) {
         return fail_position(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, julian_day(datetime_utc));
@@ -1287,6 +1304,10 @@ Status calc_position_utc(
     NativeCalcContext scratch;
     const Status time_status = resolve_utc_time_scales(
         ctx, datetime_utc, &scales, &time_diagnostic, &scratch);
+    if (time_diagnostic.fallback_reason != TimeScaleFallbackNone) {
+        set_result_flag(out_result_flags, kResultFlagTimeScaleFallback);
+        set_operation_flag(context, kResultFlagTimeScaleFallback);
+    }
     if (time_status != TAIYIN_STATUS_OK) {
         const Status status = time_status;
         fail_position(out, diagnostic, status, target_id, ctx.observer_id, julian_day(datetime_utc));
@@ -1302,7 +1323,8 @@ Status calc_position_utc(
         resolved_jd_tt,
         flags,
         out,
-        diagnostic);
+        diagnostic,
+        out_result_flags);
     ctx.apparent_matrix_cache = scratch.apparent_matrix_cache;
     ctx.ephemeris_state_cache = scratch.ephemeris_state_cache;
     copy_time_scale_diagnostic(diagnostic, time_diagnostic);
@@ -1318,7 +1340,8 @@ Status calc_positions_tdb(
     uint32_t flags,
     double* out,
     EphemerisEvalDiagnostic* diagnostics
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     if (target_count == 0) {
         return TAIYIN_STATUS_OK;
     }
@@ -1352,7 +1375,8 @@ Status calc_positions_tdb(
             jd_tt,
             flags,
             out + i * 6,
-            diagnostics ? diagnostics + i : 0);
+            diagnostics ? diagnostics + i : 0,
+            out_result_flags);
         if (status != TAIYIN_STATUS_OK && first_status == TAIYIN_STATUS_OK) {
             first_status = status;
         }
@@ -1368,7 +1392,8 @@ Status calc_positions_tt(
     uint32_t flags,
     double* out,
     EphemerisEvalDiagnostic* diagnostics
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     if (target_count == 0) {
         return TAIYIN_STATUS_OK;
     }
@@ -1402,7 +1427,9 @@ Status calc_positions_tt(
         }
         return time_status;
     }
-    return calc_positions_tdb(context, target_ids, target_count, jd_tdb, jd_tt, flags, out, diagnostics);
+    return calc_positions_tdb(
+        context, target_ids, target_count, jd_tdb, jd_tt, flags, out, diagnostics,
+        out_result_flags);
 }
 
 Status calc_positions_ut_delta_t(
@@ -1414,7 +1441,8 @@ Status calc_positions_ut_delta_t(
     uint32_t flags,
     double* out,
     EphemerisEvalDiagnostic* diagnostics
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     if (target_count == 0) {
         return TAIYIN_STATUS_OK;
     }
@@ -1461,7 +1489,9 @@ Status calc_positions_ut_delta_t(
         }
         return time_status;
     }
-    return calc_positions_tdb(context, target_ids, target_count, jd_tdb, jd_tt, flags, out, diagnostics);
+    return calc_positions_tdb(
+        context, target_ids, target_count, jd_tdb, jd_tt, flags, out, diagnostics,
+        out_result_flags);
 }
 
 Status calc_positions_ut(
@@ -1472,7 +1502,8 @@ Status calc_positions_ut(
     uint32_t flags,
     double* out,
     EphemerisEvalDiagnostic* diagnostics
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     if (target_count == 0) {
         return TAIYIN_STATUS_OK;
     }
@@ -1518,7 +1549,7 @@ Status calc_positions_ut(
     }
     return calc_positions_tdb(
         context, target_ids, target_count, jd_tdb, jd_tt,
-        flags, out, diagnostics);
+        flags, out, diagnostics, out_result_flags);
 }
 
 Status calc_positions_utc(
@@ -1529,7 +1560,8 @@ Status calc_positions_utc(
     uint32_t flags,
     double* out,
     EphemerisEvalDiagnostic* diagnostics
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     if (target_count == 0) {
         return TAIYIN_STATUS_OK;
     }
@@ -1559,6 +1591,10 @@ Status calc_positions_utc(
     NativeCalcContext scratch;
     const Status time_status = resolve_utc_time_scales(
         ctx, datetime_utc, &scales, &time_diagnostic, &scratch);
+    if (time_diagnostic.fallback_reason != TimeScaleFallbackNone) {
+        set_result_flag(out_result_flags, kResultFlagTimeScaleFallback);
+        set_operation_flag(context, kResultFlagTimeScaleFallback);
+    }
     if (time_status != TAIYIN_STATUS_OK) {
         const Status status = time_status;
         for (size_t i = 0; i < target_count; ++i) {
@@ -1580,7 +1616,8 @@ Status calc_positions_utc(
         resolved_jd_tt,
         flags,
         out,
-        diagnostics);
+        diagnostics,
+        out_result_flags);
     ctx.apparent_matrix_cache = scratch.apparent_matrix_cache;
     ctx.ephemeris_state_cache = scratch.ephemeris_state_cache;
     for (size_t i = 0; diagnostics && i < target_count; ++i) {
@@ -1597,7 +1634,8 @@ Status calc_state_tdb(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_state_out(out);
     if (!out) {
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, context ? context->observer_id : 0, jd_tdb);
@@ -1623,6 +1661,8 @@ Status calc_state_tdb(
             return evaluator.state_evaluator(
                 context, target_id, jd_tdb, resolved_jd_tt, flags, out, diagnostic);
         }
+        set_result_flag(out_result_flags, kResultFlagNumericalDerivative);
+        set_operation_flag(context, kResultFlagNumericalDerivative);
         double position[6] = {};
         const Status status = calc_position_tdb(
             context,
@@ -1631,7 +1671,8 @@ Status calc_state_tdb(
             resolved_jd_tt,
             flags | TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED,
             position,
-            diagnostic);
+            diagnostic,
+            out_result_flags);
         if (status != TAIYIN_STATUS_OK) {
             clear_state_out(out);
             return status;
@@ -1659,7 +1700,8 @@ Status calc_state_tdb(
                 before_jd_tt,
                 flags | TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED,
                 before,
-                &scratch_diagnostic) == TAIYIN_STATUS_OK
+                &scratch_diagnostic,
+                out_result_flags) == TAIYIN_STATUS_OK
             && calc_position_tdb(
                 context,
                 target_id,
@@ -1667,7 +1709,8 @@ Status calc_state_tdb(
                 after_jd_tt,
                 flags | TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED,
                 after,
-                &scratch_diagnostic) == TAIYIN_STATUS_OK;
+                &scratch_diagnostic,
+                out_result_flags) == TAIYIN_STATUS_OK;
         if (sampled_neighbors) {
             const double inverse_span_days = 1.0 / (2.0 * step_days);
             const bool has_analytic_velocity = std::isfinite(position[3])
@@ -1707,11 +1750,14 @@ Status calc_state_tdb(
     double ignored_position[6] = {};
     const uint32_t state_flags = flags | TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED;
     const Status status = calc_position_tdb_once(
-        context, target_id, jd_tdb, resolved_jd_tt, state_flags, ignored_position, diagnostic, out);
+        context, target_id, jd_tdb, resolved_jd_tt, state_flags, ignored_position, diagnostic, out,
+        out_result_flags);
     if (!native_position_should_try_barycenter_approx(target_id, flags, status)) {
         return status;
     }
 
+    set_result_flag(out_result_flags, kResultFlagBarycenterApprox);
+    set_operation_flag(context, kResultFlagBarycenterApprox);
     const int approx_target_id = native_position_barycenter_approx_target(target_id);
     EphemerisEvalDiagnostic approx_diagnostic;
     CartesianState approx_state;
@@ -1724,7 +1770,8 @@ Status calc_state_tdb(
         approx_flags | TAIYIN_NATIVE_POSITION_XYZ | TAIYIN_NATIVE_POSITION_SPEED,
         ignored_position,
         &approx_diagnostic,
-        &approx_state);
+        &approx_state,
+        out_result_flags);
     if (approx_status != TAIYIN_STATUS_OK) {
         clear_state_out(out);
         return status;
@@ -1776,7 +1823,8 @@ Status calc_state_tt(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_state_out(out);
     if (!context) {
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, jd_tt);
@@ -1790,7 +1838,9 @@ Status calc_state_tt(
     if (time_status != TAIYIN_STATUS_OK) {
         return fail_state(out, diagnostic, time_status, target_id, ctx.observer_id, jd_tt);
     }
-    return calc_state_tdb(context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_state_tdb(
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic,
+        out_result_flags);
 }
 
 Status calc_state_ut_delta_t(
@@ -1801,7 +1851,8 @@ Status calc_state_ut_delta_t(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_state_out(out);
     if (!context) {
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, jd_ut1);
@@ -1821,7 +1872,9 @@ Status calc_state_ut_delta_t(
     if (time_status != TAIYIN_STATUS_OK) {
         return fail_state(out, diagnostic, time_status, target_id, ctx.observer_id, jd_ut1);
     }
-    return calc_state_tdb(context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_state_tdb(
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic,
+        out_result_flags);
 }
 
 Status calc_state_ut(
@@ -1831,7 +1884,8 @@ Status calc_state_ut(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_state_out(out);
     if (!context) {
         return fail_state(out, diagnostic, TAIYIN_ERROR_INVALID_ARGUMENT, target_id, 0, jd_ut);
@@ -1854,7 +1908,9 @@ Status calc_state_ut(
         return fail_state(
             out, diagnostic, time_status, target_id, ctx.observer_id, jd_ut);
     }
-    return calc_state_tdb(context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_state_tdb(
+        context, target_id, jd_tdb, jd_tt, flags, out, diagnostic,
+        out_result_flags);
 }
 
 Status calc_state_utc(
@@ -1864,7 +1920,8 @@ Status calc_state_utc(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     clear_state_out(out);
     SplitJulianDate jd_utc;
     const bool has_jd_utc = julian_day_split(datetime_utc, &jd_utc);
@@ -1880,6 +1937,10 @@ Status calc_state_utc(
     NativeCalcContext scratch;
     const Status time_status = resolve_utc_time_scales(
         ctx, datetime_utc, &scales, &time_diagnostic, &scratch);
+    if (time_diagnostic.fallback_reason != TimeScaleFallbackNone) {
+        set_result_flag(out_result_flags, kResultFlagTimeScaleFallback);
+        set_operation_flag(context, kResultFlagTimeScaleFallback);
+    }
     if (time_status != TAIYIN_STATUS_OK) {
         const Status status = time_status;
         fail_state(out, diagnostic, status, target_id, ctx.observer_id, jd_utc);
@@ -1895,7 +1956,8 @@ Status calc_state_utc(
         resolved_jd_tt,
         flags,
         out,
-        diagnostic);
+        diagnostic,
+        out_result_flags);
     ctx.apparent_matrix_cache = scratch.apparent_matrix_cache;
     ctx.ephemeris_state_cache = scratch.ephemeris_state_cache;
     copy_time_scale_diagnostic(diagnostic, time_diagnostic);
@@ -1909,9 +1971,10 @@ Status calc_default_position_tdb(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_position_tdb(&context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_position_tdb(&context, target_id, jd_tdb, jd_tt, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_position_tt(
@@ -1920,9 +1983,10 @@ Status calc_default_position_tt(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_position_tt(&context, target_id, jd_tt, flags, out, diagnostic);
+    return calc_position_tt(&context, target_id, jd_tt, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_position_ut_delta_t(
@@ -1932,9 +1996,10 @@ Status calc_default_position_ut_delta_t(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_position_ut_delta_t(&context, target_id, jd_ut1, delta_t_seconds, flags, out, diagnostic);
+    return calc_position_ut_delta_t(&context, target_id, jd_ut1, delta_t_seconds, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_position_ut(
@@ -1943,9 +2008,10 @@ Status calc_default_position_ut(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_position_ut(&context, target_id, jd_ut, flags, out, diagnostic);
+    return calc_position_ut(&context, target_id, jd_ut, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_position_utc(
@@ -1954,9 +2020,10 @@ Status calc_default_position_utc(
     uint32_t flags,
     double out[6],
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_position_utc(&context, target_id, datetime_utc, flags, out, diagnostic);
+    return calc_position_utc(&context, target_id, datetime_utc, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_state_tdb(
@@ -1966,9 +2033,10 @@ Status calc_default_state_tdb(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_state_tdb(&context, target_id, jd_tdb, jd_tt, flags, out, diagnostic);
+    return calc_state_tdb(&context, target_id, jd_tdb, jd_tt, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_state_tt(
@@ -1977,9 +2045,10 @@ Status calc_default_state_tt(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_state_tt(&context, target_id, jd_tt, flags, out, diagnostic);
+    return calc_state_tt(&context, target_id, jd_tt, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_state_ut_delta_t(
@@ -1989,9 +2058,10 @@ Status calc_default_state_ut_delta_t(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_state_ut_delta_t(&context, target_id, jd_ut1, delta_t_seconds, flags, out, diagnostic);
+    return calc_state_ut_delta_t(&context, target_id, jd_ut1, delta_t_seconds, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_state_ut(
@@ -2000,9 +2070,10 @@ Status calc_default_state_ut(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_state_ut(&context, target_id, jd_ut, flags, out, diagnostic);
+    return calc_state_ut(&context, target_id, jd_ut, flags, out, diagnostic, out_result_flags);
 }
 
 Status calc_default_state_utc(
@@ -2011,9 +2082,10 @@ Status calc_default_state_utc(
     uint32_t flags,
     CartesianState* out,
     EphemerisEvalDiagnostic* diagnostic
-) noexcept {
+,
+    uint32_t* out_result_flags) noexcept {
     const NativeCalcContext context = get_default_native_calc_context();
-    return calc_state_utc(&context, target_id, datetime_utc, flags, out, diagnostic);
+    return calc_state_utc(&context, target_id, datetime_utc, flags, out, diagnostic, out_result_flags);
 }
 
 

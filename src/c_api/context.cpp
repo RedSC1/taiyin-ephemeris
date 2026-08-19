@@ -155,159 +155,156 @@ void TAIYIN_C_CALL taiyin_apparent_deflector_init(
     deflector->struct_size = sizeof(*deflector);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_create(taiyin_context** out_context) {
-    if (!out_context) return taiyin_c_internal::invalid_argument();
+taiyin_call_result TAIYIN_C_CALL taiyin_context_create(taiyin_context** out_context) {
+    if (!out_context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     *out_context = new (std::nothrow) taiyin_context();
     if (*out_context) {
         taiyin_c_internal::repair_context_pointers(*out_context);
     }
-    return *out_context
+    return taiyin_c_internal::pack_call_result(*out_context
         ? taiyin::TAIYIN_STATUS_OK
-        : taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+        : taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_clone(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_clone(
     const taiyin_context* source,
     taiyin_context** out_context
 ) {
-    if (!source || !out_context) return taiyin_c_internal::invalid_argument();
+    if (!source || !out_context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     *out_context = new (std::nothrow) taiyin_context();
-    if (!*out_context) return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+    if (!*out_context) return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
     (*out_context)->value = source->value;
     try {
         (*out_context)->deflectors = source->deflectors;
     } catch (...) {
         delete *out_context;
         *out_context = 0;
-        return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
     }
     taiyin_c_internal::repair_context_pointers(*out_context);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
 void TAIYIN_C_CALL taiyin_context_destroy(taiyin_context* context) {
     delete context;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_reset(taiyin_context* context) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+taiyin_call_result TAIYIN_C_CALL taiyin_context_reset(taiyin_context* context) {
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     context->value = taiyin::runtime::NativeCalcContext();
     context->deflectors.clear();
     taiyin_c_internal::repair_context_pointers(context);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_observer_location(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_observer_location(
     taiyin_context* context,
     const taiyin_observer_location* location
 ) {
     if (!context || !taiyin_c_internal::valid_struct(location)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::runtime::NativeObserverLocation cpp =
         to_cpp_location(*location);
-    return taiyin::runtime::native_context_set_observer_location(
-        &context->value, cpp);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_observer_location(
+        &context->value, cpp));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_clear_observer_location(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_clear_observer_location(
     taiyin_context* context
 ) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     context->value.fields.clear(taiyin::runtime::TAIYIN_NATIVE_FIELD_OBSERVER_LOCATION);
     context->value.observer_location = taiyin::runtime::NativeObserverLocation();
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_atmosphere(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_atmosphere(
     taiyin_context* context,
     const taiyin_atmosphere* atmosphere
 ) {
     if (!context || !taiyin_c_internal::valid_struct(atmosphere)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::NativeAtmosphere cpp;
     cpp.pressure_mbar = atmosphere->pressure_mbar;
     cpp.temperature_celsius = atmosphere->temperature_celsius;
     cpp.relative_humidity = atmosphere->relative_humidity_percent;
     cpp.wavelength_micrometer = atmosphere->wavelength_micrometer;
-    return taiyin::runtime::native_context_set_atmosphere(&context->value, cpp);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_atmosphere(&context->value, cpp));
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_atmosphere_pressure_temperature(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_atmosphere_pressure_temperature(
     taiyin_context* context,
     double pressure_mbar,
     double temperature_celsius
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_atmosphere_pressure_temperature(
             &context->value, pressure_mbar, temperature_celsius)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_standard_atmosphere(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_standard_atmosphere(
     taiyin_context* context
 ) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     const taiyin::runtime::NativeAtmosphere atmosphere =
         taiyin::runtime::native_standard_atmosphere();
-    return taiyin::runtime::native_context_set_atmosphere(
-        &context->value, atmosphere);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_atmosphere(
+        &context->value, atmosphere));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_atmosphere_policy(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_atmosphere_policy(
     taiyin_context* context,
     uint32_t flags
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_atmosphere_policy_flags(
             &context->value, flags)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_meteorological_range_km(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_meteorological_range_km(
     taiyin_context* context,
     double range_km
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_meteorological_range_km(
             &context->value, range_km)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_geocentric_observer(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_geocentric_observer(
     taiyin_context* context,
     int32_t observer_id,
     int32_t center_id
 ) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     const taiyin::Status status =
         taiyin::runtime::native_context_set_geocentric_observer(
             &context->value, observer_id, center_id);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::repair_context_pointers(context);
     }
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_topocentric_observer_offset(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_topocentric_observer_offset(
     taiyin_context* context,
     const taiyin_cartesian_state* observer_offset
 ) {
     if (!context || !taiyin_c_internal::valid_struct(observer_offset)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     if (!valid_state(*observer_offset)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::native_context_set_topocentric_observer_offset(
-        &context->value, taiyin_c_internal::to_cpp_state(*observer_offset));
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_topocentric_observer_offset(
+        &context->value, taiyin_c_internal::to_cpp_state(*observer_offset)));
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_simple_topocentric_observer(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_simple_topocentric_observer(
     taiyin_context* context,
     const taiyin_observer_location* location,
     const taiyin_split_julian_date* jd_ut1,
@@ -316,16 +313,15 @@ taiyin_context_set_simple_topocentric_observer(
     if (!context || !taiyin_c_internal::valid_struct(location)
         || !taiyin_c_internal::valid_split_jd(jd_ut1)
         || !taiyin_c_internal::valid_split_jd(jd_tt)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::native_context_set_simple_topocentric_observer(
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_simple_topocentric_observer(
         &context->value, to_cpp_location(*location),
         taiyin_c_internal::to_cpp_split_jd(*jd_ut1),
-        taiyin_c_internal::to_cpp_split_jd(*jd_tt));
+        taiyin_c_internal::to_cpp_split_jd(*jd_tt)));
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_precise_topocentric_observer(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_precise_topocentric_observer(
     taiyin_context* context,
     const taiyin_observer_location* location,
     const taiyin_split_julian_date* jd_utc,
@@ -334,67 +330,66 @@ taiyin_context_set_precise_topocentric_observer(
     if (!context || !taiyin_c_internal::valid_struct(location)
         || !taiyin_c_internal::valid_split_jd(jd_utc)
         || !taiyin_c_internal::valid_split_jd(jd_tt)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::native_context_set_precise_topocentric_observer(
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_precise_topocentric_observer(
         &context->value, to_cpp_location(*location),
         taiyin_c_internal::to_cpp_split_jd(*jd_utc),
-        taiyin_c_internal::to_cpp_split_jd(*jd_tt));
+        taiyin_c_internal::to_cpp_split_jd(*jd_tt)));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_route_rule(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_route_rule(
     taiyin_context* context,
     uint64_t route_rule_id
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_route_rule(
             &context->value, route_rule_id)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_allow_utc_out_of_range_estimate(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_allow_utc_out_of_range_estimate(
     taiyin_context* context,
     taiyin_bool allow
 ) {
     if (!context) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::native_context_set_allow_utc_out_of_range_estimate(
-        &context->value, allow != 0u);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_allow_utc_out_of_range_estimate(
+        &context->value, allow != 0u));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_delta_t_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_delta_t_model(
     taiyin_context* context,
     int32_t delta_t_model_id,
     int32_t ephemeris_family_id
 ) {
-    return context && valid_delta_t_model(
+    return taiyin_c_internal::pack_call_result(context && valid_delta_t_model(
             delta_t_model_id, ephemeris_family_id)
         ? taiyin::runtime::native_context_set_delta_t_model(
             &context->value, delta_t_model_id, ephemeris_family_id)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_tdb_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_tdb_model(
     taiyin_context* context,
     int32_t tdb_model_id
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
             && (tdb_model_id == TAIYIN_TDB_FAST_PERIODIC
                 || tdb_model_id == TAIYIN_TDB_SOFA_FULL)
         ? taiyin::runtime::native_context_set_tdb_model(
             &context->value, tdb_model_id)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_astro_models(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_astro_models(
     taiyin_context* context,
     const taiyin_astro_model_config* config
 ) {
     if (!context || !taiyin_c_internal::valid_struct(config)
         || !valid_astro_models(*config)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     context->value.model_context.tdb_model_id = config->tdb_model_id;
     context->value.model_context.precession_model_id =
@@ -404,16 +399,16 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_astro_models(
         config->obliquity_model_id;
     context->value.model_context.frame_route_id = config->frame_route_id;
     taiyin_c_internal::repair_context_pointers(context);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_apparent_config(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_apparent_config(
     taiyin_context* context,
     const taiyin_apparent_config* config
 ) {
     if (!context || !taiyin_c_internal::valid_struct(config)
         || !valid_apparent_config(*config)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::ApparentOptions& options =
         context->value.apparent_options;
@@ -430,64 +425,63 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_apparent_config(
     options.matrix_derivative_step_days =
         config->matrix_derivative_step_days;
     taiyin_c_internal::repair_context_pointers(context);
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_celestial_pole_offset(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_celestial_pole_offset(
     taiyin_context* context,
     double dx_rad,
     double dy_rad,
     double dx_rate_rad_per_day,
     double dy_rate_rad_per_day
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_celestial_pole_offset(
             &context->value,
             dx_rad,
             dy_rad,
             dx_rate_rad_per_day,
             dy_rate_rad_per_day)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_refraction_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_refraction_model(
     taiyin_context* context,
     int32_t refraction_model_id
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_refraction_model(
             &context->value, refraction_model_id)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_heliacal_visibility_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_heliacal_visibility_model(
     taiyin_context* context,
     int32_t model_id
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_set_heliacal_visibility_model(
             &context->value, model_id)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_use_solar_deflector(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_use_solar_deflector(
     taiyin_context* context
 ) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     context->deflectors.clear();
-    return taiyin::runtime::native_context_use_solar_deflector(&context->value);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_use_solar_deflector(&context->value));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_clear_deflectors(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_clear_deflectors(
     taiyin_context* context
 ) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     context->deflectors.clear();
-    return taiyin::runtime::native_context_clear_deflectors(&context->value);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_clear_deflectors(&context->value));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_deflectors(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_deflectors(
     taiyin_context* context,
     const taiyin_apparent_deflector* deflectors,
     size_t deflector_count,
@@ -497,7 +491,7 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_deflectors(
         || solar_deflector_index < -1
         || (solar_deflector_index >= 0
             && static_cast<size_t>(solar_deflector_index) >= deflector_count)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     std::vector<taiyin::runtime::ApparentDeflector> replacement;
     try {
@@ -508,7 +502,7 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_deflectors(
                 || deflectors[i].schwarzschild_radius_au < 0.0
                 || !std::isfinite(deflectors[i].limit)
                 || deflectors[i].limit < 0.0) {
-                return taiyin_c_internal::invalid_argument();
+                return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
             }
             taiyin::runtime::ApparentDeflector value;
             value.body_id = deflectors[i].body_id;
@@ -518,59 +512,58 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_deflectors(
             replacement.push_back(value);
         }
     } catch (...) {
-        return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
     }
     const taiyin::Status status = taiyin::runtime::native_context_set_deflectors(
         &context->value,
         replacement.empty() ? 0 : replacement.data(),
         replacement.size(),
         solar_deflector_index);
-    if (status != taiyin::TAIYIN_STATUS_OK) return status;
+    if (status != taiyin::TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status);
     context->deflectors.swap(replacement);
     taiyin_c_internal::repair_context_pointers(context);
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_context_set_light_time_iteration(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_light_time_iteration(
     taiyin_context* context,
     int32_t max_iterations,
     double tolerance_days
 ) {
     if (!context || max_iterations < 0 || !std::isfinite(tolerance_days)
         || tolerance_days < 0.0) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::native_context_set_light_time_iteration(
-        &context->value, max_iterations, tolerance_days);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_light_time_iteration(
+        &context->value, max_iterations, tolerance_days));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_enable_shapiro_delay(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_enable_shapiro_delay(
     taiyin_context* context,
     int32_t shapiro_delay_model_id
 ) {
     if (!context || shapiro_delay_model_id != 0) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::native_context_enable_shapiro_delay(
-        &context->value, shapiro_delay_model_id);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_enable_shapiro_delay(
+        &context->value, shapiro_delay_model_id));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_disable_shapiro_delay(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_disable_shapiro_delay(
     taiyin_context* context
 ) {
-    return context
+    return taiyin_c_internal::pack_call_result(context
         ? taiyin::runtime::native_context_disable_shapiro_delay(
             &context->value)
-        : taiyin_c_internal::invalid_argument();
+        : taiyin_c_internal::invalid_argument());
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_context_set_eclipse_models(
+taiyin_call_result TAIYIN_C_CALL taiyin_context_set_eclipse_models(
     taiyin_context* context,
     int32_t shadow_model_id,
     int32_t moon_radius_model_id
 ) {
-    if (!context) return taiyin_c_internal::invalid_argument();
+    if (!context) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     taiyin::dispatch::EclipseShadowModelEntry shadow;
     taiyin::dispatch::EclipseMoonRadiusModelEntry moon;
     if (shadow_model_id < 0 || shadow_model_id > 255
@@ -579,14 +572,14 @@ taiyin_status TAIYIN_C_CALL taiyin_context_set_eclipse_models(
             shadow_model_id, &shadow)
         || !taiyin::dispatch::find_eclipse_moon_radius_model(
             moon_radius_model_id, &moon)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::Status status =
         taiyin::runtime::native_context_set_eclipse_shadow_model(
             &context->value, shadow_model_id);
-    if (status != taiyin::TAIYIN_STATUS_OK) return status;
-    return taiyin::runtime::native_context_set_eclipse_moon_radius_model(
-        &context->value, moon_radius_model_id);
+    if (status != taiyin::TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status);
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::native_context_set_eclipse_moon_radius_model(
+        &context->value, moon_radius_model_id));
 }
 
 }  // extern "C"

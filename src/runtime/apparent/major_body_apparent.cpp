@@ -1015,7 +1015,8 @@ MajorBodyApparentBatchRequest::MajorBodyApparentBatchRequest() noexcept
       body_ids(0),
       body_count(0),
       position_flags(0u),
-      options(0) {}
+      options(0),
+      source_tracker(0) {}
 
 AstroModelContext get_global_astro_model_context() noexcept {
     return snapshot_global_astro_model_context();
@@ -1141,6 +1142,7 @@ Status eval_major_body_apparent_batch(
     RuntimeStateEvalContext context;
     context.service = service;
     context.use_global = false;
+    context.source_tracker = request.source_tracker;
     return eval_major_body_apparent_batch_in_context(context, request, out, diagnostic);
 }
 
@@ -1152,6 +1154,7 @@ Status eval_global_major_body_apparent_batch(
     RuntimeStateEvalContext context;
     context.service = 0;
     context.use_global = true;
+    context.source_tracker = request.source_tracker;
     return eval_major_body_apparent_batch_in_context(context, request, out, diagnostic);
 }
 

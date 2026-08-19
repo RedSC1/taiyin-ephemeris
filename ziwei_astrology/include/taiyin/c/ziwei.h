@@ -205,17 +205,17 @@ TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_reverse_request_init(
 TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_reverse_candidate_init(
     taiyin_ziwei_reverse_candidate* value);
 
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_data_catalog_create(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_data_catalog_create(
     const char* profile_path,
     taiyin_ziwei_data_catalog** out_catalog);
 TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_data_catalog_destroy(
     taiyin_ziwei_data_catalog* catalog);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_data_catalog_reload(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_data_catalog_reload(
     taiyin_ziwei_data_catalog* catalog);
 TAIYIN_C_ZIWEI_API uint64_t TAIYIN_C_CALL taiyin_ziwei_data_catalog_generation(
     const taiyin_ziwei_data_catalog* catalog);
 
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_context_create(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create(
     const taiyin_ziwei_data_catalog* catalog,
     const taiyin_ziwei_option_override* overrides,
     size_t override_count,
@@ -227,12 +227,12 @@ TAIYIN_C_ZIWEI_API uint64_t TAIYIN_C_CALL taiyin_ziwei_context_generation(
 
 TAIYIN_C_ZIWEI_API size_t TAIYIN_C_CALL taiyin_ziwei_star_count(
     const taiyin_ziwei_context* context);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_find_star(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_find_star(
     const taiyin_ziwei_context* context,
     const char* key,
     uint16_t* out_star_id);
 /* out_required_size includes the trailing NUL. buffer may be NULL for query. */
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
     const taiyin_ziwei_context* context,
     uint16_t star_id,
     int32_t* out_category,
@@ -240,7 +240,7 @@ TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
     size_t capacity,
     size_t* out_required_size);
 
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_create(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* instant_utc,
@@ -254,7 +254,7 @@ TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_chart_destroy(
 
 /* Enumerates matching logical birth-time slots. out_candidates may be NULL
  * for a count query; capacity is measured in candidate records. */
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_reverse_lookup_tier1(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
@@ -264,10 +264,10 @@ taiyin_ziwei_reverse_lookup_tier1(
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic);
 
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_anchors(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_anchors(
     const taiyin_ziwei_chart* chart,
     uint8_t out_anchors[TAIYIN_ZIWEI_ANCHOR_COUNT]);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
     const taiyin_ziwei_chart* chart,
     uint8_t* out_gender,
     uint8_t* out_bureau,
@@ -275,30 +275,30 @@ TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
     uint16_t* out_life_master,
     uint16_t* out_body_master,
     taiyin_ziwei_transform_set* out_transforms);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_branch(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_branch(
     const taiyin_ziwei_chart* chart,
     uint8_t palace_id,
     uint8_t* out_branch);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stem(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stem(
     const taiyin_ziwei_chart* chart,
     uint8_t branch,
     uint8_t* out_stem);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_position(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_star_position(
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     uint8_t* out_branch);
 /* Resolves a natal star directly to its twelve-palace role.  A flow-only or
  * absent star returns TAIYIN_ZIWEI_INVALID_POSITION with success. */
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_palace(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_star_palace(
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     uint8_t* out_palace_id);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_brightness(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_brightness(
     const taiyin_ziwei_context* context,
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     int32_t* out_brightness);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_chart_has_star_transform_mark(
     const taiyin_ziwei_chart* chart,
     int32_t mark,
@@ -306,12 +306,12 @@ taiyin_ziwei_chart_has_star_transform_mark(
     uint8_t* out_has_mark);
 /* Bits 0..3: birth-year Lu/Quan/Ke/Ji; 4..7: centrifugal/self;
  * 8..11: centripetal. */
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_chart_get_star_transformation_mask(
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     uint16_t* out_mask);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stars(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stars(
     const taiyin_ziwei_chart* chart,
     uint8_t branch,
     uint16_t* out_star_ids,
@@ -319,7 +319,7 @@ TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_sta
     size_t* out_count);
 
 /* Replaces the chart's contiguous flow stack through deepest_level. */
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* target_instant_utc,
@@ -329,25 +329,25 @@ TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
     taiyin_ziwei_chart* chart,
     taiyin_ziwei_flow_summary* out_summary,
     taiyin_ephemeris_diagnostic* diagnostic);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_truncate_flow(
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_truncate_flow(
     taiyin_ziwei_chart* chart,
     int32_t first_removed_level);
 TAIYIN_C_ZIWEI_API size_t TAIYIN_C_CALL taiyin_ziwei_chart_flow_layer_count(
     const taiyin_ziwei_chart* chart);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_chart_get_flow_star_position(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     uint16_t star_id,
     uint8_t* out_branch);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_chart_get_flow_layer_summary(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     uint8_t* out_life_palace,
     uint8_t* out_coordinate_stem,
     uint8_t* out_coordinate_branch);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_chart_get_flow_palace_stars(
     const taiyin_ziwei_chart* chart,
     int32_t level,
@@ -355,13 +355,13 @@ taiyin_ziwei_chart_get_flow_palace_stars(
     uint16_t* out_star_ids,
     size_t capacity,
     size_t* out_count);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_chart_get_flow_transforms(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     taiyin_ziwei_transform_set* out_transforms);
 
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_step_flow_hour_target(
     const taiyin_split_julian_date* current_instant_utc,
     const taiyin_calendar_datetime* current_virtual_time,
@@ -370,7 +370,7 @@ taiyin_ziwei_step_flow_hour_target(
     taiyin_split_julian_date* out_instant_utc,
     taiyin_calendar_datetime* out_virtual_time,
     uint8_t* out_rat_hour_segment);
-TAIYIN_C_ZIWEI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_step_flow_day_target(
     const taiyin_split_julian_date* current_instant_utc,
     const taiyin_calendar_datetime* current_virtual_time,

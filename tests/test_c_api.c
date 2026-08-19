@@ -10,6 +10,63 @@ static int fail(const char* message) {
     return 1;
 }
 
+static int check_call_result_packing(void) {
+    static const taiyin_status statuses[] = {
+        TAIYIN_STATUS_OK,
+        (taiyin_status) -1,
+        (taiyin_status) 1,
+        (taiyin_status) 2147483647,
+        (taiyin_status) (-2147483647 - 1),
+        TAIYIN_ERROR_INVALID_ARGUMENT,
+        TAIYIN_ERROR_OUT_OF_MEMORY,
+        TAIYIN_ERROR_INTERNAL,
+        TAIYIN_ERROR_UNSUPPORTED
+    };
+    static const uint32_t flag_words[] = {
+        0u,
+        TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED,
+        TAIYIN_RESULT_FLAG_NUMERICAL_DERIVATIVE,
+        TAIYIN_RESULT_FLAG_BARYCENTER_APPROX,
+        TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK,
+        TAIYIN_RESULT_FLAG_HISTORICAL_EVENT_ASSIGNMENT_APPLIED,
+        TAIYIN_RESULT_FLAG_HISTORICAL_CALENDAR_RULES_APPLIED,
+        TAIYIN_RESULT_FLAG_HISTORICAL_PILLAR_TERMS_APPLIED,
+        TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED
+            | TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK,
+        0x7FFFFFFFu,
+        0x80000000u,
+        0xFFFFFFFFu
+    };
+    size_t si;
+    size_t fi;
+    for (si = 0; si < sizeof(statuses) / sizeof(statuses[0]); ++si) {
+        for (fi = 0; fi < sizeof(flag_words) / sizeof(flag_words[0]); ++fi) {
+            const taiyin_status status = statuses[si];
+            const uint32_t flags = flag_words[fi];
+            const taiyin_call_result packed =
+                taiyin_make_call_result(status, flags);
+            if (taiyin_call_result_status(packed) != status
+                || taiyin_call_result_flags(packed) != flags) {
+                return fail("call result round-trip mismatch");
+            }
+            if (taiyin_call_result_ok(packed) != (status >= 0 ? 1u : 0u)) {
+                return fail("call result ok predicate mismatch");
+            }
+            if (status == TAIYIN_STATUS_OK && packed < 0) {
+                return fail("successful call result must be non-negative");
+            }
+            if (status < 0 && packed >= 0) {
+                return fail("error call result must be negative");
+            }
+        }
+    }
+    if (taiyin_make_call_result((taiyin_status) -1, 0xFFFFFFFFu)
+            != (taiyin_call_result) -1) {
+        return fail("status -1 with all flags must pack to -1");
+    }
+    return 0;
+}
+
 static unsigned char* read_file(
     const char* path,
     size_t* out_size
@@ -108,6 +165,10 @@ int main(int argc, char** argv) {
     if (taiyin_get_c_abi_version() != TAIYIN_C_ABI_VERSION) {
         return fail("ABI version mismatch");
     }
+    {
+        const int packing_result = check_call_result_packing();
+        if (packing_result != 0) return packing_result;
+    }
     if (strcmp(taiyin_get_library_version(), TAIYIN_LIBRARY_VERSION_STRING) != 0) {
         return fail("library version mismatch");
     }
@@ -159,7 +220,7 @@ int main(int argc, char** argv) {
         formatted_diagnostic.center_id = 399;
         if (taiyin_format_ephemeris_diagnostic(
                 &formatted_diagnostic, NULL, 0, &required_size)
-                != TAIYIN_STATUS_OK
+                < 0
             || required_size == 0
             || required_size > sizeof(formatted)) {
             return fail("diagnostic format count mismatch");
@@ -168,7 +229,7 @@ int main(int argc, char** argv) {
                 &formatted_diagnostic,
                 formatted,
                 sizeof(formatted),
-                &required_size) != TAIYIN_STATUS_OK
+                &required_size) < 0
             || strstr(formatted, "target=499") == NULL
             || strstr(formatted, "TAIYIN_EPHEMERIS_ERROR_NO_ROUTE") == NULL) {
             return fail("diagnostic format mismatch");
@@ -201,23 +262,23 @@ int main(int argc, char** argv) {
                 -200000,
                 &test_position_evaluator,
                 NULL,
-                &preinit_position_offset) != TAIYIN_STATUS_OK) {
+                &preinit_position_offset) < 0) {
             return fail("pre-initialization evaluator registration failed");
         }
     }
-    if (taiyin_runtime_initialize(&runtime_config) != TAIYIN_STATUS_OK) {
+    if (taiyin_runtime_initialize(&runtime_config) < 0) {
         return fail("runtime initialization failed");
     }
     if (taiyin_runtime_set_ephemeris_source_priority(
-            "test-ephemeris-priority.bsp", 10) != TAIYIN_STATUS_OK) {
+            "test-ephemeris-priority.bsp", 10) < 0) {
         return fail("ephemeris source priority setup failed");
     }
     if (taiyin_runtime_clear_ephemeris_source_priority(
-            "test-ephemeris-priority.bsp") != TAIYIN_STATUS_OK) {
+            "test-ephemeris-priority.bsp") < 0) {
         return fail("ephemeris source priority clear failed");
     }
     if (taiyin_runtime_set_ephemeris_source_priority(
-            "test-ephemeris-priority.bsp", -10) != TAIYIN_STATUS_OK) {
+            "test-ephemeris-priority.bsp", -10) < 0) {
         return fail("ephemeris source priority reset failed");
     }
     taiyin_runtime_clear_all_ephemeris_source_priorities();
@@ -237,7 +298,7 @@ int main(int argc, char** argv) {
             taiyin_runtime_registered_data_source_init(&source_info);
             if (taiyin_runtime_get_registered_data_source(
                     i, &source_info, NULL, 0, &required_size)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || required_size == 0u
                 || required_size > sizeof(source)
                 || taiyin_runtime_get_registered_data_source(
@@ -245,7 +306,7 @@ int main(int argc, char** argv) {
                     &source_info,
                     source,
                     sizeof(source),
-                    &required_size) != TAIYIN_STATUS_OK
+                    &required_size) < 0
                 || source[0] == '\0') {
                 return fail("registered runtime data source query failed");
             }
@@ -284,20 +345,20 @@ int main(int argc, char** argv) {
         if (!star_catalog_data
             || taiyin_star_catalog_add_tsc1_memory(
                     star_catalog_data, star_catalog_size)
-                != TAIYIN_STATUS_OK) {
+                < 0) {
             free(star_catalog_data);
             return fail("memory star catalog initialization failed");
         }
         memset(star_catalog_data, 0, star_catalog_size);
         free(star_catalog_data);
         if (taiyin_star_find_magnitude("spica", &magnitude)
-                != TAIYIN_STATUS_OK
+                < 0
             || !isfinite(magnitude)) {
             return fail("memory star catalog did not retain its input");
         }
         taiyin_star_catalog_clear();
         if (taiyin_star_catalog_add_tsc1(star_catalog_path)
-            != TAIYIN_STATUS_OK) {
+            < 0) {
             return fail("star catalog initialization failed");
         }
     }
@@ -310,14 +371,14 @@ int main(int argc, char** argv) {
     datetime.hour = 12;
 
     double jd = 0.0;
-    if (taiyin_julian_day(&datetime, &jd) != TAIYIN_STATUS_OK
+    if (taiyin_julian_day(&datetime, &jd) < 0
         || fabs(jd - 2451545.0) > 1.0e-12) {
         return fail("Julian day conversion failed");
     }
 
     taiyin_calendar_datetime roundtrip;
     taiyin_calendar_datetime_init(&roundtrip);
-    if (taiyin_reverse_julian_day(jd, &roundtrip) != TAIYIN_STATUS_OK
+    if (taiyin_reverse_julian_day(jd, &roundtrip) < 0
         || roundtrip.year != 2000
         || roundtrip.month != 1
         || roundtrip.day != 1
@@ -353,63 +414,63 @@ int main(int argc, char** argv) {
         precise_calendar.second = 20.000000001;
 
         if (taiyin_split_julian_date_from_parts(
-                2451545, 0.25, &first) != TAIYIN_STATUS_OK
+                2451545, 0.25, &first) < 0
             || taiyin_add_seconds_to_split_jd(
-                &first, 1.0e-9, &second) != TAIYIN_STATUS_OK
+                &first, 1.0e-9, &second) < 0
             || taiyin_seconds_between_split_jd(
                 &first, &second, &nanosecond_difference)
-                != TAIYIN_STATUS_OK
+                < 0
             || fabs(nanosecond_difference - 1.0e-9) > 5.0e-12
             || taiyin_utc_to_tt_split(&first, 37.0, &first_tt)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_utc_to_tt_split(&second, 37.0, &second_tt)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_seconds_between_split_jd(
                 &first_tt, &second_tt, &nanosecond_difference)
-                != TAIYIN_STATUS_OK
+                < 0
             || fabs(nanosecond_difference - 1.0e-9) > 5.0e-12
             || taiyin_tt_to_tdb_split(
                 &first_tt, TAIYIN_TDB_MODEL_SOFA_FULL, &first_tdb)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_tdb_to_tt_split(
                 &first_tdb, TAIYIN_TDB_MODEL_SOFA_FULL, &roundtrip_tt)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_seconds_between_split_jd(
                 &first_tt, &roundtrip_tt, &nanosecond_difference)
-                != TAIYIN_STATUS_OK
+                < 0
             || fabs(nanosecond_difference) > 5.0e-12
             || taiyin_split_julian_date_from_parts(
-                2460000, 0.0, &boundary_tt) != TAIYIN_STATUS_OK
+                2460000, 0.0, &boundary_tt) < 0
             || taiyin_tt_to_tdb_split(
                 &boundary_tt,
                 TAIYIN_TDB_MODEL_FAST_PERIODIC,
-                &boundary_tdb) != TAIYIN_STATUS_OK
+                &boundary_tdb) < 0
             || taiyin_tdb_to_tt_split(
                 &boundary_tdb,
                 TAIYIN_TDB_MODEL_FAST_PERIODIC,
-                &boundary_roundtrip_tt) != TAIYIN_STATUS_OK
+                &boundary_roundtrip_tt) < 0
             || taiyin_seconds_between_split_jd(
                 &boundary_tt,
                 &boundary_roundtrip_tt,
-                &nanosecond_difference) != TAIYIN_STATUS_OK
+                &nanosecond_difference) < 0
             || fabs(nanosecond_difference) > 5.0e-12
             || taiyin_tt_to_tdb_split(
                 &boundary_tt,
                 TAIYIN_TDB_MODEL_SOFA_FULL,
-                &boundary_tdb) != TAIYIN_STATUS_OK
+                &boundary_tdb) < 0
             || taiyin_tdb_to_tt_split(
                 &boundary_tdb,
                 TAIYIN_TDB_MODEL_SOFA_FULL,
-                &boundary_roundtrip_tt) != TAIYIN_STATUS_OK
+                &boundary_roundtrip_tt) < 0
             || taiyin_seconds_between_split_jd(
                 &boundary_tt,
                 &boundary_roundtrip_tt,
-                &nanosecond_difference) != TAIYIN_STATUS_OK
+                &nanosecond_difference) < 0
             || fabs(nanosecond_difference) > 5.0e-12
             || taiyin_julian_day_split(&precise_calendar, &calendar_jd)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_reverse_julian_day_split(
-                &calendar_jd, &precise_roundtrip) != TAIYIN_STATUS_OK
+                &calendar_jd, &precise_roundtrip) < 0
             || fabs(precise_roundtrip.second - precise_calendar.second)
                 > 1.0e-10
             || taiyin_make_split_precise_time_scales_from_utc(
@@ -417,35 +478,35 @@ int main(int argc, char** argv) {
                 37.0,
                 -0.1,
                 TAIYIN_TDB_MODEL_SOFA_FULL,
-                &split_scales) != TAIYIN_STATUS_OK
+                &split_scales) < 0
             || taiyin_seconds_between_split_jd(
                 &split_scales.ut1,
                 &split_scales.tt,
-                &nanosecond_difference) != TAIYIN_STATUS_OK
+                &nanosecond_difference) < 0
             || fabs(nanosecond_difference - 69.284) > 1.0e-11
             || taiyin_split_julian_date_to_double(
-                &calendar_jd, &converted_jd) != TAIYIN_STATUS_OK
+                &calendar_jd, &converted_jd) < 0
             || taiyin_julian_day(&precise_calendar, &jd)
-                != TAIYIN_STATUS_OK
+                < 0
             || fabs(converted_jd - jd) > 1.0e-12) {
             return fail("split Julian-date C API failed");
         }
-        if (taiyin_split_julian_date_from_parts(
-                0, NAN, &first) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_tt_to_tdb_split(
-                &first_tt, 99, &first_tdb)
+        if (taiyin_call_result_status(taiyin_split_julian_date_from_parts(
+                0, NAN, &first)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_tt_to_tdb_split(
+                &first_tt, 99, &first_tdb))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             return fail("invalid split Julian-date input must be rejected");
         }
     }
 
     taiyin_context* context = NULL;
-    if (taiyin_context_create(&context) != TAIYIN_STATUS_OK || !context) {
+    if (taiyin_context_create(&context) < 0 || !context) {
         return fail("context creation failed");
     }
     if (taiyin_context_set_geocentric_observer(
             context, TAIYIN_BODY_EARTH, TAIYIN_BODY_EARTH)
-        != TAIYIN_STATUS_OK) {
+        < 0) {
         taiyin_context_destroy(context);
         return fail("geocentric observer setup failed");
     }
@@ -494,68 +555,68 @@ int main(int argc, char** argv) {
 
         if (taiyin_chinese_calendar_context_create(
                 context, &calendar_config, &calendar_context)
-                != TAIYIN_STATUS_OK
+                < 0
             || !calendar_context
             || taiyin_chinese_calendar_from_solar(
                 calendar_context, &solar, &lunar, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || lunar.year != 2025 || lunar.month != 1
             || lunar.day != 1 || lunar.is_leap != 0
             || taiyin_chinese_calendar_from_lunar(
                 calendar_context, &lunar, &roundtrip, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || roundtrip.year != solar.year
             || roundtrip.month != solar.month
             || roundtrip.day != solar.day
             || taiyin_julian_day_split(&probe, &probe_jd)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_calc_year_ut(
                 calendar_context, &probe_jd, &calendar_year, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_from_instant_ut(
                 calendar_context, &probe_jd, &lunar, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_prev_jie_qi_ut(
                 calendar_context, &probe_jd, &previous_term, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_next_jie_qi_ut(
                 calendar_context, &previous_term.jd_ut, &next_term, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_specific_jie_qi_ut(
                 calendar_context, 2025, 21, &specific_term, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_prev_jie_ut(
                 calendar_context, &probe_jd, &previous_jie, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_next_jie_ut(
                 calendar_context, &probe_jd, &next_jie, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_prev_qi_ut(
                 calendar_context, &probe_jd, &previous_qi, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_next_qi_ut(
                 calendar_context, &probe_jd, &next_qi, NULL)
-                != TAIYIN_STATUS_OK
-            || taiyin_chinese_calendar_get_specific_jie_qi_ut(
-                calendar_context, 2025, 24, &specific_term, NULL)
+                < 0
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_specific_jie_qi_ut(
+                calendar_context, 2025, 24, &specific_term, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_chinese_calendar_get_prev_jie_qi_ut(
-                NULL, &probe_jd, &previous_term, NULL)
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_prev_jie_qi_ut(
+                NULL, &probe_jd, &previous_term, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_chinese_calendar_get_next_jie_qi_ut(
-                calendar_context, &invalid_jd, &next_term, NULL)
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_next_jie_qi_ut(
+                calendar_context, &invalid_jd, &next_term, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_chinese_calendar_get_prev_jie_ut(
-                calendar_context, &probe_jd, &uninitialized_term, NULL)
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_prev_jie_ut(
+                calendar_context, &probe_jd, &uninitialized_term, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_chinese_calendar_get_next_jie_ut(
-                calendar_context, &probe_jd, &undersized_term, NULL)
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_next_jie_ut(
+                calendar_context, &probe_jd, &undersized_term, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_chinese_calendar_get_prev_qi_ut(
-                calendar_context, &probe_jd, NULL, NULL)
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_prev_qi_ut(
+                calendar_context, &probe_jd, NULL, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_chinese_calendar_get_next_qi_ut(
-                calendar_context, &invalid_jd, &next_qi, NULL)
+            || taiyin_call_result_status(taiyin_chinese_calendar_get_next_qi_ut(
+                calendar_context, &invalid_jd, &next_qi, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
             || previous_term.struct_size != sizeof(previous_term)
             || next_term.struct_size != sizeof(next_term)
@@ -584,10 +645,10 @@ int main(int argc, char** argv) {
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 preinit_position,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || fabs(preinit_position[0] - 1.5) > 1.0e-15
             || taiyin_unregister_native_position_evaluator(-200000)
-                != TAIYIN_STATUS_OK) {
+                < 0) {
             taiyin_context_destroy(context);
             return fail("first runtime initialization cleared evaluator");
         }
@@ -599,7 +660,7 @@ int main(int argc, char** argv) {
     observer.latitude_deg = 39.907;
     observer.height_m = 50.0;
     if (taiyin_context_set_observer_location(context, &observer)
-        != TAIYIN_STATUS_OK) {
+        < 0) {
         taiyin_context_destroy(context);
         return fail("observer setup failed");
     }
@@ -614,42 +675,42 @@ int main(int argc, char** argv) {
         taiyin_cartesian_state_init(&zero_offset);
         taiyin_observed_position_init(&observed);
         taiyin_ephemeris_diagnostic_init(&diagnostic);
-        if (taiyin_context_clone(context, &non_earth) != TAIYIN_STATUS_OK
+        if (taiyin_context_clone(context, &non_earth) < 0
             || !non_earth
             || taiyin_context_set_geocentric_observer(
                     non_earth,
                     TAIYIN_BODY_MARS_BARYCENTER,
-                    TAIYIN_BODY_SUN) != TAIYIN_STATUS_OK
-            || taiyin_context_set_topocentric_observer_offset(
-                    non_earth, &zero_offset) != TAIYIN_ERROR_UNSUPPORTED
-            || taiyin_context_set_simple_topocentric_observer(
-                    non_earth, &observer, &jd_2460409, &jd_2460409_0008)
+                    TAIYIN_BODY_SUN) < 0
+            || taiyin_call_result_status(taiyin_context_set_topocentric_observer_offset(
+                    non_earth, &zero_offset)) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_call_result_status(taiyin_context_set_simple_topocentric_observer(
+                    non_earth, &observer, &jd_2460409, &jd_2460409_0008))
                 != TAIYIN_ERROR_UNSUPPORTED
-            || taiyin_context_set_precise_topocentric_observer(
-                    non_earth, &observer, &jd_2460409, &jd_2460409_0008)
+            || taiyin_call_result_status(taiyin_context_set_precise_topocentric_observer(
+                    non_earth, &observer, &jd_2460409, &jd_2460409_0008))
                 != TAIYIN_ERROR_UNSUPPORTED
-            || taiyin_calc_position_ut(
+            || taiyin_call_result_status(taiyin_calc_position_ut(
                     non_earth,
                     TAIYIN_BODY_SUN,
                     &jd_2460409,
                     TAIYIN_POSITION_XYZ | TAIYIN_POSITION_TOPOCENTRIC,
                     position,
-                    &diagnostic) != TAIYIN_ERROR_UNSUPPORTED
-            || taiyin_calc_observed_bodies_ut(
+                    &diagnostic)) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_call_result_status(taiyin_calc_observed_bodies_ut(
                     non_earth,
                     &jd_2460409,
                     &body_id,
                     1,
                     TAIYIN_OBSERVED_TOPOCENTRIC,
                     &observed,
-                    &diagnostic) != TAIYIN_ERROR_UNSUPPORTED
-            || taiyin_calc_star_position_tt(
+                    &diagnostic)) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_call_result_status(taiyin_calc_star_position_tt(
                     non_earth,
                     "spica",
                     &jd_2460409,
                     TAIYIN_POSITION_XYZ,
                     position,
-                    &diagnostic) != TAIYIN_ERROR_UNSUPPORTED) {
+                    &diagnostic)) != TAIYIN_ERROR_UNSUPPORTED) {
             taiyin_context_destroy(non_earth);
             taiyin_context_destroy(context);
             return fail("non-Earth topocentric/star boundary failed");
@@ -673,19 +734,19 @@ int main(int argc, char** argv) {
         taiyin_visibility_event_result_init(&visibility);
         taiyin_body_osculating_orbit_init(&orbit);
 
-        if (taiyin_calc_position_tt(
+        if (taiyin_call_result_status(taiyin_calc_position_tt(
                 context, TAIYIN_BODY_SUN, NULL, TAIYIN_POSITION_XYZ,
-                canonical_position, NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_search_solar_longitude_ut(
-                context, 0.0, NULL, 0u, &event_jd, NULL)
+                canonical_position, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_search_solar_longitude_ut(
+                context, 0.0, NULL, 0u, &event_jd, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_search_solar_transit_ut(
+            || taiyin_call_result_status(taiyin_search_solar_transit_ut(
                 context, NULL, &jd_2460409_25,
-                TAIYIN_VISIBILITY_EVENT_UPPER_TRANSIT, &visibility, NULL)
+                TAIYIN_VISIBILITY_EVENT_UPPER_TRANSIT, &visibility, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_body_osculating_orbit_tt(
+            || taiyin_call_result_status(taiyin_calc_body_osculating_orbit_tt(
                 context, TAIYIN_BODY_MARS_BARYCENTER, NULL,
-                TAIYIN_FRAME_J2000_ECLIPTIC, 0u, &orbit, NULL)
+                TAIYIN_FRAME_J2000_ECLIPTIC, 0u, &orbit, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("required split Julian-date pointers must be rejected");
@@ -693,18 +754,18 @@ int main(int argc, char** argv) {
         if (taiyin_calc_position_tt(
                 context, TAIYIN_BODY_SUN, &jd_2460409,
                 TAIYIN_POSITION_XYZ, canonical_position, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_calc_position_tt(
                 context, TAIYIN_BODY_SUN, &unnormalized_jd,
                 TAIYIN_POSITION_XYZ, unnormalized_position, NULL)
-                != TAIYIN_STATUS_OK
-            || taiyin_calc_position_tt(
+                < 0
+            || taiyin_call_result_status(taiyin_calc_position_tt(
                 context, TAIYIN_BODY_SUN, &nan_fraction_jd,
-                TAIYIN_POSITION_XYZ, unnormalized_position, NULL)
+                TAIYIN_POSITION_XYZ, unnormalized_position, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_position_tt(
+            || taiyin_call_result_status(taiyin_calc_position_tt(
                 context, TAIYIN_BODY_SUN, &overflowing_jd,
-                TAIYIN_POSITION_XYZ, unnormalized_position, NULL)
+                TAIYIN_POSITION_XYZ, unnormalized_position, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("split Julian-date normalization contract failed");
@@ -718,11 +779,11 @@ int main(int argc, char** argv) {
         if (taiyin_calc_position_tdb(
                 context, TAIYIN_BODY_SUN, &jd_2460409, NULL,
                 TAIYIN_POSITION_XYZ, scalar_tdb_position, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_calc_positions_tdb(
                 context, target_ids, 1, &jd_2460409, NULL,
                 TAIYIN_POSITION_XYZ, batch_tdb_position, NULL)
-                != TAIYIN_STATUS_OK) {
+                < 0) {
             taiyin_context_destroy(context);
             return fail("NULL TT fallback must match for scalar and batch TDB");
         }
@@ -755,39 +816,39 @@ int main(int argc, char** argv) {
         taiyin_body_phenomena_init(&phenomena);
         taiyin_observed_position_init(&observed);
 
-        if (taiyin_solve_solar_eclipse_at_tt(
-                context, &invalid_jd, 0u, &eclipse, NULL)
+        if (taiyin_call_result_status(taiyin_solve_solar_eclipse_at_tt(
+                context, &invalid_jd, 0u, &eclipse, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_search_next_geocentric_lunar_body_occultation_ut(
+            || taiyin_call_result_status(taiyin_search_next_geocentric_lunar_body_occultation_ut(
                 context, TAIYIN_BODY_MERCURY_BARYCENTER, &invalid_jd,
-                0u, &occultation, NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_ayanamsha_tt(
+                0u, &occultation, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_calc_ayanamsha_tt(
                 context, TAIYIN_C_AYANAMSHA_FAGAN_BRADLEY,
-                &invalid_jd, 0u, &ayanamsha_rad)
+                &invalid_jd, 0u, &ayanamsha_rad))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_star_position_tt(
+            || taiyin_call_result_status(taiyin_calc_star_position_tt(
                 context, "spica", &invalid_jd, TAIYIN_POSITION_XYZ,
-                star_position, NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_star_position_tt(
+                star_position, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_calc_star_position_tt(
                 context, "spica", &overflowing_jd, TAIYIN_POSITION_XYZ,
-                star_position, NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_body_heliacal_visibility_ut(
+                star_position, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_calc_body_heliacal_visibility_ut(
                 context, TAIYIN_BODY_VENUS_BARYCENTER, &invalid_jd,
-                0u, &conditions, &heliacal, NULL)
+                0u, &conditions, &heliacal, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_equation_of_time_tt(
-                context, &invalid_jd, &equation_of_time, NULL)
+            || taiyin_call_result_status(taiyin_calc_equation_of_time_tt(
+                context, &invalid_jd, &equation_of_time, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_body_phenomena_tt(
+            || taiyin_call_result_status(taiyin_calc_body_phenomena_tt(
                 context, TAIYIN_BODY_MARS_BARYCENTER, &invalid_jd,
-                0u, &phenomena, NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_observed_bodies_ut(
-                context, &invalid_jd, &body_id, 1, 0u, &observed, NULL)
+                0u, &phenomena, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_calc_observed_bodies_ut(
+                context, &invalid_jd, &body_id, 1, 0u, &observed, NULL))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_context_set_simple_topocentric_observer(
-                context, &observer, &invalid_jd, &jd_2460409)
+            || taiyin_call_result_status(taiyin_context_set_simple_topocentric_observer(
+                context, &observer, &invalid_jd, &jd_2460409))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_utc_to_tai_split(&invalid_jd, 37.0, &converted_jd)
+            || taiyin_call_result_status(taiyin_utc_to_tai_split(&invalid_jd, 37.0, &converted_jd))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("C modules must reject malformed split Julian dates");
@@ -810,11 +871,11 @@ int main(int argc, char** argv) {
         utc.day = 1;
         utc.hour = 18;
         if (taiyin_tai_minus_utc_seconds(&utc, &tai_minus_utc)
-                != TAIYIN_STATUS_OK
+                < 0
             || fabs(tai_minus_utc - 37.0) > 1.0e-12
             || taiyin_make_time_scales_from_utc(
                     context, &utc, &scales, &time_diagnostic)
-                != TAIYIN_STATUS_OK
+                < 0
             || time_diagnostic.route != TAIYIN_TIME_ROUTE_PRECISE_UTC_EOP
             || (time_diagnostic.flags & (
                     TAIYIN_TIME_USED_LEAP_SECONDS | TAIYIN_TIME_USED_EOP))
@@ -822,11 +883,11 @@ int main(int argc, char** argv) {
             || !isfinite(scales.jd_tt)
             || taiyin_make_split_time_scales_from_utc(
                     context, &utc, &split_scales, &time_diagnostic)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_seconds_between_split_jd(
                     &split_scales.ut1,
                     &split_scales.tt,
-                    &split_delta_t) != TAIYIN_STATUS_OK
+                    &split_delta_t) < 0
             || fabs(split_delta_t - split_scales.delta_t_seconds) > 1.0e-11
             || fabs(taiyin_seconds_between_jd(
                     scales.jd_utc,
@@ -863,52 +924,52 @@ int main(int argc, char** argv) {
         deflector.schwarzschild_radius_au = 1.0e-8;
         deflector.limit = 0.0;
 
-        if (taiyin_context_clone(context, &configured) != TAIYIN_STATUS_OK
+        if (taiyin_context_clone(context, &configured) < 0
             || !configured
             || taiyin_context_set_astro_models(configured, &models)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_apparent_config(configured, &apparent)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_celestial_pole_offset(
                     configured, 1.0e-10, -2.0e-10, 0.0, 0.0)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_delta_t_model(
                     configured,
                     TAIYIN_DELTA_T_ESTIMATED_DEFAULT,
                     TAIYIN_EPHEMERIS_FAMILY_DE441)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_refraction_model(
                     configured, TAIYIN_REFRACTION_SOFA)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_heliacal_visibility_model(
                     configured, TAIYIN_HELIACAL_VISIBILITY_SCHAEFER_1993)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_eclipse_models(
                     configured,
                     TAIYIN_ECLIPSE_SHADOW_NASA_DANJON,
                     TAIYIN_ECLIPSE_MOON_ALMANAC)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_simple_topocentric_observer(
                     configured, &observer, &jd_2460409, &jd_2460409_0008)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_deflectors(configured, &deflector, 1, 0)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_set_light_time_iteration(
                     configured, 6, 1.0e-12)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_enable_shapiro_delay(configured, 0)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_context_disable_shapiro_delay(configured)
-                != TAIYIN_STATUS_OK) {
+                < 0) {
             taiyin_context_destroy(configured);
             taiyin_context_destroy(context);
             return fail("advanced context configuration failed");
         }
 
         models.tdb_model_id = 99;
-        if (taiyin_context_set_tdb_model(configured, 99)
+        if (taiyin_call_result_status(taiyin_context_set_tdb_model(configured, 99))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_context_set_astro_models(configured, &models)
+            || taiyin_call_result_status(taiyin_context_set_astro_models(configured, &models))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(configured);
             taiyin_context_destroy(context);
@@ -917,7 +978,7 @@ int main(int argc, char** argv) {
         models.tdb_model_id = TAIYIN_TDB_FAST_PERIODIC;
 
         apparent.output_frame_id = 999;
-        if (taiyin_context_set_apparent_config(configured, &apparent)
+        if (taiyin_call_result_status(taiyin_context_set_apparent_config(configured, &apparent))
             != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(configured);
             taiyin_context_destroy(context);
@@ -927,13 +988,13 @@ int main(int argc, char** argv) {
         apparent.flags = TAIYIN_APPARENT_FLAG_LIGHT_TIME
             | TAIYIN_APPARENT_FLAG_SPHERICAL
             | (1u << 1); /* Internal matrix bit is not part of the C ABI. */
-        if (taiyin_context_set_apparent_config(configured, &apparent)
+        if (taiyin_call_result_status(taiyin_context_set_apparent_config(configured, &apparent))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_context_set_delta_t_model(
-                    configured, 999, TAIYIN_EPHEMERIS_FAMILY_UNKNOWN)
+            || taiyin_call_result_status(taiyin_context_set_delta_t_model(
+                    configured, 999, TAIYIN_EPHEMERIS_FAMILY_UNKNOWN))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_context_set_delta_t_model(
-                    configured, TAIYIN_DELTA_T_ESTIMATED_DEFAULT, 999)
+            || taiyin_call_result_status(taiyin_context_set_delta_t_model(
+                    configured, TAIYIN_DELTA_T_ESTIMATED_DEFAULT, 999))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(configured);
             taiyin_context_destroy(context);
@@ -944,22 +1005,22 @@ int main(int argc, char** argv) {
             taiyin_cartesian_state invalid_offset;
             taiyin_cartesian_state_init(&invalid_offset);
             invalid_offset.position_au.x = NAN;
-            if (taiyin_context_set_topocentric_observer_offset(
-                    configured, &invalid_offset)
+            if (taiyin_call_result_status(taiyin_context_set_topocentric_observer_offset(
+                    configured, &invalid_offset))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
-                || taiyin_context_set_simple_topocentric_observer(
-                    configured, &observer, &invalid_jd, &jd_2460409_0008)
+                || taiyin_call_result_status(taiyin_context_set_simple_topocentric_observer(
+                    configured, &observer, &invalid_jd, &jd_2460409_0008))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
-                || taiyin_context_set_light_time_iteration(
-                    configured, 6, NAN)
+                || taiyin_call_result_status(taiyin_context_set_light_time_iteration(
+                    configured, 6, NAN))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
-                || taiyin_context_enable_shapiro_delay(configured, 99)
+                || taiyin_call_result_status(taiyin_context_enable_shapiro_delay(configured, 99))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
-                || taiyin_context_set_eclipse_models(
-                    configured, 99, TAIYIN_ECLIPSE_MOON_ALMANAC)
+                || taiyin_call_result_status(taiyin_context_set_eclipse_models(
+                    configured, 99, TAIYIN_ECLIPSE_MOON_ALMANAC))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
-                || taiyin_context_set_eclipse_models(
-                    configured, TAIYIN_ECLIPSE_SHADOW_NASA_DANJON, 99)
+                || taiyin_call_result_status(taiyin_context_set_eclipse_models(
+                    configured, TAIYIN_ECLIPSE_SHADOW_NASA_DANJON, 99))
                     != TAIYIN_ERROR_INVALID_ARGUMENT) {
                 taiyin_context_destroy(configured);
                 taiyin_context_destroy(context);
@@ -969,7 +1030,7 @@ int main(int argc, char** argv) {
 
         taiyin_context* configured_clone = NULL;
         if (taiyin_context_clone(configured, &configured_clone)
-                != TAIYIN_STATUS_OK
+                < 0
             || !configured_clone) {
             taiyin_context_destroy(configured);
             taiyin_context_destroy(context);
@@ -984,7 +1045,7 @@ int main(int argc, char** argv) {
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 sun,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || !isfinite(sun[0])) {
             taiyin_context_destroy(configured_clone);
             taiyin_context_destroy(context);
@@ -997,22 +1058,22 @@ int main(int argc, char** argv) {
         double moon[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
         taiyin_ephemeris_diagnostic diagnostic;
         taiyin_ephemeris_diagnostic_init(&diagnostic);
-        taiyin_status position_status = taiyin_calc_position_tt(
+        taiyin_call_result position_status = taiyin_calc_position_tt(
                 context,
                 TAIYIN_BODY_MOON,
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ | TAIYIN_POSITION_TRUEPOS,
                 moon,
                 &diagnostic);
-        if (position_status != TAIYIN_STATUS_OK
+        if (position_status < 0
             || !isfinite(moon[0])
             || !isfinite(moon[1])
             || !isfinite(moon[2])) {
             fprintf(
                 stderr,
                 "position status=%d (%s), target=%d center=%d method=%d\n",
-                position_status,
-                taiyin_status_name(position_status),
+                (int)taiyin_call_result_status(position_status),
+                taiyin_status_name(taiyin_call_result_status(position_status)),
                 diagnostic.target_id,
                 diagnostic.center_id,
                 diagnostic.attempted_method_id);
@@ -1032,7 +1093,7 @@ int main(int argc, char** argv) {
                 1,
                 TAIYIN_OBSERVED_TRUEPOS,
                 &observed,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || !isfinite(observed.apparent.longitude_rad)) {
             taiyin_context_destroy(context);
             return fail("observed position calculation failed");
@@ -1056,9 +1117,9 @@ int main(int argc, char** argv) {
         taiyin_ephemeris_diagnostic_init(&diagnostics[1]);
         taiyin_body_star_angular_separation_result_init(&body_star_minimum);
         if (taiyin_split_julian_date_from_parts(
-                2460634, 0.5, &body_star_start) != TAIYIN_STATUS_OK
+                2460634, 0.5, &body_star_start) < 0
             || taiyin_split_julian_date_from_parts(
-                2460654, 0.5, &body_star_end) != TAIYIN_STATUS_OK
+                2460654, 0.5, &body_star_end) < 0
             || taiyin_search_minimum_body_star_angular_separation_ut(
                 context,
                 TAIYIN_BODY_SUN,
@@ -1068,13 +1129,13 @@ int main(int argc, char** argv) {
                 1.0,
                 0u,
                 &body_star_minimum,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || body_star_minimum.body_id != TAIYIN_BODY_SUN
             || !isfinite(body_star_minimum.separation_rad)
             || !(body_star_minimum.jd.day_number > body_star_start.day_number
                 || (body_star_minimum.jd.day_number == body_star_start.day_number
                     && body_star_minimum.jd.day_fraction > body_star_start.day_fraction))
-            || taiyin_search_minimum_body_star_angular_separation_ut(
+            || taiyin_call_result_status(taiyin_search_minimum_body_star_angular_separation_ut(
                 context,
                 TAIYIN_BODY_SUN,
                 "",
@@ -1083,7 +1144,7 @@ int main(int argc, char** argv) {
                 1.0,
                 0u,
                 &body_star_minimum,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("body-star angular-separation C API failed");
         }
@@ -1094,7 +1155,7 @@ int main(int argc, char** argv) {
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ | TAIYIN_POSITION_TRUEPOS,
                 star_positions,
-                diagnostics) != TAIYIN_STATUS_OK
+                diagnostics) < 0
             || !isfinite(star_positions[0])
             || !isfinite(star_positions[6])) {
             taiyin_context_destroy(context);
@@ -1103,11 +1164,11 @@ int main(int argc, char** argv) {
         if (taiyin_calc_star_position_tdb(
                 context, star_keys[0], &jd_2460409, NULL,
                 TAIYIN_POSITION_XYZ | TAIYIN_POSITION_TRUEPOS,
-                scalar_tdb_position, NULL) != TAIYIN_STATUS_OK
+                scalar_tdb_position, NULL) < 0
             || taiyin_calc_star_positions_tdb(
                 context, star_keys, 1, &jd_2460409, NULL,
                 TAIYIN_POSITION_XYZ | TAIYIN_POSITION_TRUEPOS,
-                batch_tdb_position, NULL) != TAIYIN_STATUS_OK
+                batch_tdb_position, NULL) < 0
             || memcmp(
                 scalar_tdb_position,
                 batch_tdb_position,
@@ -1115,30 +1176,30 @@ int main(int argc, char** argv) {
             taiyin_context_destroy(context);
             return fail("star TDB NULL TT fallback mismatch");
         }
-        if (taiyin_calc_star_positions_tt(
+        if (taiyin_call_result_status(taiyin_calc_star_positions_tt(
                 context,
                 invalid_star_keys,
                 2,
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 star_positions,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_calc_star_positions_tt(
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_calc_star_positions_tt(
                 context,
                 star_keys,
                 2,
                 &jd_2460409,
                 UINT64_C(1) << 40,
                 star_positions,
-                NULL) != TAIYIN_ERROR_UNSUPPORTED
-            || taiyin_calc_observed_stars_ut(
+                NULL)) != TAIYIN_ERROR_UNSUPPORTED
+            || taiyin_call_result_status(taiyin_calc_observed_stars_ut(
                 context,
                 invalid_star_keys,
                 2,
                 &jd_2460409,
                 0u,
                 observed_stars,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("batch star flags and keys were not validated");
         }
@@ -1151,26 +1212,26 @@ int main(int argc, char** argv) {
                 -200001,
                 &test_position_evaluator,
                 NULL,
-                &custom_position_offset) != TAIYIN_STATUS_OK
+                &custom_position_offset) < 0
             || taiyin_calc_position_tt(
                 context,
                 -200001,
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 custom_position,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || fabs(custom_position[0] - 1.25) > 1.0e-15) {
             taiyin_context_destroy(context);
             return fail("custom position evaluator failed");
         }
-        if (taiyin_register_native_position_evaluator(
+        if (taiyin_call_result_status(taiyin_register_native_position_evaluator(
                 -200001,
                 &test_position_evaluator,
                 NULL,
-                &custom_position_offset) != TAIYIN_ERROR_INVALID_ARGUMENT
+                &custom_position_offset)) != TAIYIN_ERROR_INVALID_ARGUMENT
             || taiyin_unregister_native_position_evaluator(-200001)
-                != TAIYIN_STATUS_OK
-            || taiyin_unregister_native_position_evaluator(-200001)
+                < 0
+            || taiyin_call_result_status(taiyin_unregister_native_position_evaluator(-200001))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
             || taiyin_calc_position_tt(
                 context,
@@ -1178,7 +1239,7 @@ int main(int argc, char** argv) {
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 custom_position,
-                NULL) == TAIYIN_STATUS_OK) {
+                NULL) >= 0) {
             taiyin_context_destroy(context);
             return fail("custom position evaluator unregister failed");
         }
@@ -1186,7 +1247,7 @@ int main(int argc, char** argv) {
                 -200001,
                 &test_position_evaluator,
                 NULL,
-                &custom_position_offset) != TAIYIN_STATUS_OK) {
+                &custom_position_offset) < 0) {
             taiyin_context_destroy(context);
             return fail("custom position evaluator re-registration failed");
         }
@@ -1197,7 +1258,7 @@ int main(int argc, char** argv) {
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 custom_position,
-                NULL) == TAIYIN_STATUS_OK) {
+                NULL) >= 0) {
             taiyin_context_destroy(context);
             return fail("custom position evaluator clear failed");
         }
@@ -1205,15 +1266,15 @@ int main(int argc, char** argv) {
                 -200001,
                 &test_position_evaluator,
                 NULL,
-                &custom_position_offset) != TAIYIN_STATUS_OK
-            || taiyin_runtime_initialize(&runtime_config) != TAIYIN_STATUS_OK
+                &custom_position_offset) < 0
+            || taiyin_runtime_initialize(&runtime_config) < 0
             || taiyin_calc_position_tt(
                 context,
                 -200001,
                 &jd_2460409,
                 TAIYIN_POSITION_XYZ,
                 custom_position,
-                NULL) == TAIYIN_STATUS_OK) {
+                NULL) >= 0) {
             taiyin_context_destroy(context);
             return fail("runtime reset did not clear custom evaluator");
         }
@@ -1225,10 +1286,10 @@ int main(int argc, char** argv) {
                     -200001,
                     &test_position_evaluator,
                     NULL,
-                    &custom_position_offset) != TAIYIN_STATUS_OK
-                || taiyin_runtime_initialize(&failing_runtime_config)
+                    &custom_position_offset) < 0
+                || taiyin_call_result_status(taiyin_runtime_initialize(&failing_runtime_config))
                     != TAIYIN_ERROR_INTERNAL
-                || taiyin_unregister_native_position_evaluator(-200001)
+                || taiyin_call_result_status(taiyin_unregister_native_position_evaluator(-200001))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
                 || taiyin_calc_position_tt(
                     context,
@@ -1236,9 +1297,9 @@ int main(int argc, char** argv) {
                     &jd_2460409,
                     TAIYIN_POSITION_XYZ,
                     custom_position,
-                    NULL) == TAIYIN_STATUS_OK
+                    NULL) >= 0
                 || taiyin_runtime_initialize(&runtime_config)
-                    != TAIYIN_STATUS_OK) {
+                    < 0) {
                 taiyin_context_destroy(context);
                 return fail(
                     "failed runtime reset retained custom evaluator");
@@ -1254,28 +1315,28 @@ int main(int argc, char** argv) {
         uint64_t house_token = 0;
         taiyin_house_result houses;
         taiyin_house_result_init(&houses);
-        if (taiyin_unregister_ayanamsha_model(0)
+        if (taiyin_call_result_status(taiyin_unregister_ayanamsha_model(0))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_unregister_house_system_model(0)
+            || taiyin_call_result_status(taiyin_unregister_house_system_model(0))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_register_ayanamsha_model_with_token(
+            || taiyin_call_result_status(taiyin_register_ayanamsha_model_with_token(
                 10001,
                 NULL,
                 -1,
                 &custom_ayanamsha,
-                &ayanamsha_token) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_register_house_system_model_with_token(
+                &ayanamsha_token)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_register_house_system_model_with_token(
                 10001,
                 NULL,
                 -1,
                 &custom_house_offset,
-                &house_token) != TAIYIN_ERROR_INVALID_ARGUMENT
+                &house_token)) != TAIYIN_ERROR_INVALID_ARGUMENT
             || taiyin_register_ayanamsha_model_with_token(
                 10001,
                 &test_ayanamsha_evaluator,
                 -1,
                 &custom_ayanamsha,
-                &ayanamsha_token) != TAIYIN_STATUS_OK
+                &ayanamsha_token) < 0
             || ayanamsha_token == 0
             || taiyin_calc_ayanamsha_tt(
                 context,
@@ -1283,40 +1344,40 @@ int main(int argc, char** argv) {
                 &jd_2460409,
                 TAIYIN_C_SIDEREAL_RAW_REFERENCE_OFFSET
                     | TAIYIN_POSITION_NONUT,
-                &ayanamsha) != TAIYIN_STATUS_OK
+                &ayanamsha) < 0
             || fabs(ayanamsha - custom_ayanamsha) > 1.0e-15
             || taiyin_register_house_system_model_with_token(
                 10001,
                 &test_house_evaluator,
                 -1,
                 &custom_house_offset,
-                &house_token) != TAIYIN_STATUS_OK
+                &house_token) < 0
             || house_token == 0
             || taiyin_calc_houses_from_armc(
                 1.0,
                 0.5,
                 0.409,
                 10001,
-                &houses) != TAIYIN_STATUS_OK
+                &houses) < 0
             || houses.resolved_system_id != 10001
             || !isfinite(houses.cusp_longitude_rad[0])
-            || taiyin_unregister_ayanamsha_model_with_token(
-                10001, ayanamsha_token + 1)
+            || taiyin_call_result_status(taiyin_unregister_ayanamsha_model_with_token(
+                10001, ayanamsha_token + 1))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_unregister_house_system_model_with_token(
-                10001, house_token + 1)
+            || taiyin_call_result_status(taiyin_unregister_house_system_model_with_token(
+                10001, house_token + 1))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
             || taiyin_unregister_ayanamsha_model_with_token(
                 10001, ayanamsha_token)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_unregister_house_system_model_with_token(
                 10001, house_token)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_has_ayanamsha_model(10001)
             || taiyin_has_house_system_model(10001)
-            || taiyin_unregister_ayanamsha_model(10001)
+            || taiyin_call_result_status(taiyin_unregister_ayanamsha_model(10001))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_unregister_house_system_model(10001)
+            || taiyin_call_result_status(taiyin_unregister_house_system_model(10001))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("custom astrology model token lifecycle failed");
@@ -1332,24 +1393,24 @@ int main(int argc, char** argv) {
                 10002,
                 &test_ayanamsha_evaluator,
                 -1,
-                &custom_ayanamsha) != TAIYIN_STATUS_OK
+                &custom_ayanamsha) < 0
             || taiyin_register_house_system_model(
                 10002,
                 &test_house_evaluator,
                 -1,
-                &custom_house_offset) != TAIYIN_STATUS_OK
+                &custom_house_offset) < 0
             || !taiyin_has_ayanamsha_model(10002)
             || !taiyin_has_house_system_model(10002)
-            || taiyin_register_ayanamsha_model(
+            || taiyin_call_result_status(taiyin_register_ayanamsha_model(
                 10002,
                 &test_ayanamsha_evaluator,
                 -1,
-                &custom_ayanamsha) != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_register_house_system_model(
+                &custom_ayanamsha)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_call_result_status(taiyin_register_house_system_model(
                 10002,
                 &test_house_evaluator,
                 -1,
-                &custom_house_offset) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                &custom_house_offset)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("custom astrology model duplicate registration failed");
         }
@@ -1361,13 +1422,13 @@ int main(int argc, char** argv) {
                 10002,
                 &test_ayanamsha_evaluator,
                 -1,
-                &custom_ayanamsha) != TAIYIN_STATUS_OK
+                &custom_ayanamsha) < 0
             || taiyin_register_house_system_model(
                 10002,
                 &test_house_evaluator,
                 -1,
-                &custom_house_offset) != TAIYIN_STATUS_OK
-            || taiyin_runtime_initialize(&runtime_config) != TAIYIN_STATUS_OK
+                &custom_house_offset) < 0
+            || taiyin_runtime_initialize(&runtime_config) < 0
             || taiyin_has_ayanamsha_model(10002)
             || taiyin_has_house_system_model(10002)) {
             taiyin_context_destroy(context);
@@ -1390,7 +1451,7 @@ int main(int argc, char** argv) {
                 TAIYIN_POSITION_SPEED | TAIYIN_POSITION_RADIANS,
                 NULL,
                 &ecliptic,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || ecliptic.struct_size != sizeof(ecliptic)
             || ecliptic.coordinate_frame_id
                 != TAIYIN_C_SIDEREAL_FRAME_MEAN_ECLIPTIC_OF_DATE
@@ -1405,7 +1466,7 @@ int main(int argc, char** argv) {
                     | TAIYIN_POSITION_RADIANS | TAIYIN_POSITION_NONUT,
                 NULL,
                 &equatorial,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || equatorial.coordinate_frame_id
                 != TAIYIN_C_SIDEREAL_FRAME_MEAN_EQUATOR_OF_DATE
             || !isfinite(equatorial.values[0])
@@ -1417,7 +1478,7 @@ int main(int argc, char** argv) {
                 TAIYIN_POSITION_EQUATORIAL | TAIYIN_POSITION_XYZ,
                 NULL,
                 &equatorial_xyz,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || equatorial_xyz.coordinate_frame_id
                 != TAIYIN_C_SIDEREAL_FRAME_TRUE_EQUATOR_OF_DATE
             || !isfinite(equatorial_xyz.values[0])) {
@@ -1442,7 +1503,7 @@ int main(int argc, char** argv) {
                     | TAIYIN_C_SIDEREAL_REFERENCE_J2000_ECLIPTIC,
                 NULL,
                 &position,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || position.coordinate_frame_id != TAIYIN_C_SIDEREAL_FRAME_J2000_ECLIPTIC
             || taiyin_calc_sidereal_coordinates_tt(
                 context,
@@ -1453,14 +1514,14 @@ int main(int argc, char** argv) {
                     | TAIYIN_C_SIDEREAL_REFERENCE_J2000_ECLIPTIC,
                 NULL,
                 &coordinates,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || coordinates.coordinate_frame_id != TAIYIN_C_SIDEREAL_FRAME_J2000_ECLIPTIC
             || fabs(position.sidereal_longitude_rad - coordinates.values[0]) > 1.0e-14) {
             taiyin_context_destroy(context);
             return fail("sidereal reference-plane C ABI failed");
         }
 
-        if (taiyin_calc_sidereal_position_tt(
+        if (taiyin_call_result_status(taiyin_calc_sidereal_position_tt(
                 context,
                 TAIYIN_C_AYANAMSHA_FAGAN_BRADLEY,
                 TAIYIN_BODY_SUN,
@@ -1468,7 +1529,7 @@ int main(int argc, char** argv) {
                 TAIYIN_POSITION_RADIANS | TAIYIN_C_SIDEREAL_REFERENCE_ECL_T0,
                 NULL,
                 &position,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("invalid sidereal reference-plane C ABI accepted missing epoch");
         }
@@ -1480,12 +1541,12 @@ int main(int argc, char** argv) {
                 TAIYIN_POSITION_RADIANS | TAIYIN_C_SIDEREAL_REFERENCE_ECL_T0,
                 &reference_epoch,
                 &position,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || !isfinite(position.sidereal_longitude_rad)) {
             taiyin_context_destroy(context);
             return fail("split sidereal reference epoch C ABI failed");
         }
-        if (taiyin_calc_sidereal_position_tt(
+        if (taiyin_call_result_status(taiyin_calc_sidereal_position_tt(
                 context,
                 TAIYIN_C_AYANAMSHA_FAGAN_BRADLEY,
                 TAIYIN_BODY_SUN,
@@ -1493,7 +1554,7 @@ int main(int argc, char** argv) {
                 TAIYIN_POSITION_RADIANS | TAIYIN_C_SIDEREAL_REFERENCE_ECL_T0,
                 &invalid_reference_epoch,
                 &position,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_context_destroy(context);
             return fail("invalid split sidereal reference epoch C ABI accepted");
         }
@@ -1509,7 +1570,7 @@ int main(int argc, char** argv) {
                 0.5,
                 0.409,
                 9999,
-                &houses) == TAIYIN_STATUS_OK
+                &houses) >= 0
             || houses.resolved_system_id != 777
             || houses.cusp_longitude_rad[0] != 42.0) {
             taiyin_context_destroy(context);
@@ -1525,7 +1586,7 @@ int main(int argc, char** argv) {
                 &jd_2460409_25,
                 TAIYIN_ECLIPSE_OPTION_INCLUDE_CONTACTS,
                 &eclipse,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || eclipse.kind == TAIYIN_C_ECLIPSE_NONE
             || !isfinite(eclipse.maximum_jd_ut.day_fraction)) {
             taiyin_context_destroy(context);
@@ -1536,7 +1597,7 @@ int main(int argc, char** argv) {
             taiyin_solar_eclipse_where_init(&where);
             if (taiyin_compute_solar_eclipse_where_ut(
                     context, &eclipse.maximum_jd_ut, 0u, &where, NULL)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || !isfinite(where.center_line.latitude_deg)
                 || !isfinite(where.center_line.longitude_deg)
                 || !isfinite(where.penumbral_north_limit.latitude_deg)
@@ -1553,7 +1614,7 @@ int main(int argc, char** argv) {
             taiyin_solar_eclipse_route_curve_point curve_points[1024];
             size_t required_curve_count = 0;
             size_t curve_count = 0;
-            const taiyin_status count_status =
+            const taiyin_call_result count_status =
                 taiyin_compute_solar_eclipse_route_curves_ut(
                     context,
                     &eclipse.maximum_jd_ut,
@@ -1563,7 +1624,7 @@ int main(int argc, char** argv) {
                     0,
                     &required_curve_count,
                     NULL);
-            const taiyin_status fill_status =
+            const taiyin_call_result fill_status =
                 required_curve_count > 0 && required_curve_count <= 1024
                 ? taiyin_compute_solar_eclipse_route_curves_ut(
                     context,
@@ -1574,20 +1635,20 @@ int main(int argc, char** argv) {
                     1024,
                     &curve_count,
                     NULL)
-                : TAIYIN_ERROR_OUT_OF_MEMORY;
-            if (count_status != TAIYIN_STATUS_OK
+                : taiyin_make_call_result(TAIYIN_ERROR_OUT_OF_MEMORY, 0u);
+            if (count_status < 0
                 || required_curve_count == 0
                 || required_curve_count > 1024
-                || fill_status != TAIYIN_STATUS_OK
+                || fill_status < 0
                 || curve_count != required_curve_count
                 || curve_points[0].struct_size != sizeof(curve_points[0])) {
                 fprintf(
                     stderr,
                     "route curve ABI: count_status=%d required=%zu "
                     "fill_status=%d count=%zu struct_size=%u expected=%zu\n",
-                    (int) count_status,
+                    (int) taiyin_call_result_status(count_status),
                     required_curve_count,
-                    (int) fill_status,
+                    (int) taiyin_call_result_status(fill_status),
                     curve_count,
                     (unsigned) curve_points[0].struct_size,
                     sizeof(curve_points[0]));
@@ -1613,10 +1674,10 @@ int main(int argc, char** argv) {
                     0,
                     &required_product_count,
                     &count_summary,
-                    NULL) != TAIYIN_STATUS_OK
+                    NULL) < 0
                 || required_product_count <= 1
                 || count_summary.polygon_point_count != required_product_count
-                || taiyin_compute_solar_eclipse_route_product_ut(
+                || taiyin_call_result_status(taiyin_compute_solar_eclipse_route_product_ut(
                     context,
                     &eclipse.maximum_jd_ut,
                     0u,
@@ -1625,7 +1686,7 @@ int main(int argc, char** argv) {
                     1,
                     &small_product_count,
                     &small_summary,
-                    NULL) != TAIYIN_ERROR_OUT_OF_MEMORY
+                    NULL)) != TAIYIN_ERROR_OUT_OF_MEMORY
                 || small_product_count != required_product_count
                 || small_summary.polygon_point_count != required_product_count
                 || point.struct_size != 0xa5a5a5a5u) {
@@ -1648,7 +1709,7 @@ int main(int argc, char** argv) {
                 phase_events,
                 4,
                 &phase_count,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || phase_count != 1
             || !isfinite(phase_events[0].day_fraction)) {
             taiyin_context_destroy(context);
@@ -1657,13 +1718,13 @@ int main(int argc, char** argv) {
     }
 
     taiyin_context* clone = NULL;
-    if (taiyin_context_clone(context, &clone) != TAIYIN_STATUS_OK || !clone) {
+    if (taiyin_context_clone(context, &clone) < 0 || !clone) {
         taiyin_context_destroy(context);
         return fail("context clone failed");
     }
 
     observer.latitude_deg = 91.0;
-    if (taiyin_context_set_observer_location(clone, &observer)
+    if (taiyin_call_result_status(taiyin_context_set_observer_location(clone, &observer))
         != TAIYIN_ERROR_INVALID_ARGUMENT) {
         taiyin_context_destroy(clone);
         taiyin_context_destroy(context);
@@ -1683,8 +1744,8 @@ int main(int argc, char** argv) {
         taiyin_context_destroy(context);
         return fail("runtime EOP table was not installed");
     }
-    if (taiyin_runtime_load_eop_table(
-            "/taiyin/this/eop/file/does/not/exist")
+    if (taiyin_call_result_status(taiyin_runtime_load_eop_table(
+            "/taiyin/this/eop/file/does/not/exist"))
         != TAIYIN_FILE_ERROR_NOT_FOUND) {
         taiyin_context_destroy(clone);
         taiyin_context_destroy(context);
@@ -1692,7 +1753,7 @@ int main(int argc, char** argv) {
     }
     taiyin_runtime_clear_eop_table();
     if (taiyin_runtime_has_eop_table()
-        || taiyin_runtime_load_builtin_eop_table() != TAIYIN_STATUS_OK
+        || taiyin_runtime_load_builtin_eop_table() < 0
         || !taiyin_runtime_has_eop_table()) {
         taiyin_context_destroy(clone);
         taiyin_context_destroy(context);
@@ -1706,10 +1767,10 @@ int main(int argc, char** argv) {
     }
 
 #ifdef TAIYIN_TEST_MODULAR_C_API
-    if (taiyin_astrology_module_shutdown() != TAIYIN_STATUS_OK
-        || taiyin_astrology_module_shutdown() != TAIYIN_STATUS_OK
-        || taiyin_register_ayanamsha_model(
-               10003, &test_ayanamsha_evaluator, -1, NULL)
+    if (taiyin_astrology_module_shutdown() < 0
+        || taiyin_astrology_module_shutdown() < 0
+        || taiyin_call_result_status(taiyin_register_ayanamsha_model(
+               10003, &test_ayanamsha_evaluator, -1, NULL))
                != TAIYIN_ERROR_INTERNAL) {
         taiyin_context_destroy(clone);
         taiyin_context_destroy(context);

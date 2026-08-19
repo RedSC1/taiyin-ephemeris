@@ -30,8 +30,10 @@ namespace {
 // astrometric oracles. GCC and AppleClang libm evaluation differs by several
 // microdegrees after the lunar-series replacement, so retain sub-arcsecond
 // regression coverage without requiring bitwise cross-toolchain agreement.
+// Debug vs Release floating-point reordering shifts the iterative local
+// maximum by about 2e-7 rad, so the altitude tolerance must cover both.
 constexpr double kDerivedEnvelopeFixtureToleranceDeg = 2.0e-4;
-constexpr double kDerivedAltitudeFixtureToleranceRad = 2.0e-7;
+constexpr double kDerivedAltitudeFixtureToleranceRad = 5.0e-7;
 constexpr double kRepeatedSearchFixtureToleranceDays = 2.0e-7;
 
 void expect_true(bool value, const char* label, int* failures) {

@@ -45,7 +45,7 @@ void copy_result(
 }
 
 template <typename Result, typename Eval>
-taiyin_status search_visibility(
+taiyin_call_result search_visibility(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd,
     const taiyin_split_julian_date* end_jd,
@@ -57,15 +57,17 @@ taiyin_status search_visibility(
         || !taiyin_c_internal::valid_split_jd(end_jd)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     Result cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = eval(
-        &cpp_out, diagnostic ? &cpp_diagnostic : 0);
+        &tracked.value, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_result(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 bool convert_planet_flags(uint64_t flags, uint64_t* out) noexcept {
@@ -142,7 +144,7 @@ void TAIYIN_C_CALL taiyin_solar_transit_fast_result_init(
     value->struct_size = sizeof(*value);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_rise_set_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -154,15 +156,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_ut(
 ) {
     return search_visibility<taiyin::runtime::MoonVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::MoonVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::MoonVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_moon_rise_set_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
                 flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_at_horizon_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_rise_set_at_horizon_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -175,15 +178,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_at_horizon_ut(
 ) {
     return search_visibility<taiyin::runtime::MoonVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::MoonVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::MoonVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_moon_rise_set_at_horizon_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
                 horizon_altitude_rad, flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_moon_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_transit_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -193,15 +197,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_moon_transit_ut(
 ) {
     return search_visibility<taiyin::runtime::MoonVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::MoonVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::MoonVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_moon_transit_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_planet_rise_set_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -214,19 +219,20 @@ taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_ut(
 ) {
     uint64_t cpp_flags = 0u;
     if (!convert_planet_flags(flags, &cpp_flags)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return search_visibility<taiyin::runtime::PlanetVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_planet_rise_set_ut(
-                &context->value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 limb_kind, cpp_flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizon_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizon_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -240,20 +246,21 @@ taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizon_ut(
 ) {
     uint64_t cpp_flags = 0u;
     if (!convert_planet_flags(flags, &cpp_flags)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return search_visibility<taiyin::runtime::PlanetVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_planet_rise_set_at_horizon_ut(
-                &context->value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 limb_kind, horizon_altitude_rad, cpp_flags, cpp_out,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_planet_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_planet_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -265,19 +272,20 @@ taiyin_status TAIYIN_C_CALL taiyin_search_planet_transit_ut(
 ) {
     uint64_t cpp_flags = 0u;
     if (!convert_planet_transit_flags(flags, &cpp_flags)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return search_visibility<taiyin::runtime::PlanetVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::PlanetVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_planet_transit_ut(
-                &context->value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 cpp_flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_rise_set_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -289,15 +297,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_ut(
 ) {
     return search_visibility<taiyin::runtime::SolarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::SolarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_rise_set_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
                 flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_at_horizon_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_rise_set_at_horizon_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -310,15 +319,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_at_horizon_ut(
 ) {
     return search_visibility<taiyin::runtime::SolarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::SolarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_rise_set_at_horizon_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind, limb_kind,
                 horizon_altitude_rad, flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_twilight_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_twilight_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -329,15 +339,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_solar_twilight_ut(
 ) {
     return search_visibility<taiyin::runtime::SolarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::SolarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_twilight_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 twilight_kind, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_transit_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -347,15 +358,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_solar_transit_ut(
 ) {
     return search_visibility<taiyin::runtime::SolarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::SolarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::SolarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_transit_ut(
-                &context->value, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* center_jd_tt,
     double longitude_deg,
@@ -370,13 +382,14 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
     if (!context || !taiyin_c_internal::valid_split_jd(center_jd_tt)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::SolarRiseSetFastResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const taiyin::Status status =
         taiyin::runtime::compute_solar_rise_set_fast_tt(
-            &context->value, cpp_date(center_jd_tt), longitude_deg, latitude_deg,
+            &tracked.value, cpp_date(center_jd_tt), longitude_deg, latitude_deg,
             height_m, limb_kind, horizon_altitude_rad, visibility_flags, &cpp_out,
             diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
@@ -389,10 +402,10 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
         out->refine_count = cpp_out.refine_count;
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* center_jd_tt,
     double longitude_deg,
@@ -404,13 +417,14 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
     if (!context || !taiyin_c_internal::valid_split_jd(center_jd_tt)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::SolarTransitFastResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const taiyin::Status status =
         taiyin::runtime::compute_solar_transit_fast_tt(
-            &context->value, cpp_date(center_jd_tt), longitude_deg, latitude_deg,
+            &tracked.value, cpp_date(center_jd_tt), longitude_deg, latitude_deg,
             height_m, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_split_jd(
@@ -421,10 +435,10 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
         out->refine_count = cpp_out.refine_count;
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_star_rise_set_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* start_jd_ut,
@@ -437,19 +451,20 @@ taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_ut(
     uint64_t cpp_flags = 0u;
     if (!star_key || star_key[0] == '\0'
         || !convert_star_flags(flags, &cpp_flags)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return search_visibility<taiyin::runtime::StarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::StarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::StarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_star_rise_set_ut(
-                &context->value, star_key, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, star_key, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 cpp_flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_at_horizon_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_star_rise_set_at_horizon_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* start_jd_ut,
@@ -463,19 +478,20 @@ taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_at_horizon_ut(
     uint64_t cpp_flags = 0u;
     if (!star_key || star_key[0] == '\0'
         || !convert_star_flags(flags, &cpp_flags)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return search_visibility<taiyin::runtime::StarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::StarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::StarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_star_rise_set_at_horizon_ut(
-                &context->value, star_key, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, star_key, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 horizon_altitude_rad, cpp_flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_star_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_star_transit_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* start_jd_ut,
@@ -485,14 +501,15 @@ taiyin_status TAIYIN_C_CALL taiyin_search_star_transit_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!star_key || star_key[0] == '\0') {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return search_visibility<taiyin::runtime::StarVisibilityEventResult>(
         context, start_jd_ut, end_jd_ut, out, diagnostic,
-        [&](taiyin::runtime::StarVisibilityEventResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::StarVisibilityEventResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_star_transit_ut(
-                &context->value, star_key, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
+                calc, star_key, cpp_date(start_jd_ut), cpp_date(end_jd_ut), event_kind,
                 cpp_out, cpp_diagnostic);
         });
 }

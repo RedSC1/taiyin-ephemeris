@@ -38,42 +38,42 @@ TAIYIN_C_GANZHI_API void TAIYIN_C_CALL taiyin_ganzhi_four_pillars_init(
     taiyin_ganzhi_four_pillars* value
 );
 
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_make(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_make(
     uint8_t stem_id,
     uint8_t branch_id,
     taiyin_ganzhi* out_value
 );
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_advance(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_advance(
     taiyin_ganzhi value,
     int32_t delta,
     taiyin_ganzhi* out_value
 );
 // month_index follows 0=Yin, ..., 10=Zi, 11=Chou.
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_get_month(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_get_month(
     uint8_t year_stem_id,
     uint8_t month_index,
     taiyin_ganzhi* out_value
 );
 // hour_index follows 0=Zi, ..., 11=Hai.
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_get_hour(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_get_hour(
     uint8_t day_stem_id,
     uint8_t hour_index,
     taiyin_ganzhi* out_value
 );
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_calc_day_pillar(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_calc_day_pillar(
     const taiyin_calendar_datetime* civil_date,
     taiyin_ganzhi* out_value
 );
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_get_nayin_element(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_get_nayin_element(
     taiyin_ganzhi value,
     uint8_t* out_element_id
 );
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL taiyin_ganzhi_get_nayin_id(
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL taiyin_ganzhi_get_nayin_id(
     taiyin_ganzhi value,
     uint8_t* out_nayin_id
 );
 
-TAIYIN_C_GANZHI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_GANZHI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_chinese_calendar_calc_four_pillars_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* instant_utc,

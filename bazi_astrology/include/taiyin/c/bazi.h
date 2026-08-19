@@ -327,7 +327,7 @@ TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_renyuan_siling_result_init(
     taiyin_bazi_renyuan_siling_result* value
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_context_create(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_context_create(
     const taiyin_bazi_context_config* bazi_config,
     taiyin_bazi_context** out_context
 );
@@ -335,79 +335,79 @@ TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_context_destroy(
     taiyin_bazi_context* context
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_get_kong_wang(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_kong_wang(
     taiyin_ganzhi value,
     uint8_t out_branches[2]
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_get_ten_god(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_ten_god(
     uint8_t day_stem_id,
     uint8_t target_stem_id,
     uint8_t* out_ten_god_id
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_get_hidden_stems(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_hidden_stems(
     uint8_t branch_id,
     uint8_t out_stems[TAIYIN_BAZI_HIDDEN_STEM_CAPACITY],
     uint8_t* out_count
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_stem_relation(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_stem_relation(
     uint8_t stem_a,
     uint8_t stem_b,
     uint32_t* out_flags,
     uint8_t* out_combined_element_id
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_branch_relation(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_branch_relation(
     uint8_t branch_a,
     uint8_t branch_b,
     uint32_t* out_flags,
     uint8_t* out_combined_element_id
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_branch_triple_relation(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_branch_triple_relation(
     uint8_t branch_a,
     uint8_t branch_b,
     uint8_t branch_c,
     uint32_t* out_flags,
     uint8_t* out_combined_element_id
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_get_life_stage(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_life_stage(
     uint8_t stem_id,
     uint8_t branch_id,
     int32_t earth_palace_mode,
     uint8_t* out_life_stage_id
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_chart(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_chart(
     const taiyin_bazi_context* context,
     const taiyin_ganzhi_four_pillars* pillars,
     taiyin_bazi_chart* out
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liunian(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liunian(
     int32_t effective_year,
     taiyin_ganzhi* out
 );
 // month_branch is a Ganzhi branch ID: 2=Yin, ..., 0=Zi, 1=Chou.
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liuyue(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liuyue(
     taiyin_ganzhi year_pillar,
     uint8_t month_branch,
     taiyin_ganzhi* out
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liuri(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liuri(
     const taiyin_calendar_datetime* civil_date,
     taiyin_ganzhi* out
 );
 // hour_index follows the branch sequence: 0=Zi, ..., 11=Hai.
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liushi(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liushi(
     taiyin_ganzhi day_pillar,
     uint8_t hour_index,
     taiyin_ganzhi* out
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_xiaoyun(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_xiaoyun(
     const taiyin_bazi_chart* chart,
     int32_t direction,
     int32_t age,
     taiyin_ganzhi* out
 );
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
     const taiyin_bazi_chart* chart,
     int32_t direction,
     int32_t start_age,
@@ -420,7 +420,7 @@ TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
 // Collects the merged interaction graph. relation_mask uses
 // (1u << taiyin_bazi_relation_kind); output may be NULL only when capacity is
 // zero, which queries the required count.
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_chart_relations(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_collect_chart_relations(
     const taiyin_bazi_chart* chart,
     uint32_t pillar_mask,
     uint32_t relation_mask,
@@ -429,7 +429,7 @@ TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_chart_relation
     size_t* out_count
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sha(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sha(
     const taiyin_bazi_chart* chart,
     taiyin_ganzhi target_ganzhi,
     int32_t target_kind,
@@ -441,7 +441,7 @@ TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sh
 // This variant enables the gender-dependent legacy Shen Sha rules. The
 // gender-neutral entry above remains available for callers that do not have a
 // gender profile.
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_bazi_collect_target_shen_sha_with_gender(
     const taiyin_bazi_chart* chart,
     taiyin_ganzhi target_ganzhi,
@@ -452,7 +452,7 @@ taiyin_bazi_collect_target_shen_sha_with_gender(
     size_t* out_word_count
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
     const taiyin_bazi_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* birth_jd_ut,
@@ -467,7 +467,7 @@ TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
 // Time boundaries form [start_jd_ut, end_jd_ut); virtual ages are an
 // inclusive traditional display range. out may be NULL only when capacity is
 // zero, which queries that count.
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_dayun(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_fill_dayun(
     const taiyin_bazi_context* context,
     const taiyin_calendar_datetime* birth_civil_time,
     const taiyin_bazi_chart* chart,
@@ -478,7 +478,7 @@ TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_dayun(
     size_t* out_count
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_segments(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_segments(
     uint8_t month_branch_id,
     int32_t table_model,
     taiyin_bazi_renyuan_siling_segment* out,
@@ -486,7 +486,7 @@ TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_seg
     size_t* out_count
 );
 
-TAIYIN_C_BAZI_API taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* instant_jd_ut,
     const taiyin_bazi_chart* chart,

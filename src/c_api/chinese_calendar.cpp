@@ -27,7 +27,7 @@ taiyin::chinese_calendar::ChineseCalendarConfig to_cpp_config(
     out.mode = source.mode;
     out.day_boundary_mode = source.day_boundary_mode;
     out.utc_offset_minutes = source.utc_offset_minutes;
-    out.reserved = 0;
+    out.pillar_historical_mode = source.pillar_historical_mode;
     out.calendar_meridian_deg = source.calendar_meridian_deg;
     return out;
 }
@@ -142,7 +142,7 @@ using SolarTermQueryFn = taiyin::Status (*) (
     taiyin::runtime::EphemerisEvalDiagnostic*
 );
 
-taiyin_status query_solar_term(
+taiyin_call_result query_solar_term(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -152,21 +152,23 @@ taiyin_status query_solar_term(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     taiyin::chinese_calendar::SolarTermEvent cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = query(
-        &context->value,
+        &tracked.value,
         taiyin_c_internal::to_cpp_split_jd(*jd_ut),
         &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_solar_term(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status query_specific_solar_term(
+taiyin_call_result query_specific_solar_term(
     const taiyin_chinese_calendar_context* context,
     int32_t civil_year,
     uint8_t term_index_from_vernal_equinox,
@@ -175,20 +177,22 @@ taiyin_status query_specific_solar_term(
 ) noexcept {
     if (!context || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     taiyin::chinese_calendar::SolarTermEvent cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::chinese_calendar::getSpecificJieQi(
-            &context->value,
+            &tracked.value,
             civil_year,
             term_index_from_vernal_equinox,
             &cpp_out,
             diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_solar_term(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // namespace
@@ -313,7 +317,7 @@ void TAIYIN_C_CALL taiyin_chinese_calendar_year_init(
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_context_create(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_context_create(
     const taiyin_context* astronomy,
     const taiyin_chinese_calendar_config* config,
     taiyin_chinese_calendar_context** out_context
@@ -321,11 +325,11 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_context_create(
     if (out_context) *out_context = 0;
     if (!astronomy || !taiyin_c_internal::valid_struct(config)
         || !out_context) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin_chinese_calendar_context* created =
         new (std::nothrow) taiyin_chinese_calendar_context();
-    if (!created) return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+    if (!created) return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
     const taiyin::chinese_calendar::ChineseCalendarConfig cpp_config =
         to_cpp_config(*config);
     const taiyin::Status status =
@@ -333,10 +337,10 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_context_create(
             &created->value, &astronomy->value, &cpp_config);
     if (status != taiyin::TAIYIN_STATUS_OK) {
         delete created;
-        return status;
+        return taiyin_c_internal::pack_call_result(status);
     }
     *out_context = created;
-    return taiyin::TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
 }
 
 void TAIYIN_C_CALL taiyin_chinese_calendar_context_destroy(
@@ -345,7 +349,7 @@ void TAIYIN_C_CALL taiyin_chinese_calendar_context_destroy(
     delete context;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_calc_year_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_calc_year_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_calendar_year* out,
@@ -354,20 +358,20 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_calc_year_ut(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     taiyin::chinese_calendar::ChineseCalendarYear cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::chinese_calendar::calcY(
-        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut), &cpp_out,
+        &tracked.value, taiyin_c_internal::to_cpp_split_jd(*jd_ut), &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_year(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_chinese_calendar_get_specific_jie_qi_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_specific_jie_qi_ut(
     const taiyin_chinese_calendar_context* context,
     int32_t civil_year,
     uint8_t term_index_from_vernal_equinox,
@@ -378,7 +382,7 @@ taiyin_chinese_calendar_get_specific_jie_qi_ut(
         context, civil_year, term_index_from_vernal_equinox, out, diagnostic);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_jie_qi_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_jie_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -389,7 +393,7 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_jie_qi_ut(
         &taiyin::chinese_calendar::getPrevJieQi);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_next_jie_qi_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_next_jie_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -400,7 +404,7 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_next_jie_qi_ut(
         &taiyin::chinese_calendar::getNextJieQi);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_jie_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_jie_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -411,7 +415,7 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_jie_ut(
         &taiyin::chinese_calendar::getPrevJie);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_next_jie_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_next_jie_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -422,7 +426,7 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_next_jie_ut(
         &taiyin::chinese_calendar::getNextJie);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_qi_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -433,7 +437,7 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_prev_qi_ut(
         &taiyin::chinese_calendar::getPrevQi);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_next_qi_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_next_qi_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_chinese_solar_term_event* out,
@@ -444,7 +448,7 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_next_qi_ut(
         &taiyin::chinese_calendar::getNextQi);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_solar(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_from_solar(
     const taiyin_chinese_calendar_context* context,
     const taiyin_solar_date* solar,
     taiyin_lunar_date* out,
@@ -453,21 +457,22 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_solar(
     if (!context || !taiyin_c_internal::valid_struct(solar)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     const taiyin::chinese_calendar::SolarDate cpp_solar =
         to_cpp_solar(*solar);
     taiyin::chinese_calendar::LunarDate cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::chinese_calendar::fromSolar(
-        &context->value, &cpp_solar, &cpp_out,
+        &tracked.value, &cpp_solar, &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_lunar(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_instant_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_from_instant_ut(
     const taiyin_chinese_calendar_context* context,
     const taiyin_split_julian_date* jd_ut,
     taiyin_lunar_date* out,
@@ -476,19 +481,20 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_instant_ut(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     taiyin::chinese_calendar::LunarDate cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::chinese_calendar::fromInstant(
-        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut), &cpp_out,
+        &tracked.value, taiyin_c_internal::to_cpp_split_jd(*jd_ut), &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_lunar(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_lunar(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_from_lunar(
     const taiyin_chinese_calendar_context* context,
     const taiyin_lunar_date* lunar,
     taiyin_solar_date* out,
@@ -497,21 +503,22 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_from_lunar(
     if (!context || !taiyin_c_internal::valid_struct(lunar)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     const taiyin::chinese_calendar::LunarDate cpp_lunar =
         to_cpp_lunar(*lunar);
     taiyin::chinese_calendar::SolarDate cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::chinese_calendar::fromLunar(
-        &context->value, &cpp_lunar, &cpp_out,
+        &tracked.value, &cpp_lunar, &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_solar(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_month_days(
+taiyin_call_result TAIYIN_C_CALL taiyin_chinese_calendar_get_month_days(
     const taiyin_chinese_calendar_context* context,
     int32_t lunar_year,
     uint8_t month,
@@ -521,15 +528,16 @@ taiyin_status TAIYIN_C_CALL taiyin_chinese_calendar_get_month_days(
 ) {
     if (!context || !out_day_count || is_leap > 1
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalendarContext tracked(context->value);
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::chinese_calendar::getLunarMonthNum(
-            &context->value, lunar_year, month, is_leap != 0,
+            &tracked.value, lunar_year, month, is_leap != 0,
             out_day_count, diagnostic ? &cpp_diagnostic : 0);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // extern "C"

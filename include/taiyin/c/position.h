@@ -111,7 +111,7 @@ typedef taiyin_status (TAIYIN_C_CALL *taiyin_native_state_evaluator_fn)(
  * unregistered or all native position evaluators are cleared.
  * A null state evaluator selects the runtime finite-difference fallback.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_register_native_position_evaluator(
     int32_t target_id,
     taiyin_native_position_evaluator_fn position_evaluator,
@@ -126,7 +126,7 @@ taiyin_register_native_position_evaluator(
  * Registration changes and runtime initialization must be serialized and must
  * not overlap calculations.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_unregister_native_position_evaluator(int32_t target_id);
 
 /*
@@ -139,7 +139,7 @@ taiyin_unregister_native_position_evaluator(int32_t target_id);
 TAIYIN_C_API void TAIYIN_C_CALL
 taiyin_clear_native_position_evaluators(void);
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_tdb(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_tdb(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tdb,
@@ -148,7 +148,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_tdb(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_tt(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tt,
@@ -156,7 +156,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_tt(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_ut(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut,
@@ -164,7 +164,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut_delta_t(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_ut_delta_t(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut1,
@@ -173,7 +173,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut_delta_t(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_utc(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_utc(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_calendar_datetime* datetime_utc,
@@ -182,7 +182,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_position_utc(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_ut(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -191,7 +191,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tdb(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_tdb(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -201,7 +201,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tdb(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_tt(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -210,7 +210,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tt(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut_delta_t(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_ut_delta_t(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -220,7 +220,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut_delta_t(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_utc(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_utc(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -230,7 +230,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_positions_utc(
     taiyin_ephemeris_diagnostic* diagnostics
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_tdb(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_tdb(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tdb,
@@ -239,7 +239,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_tdb(
     taiyin_cartesian_state* out_state,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_tt(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tt,
@@ -247,7 +247,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_tt(
     taiyin_cartesian_state* out_state,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_ut(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut,
@@ -255,7 +255,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut(
     taiyin_cartesian_state* out_state,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut_delta_t(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_ut_delta_t(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut1,
@@ -264,7 +264,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut_delta_t(
     taiyin_cartesian_state* out_state,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_state_utc(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_utc(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_calendar_datetime* datetime_utc,

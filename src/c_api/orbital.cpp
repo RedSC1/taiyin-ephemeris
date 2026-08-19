@@ -104,7 +104,7 @@ void copy_node(
 }
 
 template <typename CppResult, typename CResult, typename Eval, typename Copy>
-taiyin_status run(
+taiyin_call_result run(
     const taiyin_context* context,
     const taiyin_split_julian_date* required_jd,
     CResult* out,
@@ -115,15 +115,17 @@ taiyin_status run(
     if (!context || !taiyin_c_internal::valid_split_jd(required_jd)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     CppResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
-        eval(&cpp_out, diagnostic ? &cpp_diagnostic : 0);
+        eval(&tracked.value, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // namespace
@@ -162,7 +164,7 @@ void TAIYIN_C_CALL taiyin_body_node_search_result_init(
     value->struct_size = sizeof(*value);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_tt,
@@ -173,16 +175,17 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_tt(
 ) {
     return run<taiyin::runtime::BodyOsculatingOrbit>(
         context, jd_tt, out, diagnostic,
-        [&](taiyin::runtime::BodyOsculatingOrbit* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyOsculatingOrbit* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::calc_body_osculating_orbit_tt(
-                &context->value, body_id, cpp_date(jd_tt), reference_frame_id, flags,
+                calc, body_id, cpp_date(jd_tt), reference_frame_id, flags,
                 cpp_out, cpp_diagnostic);
         },
         &copy_orbit);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_ut,
@@ -193,16 +196,17 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_ut(
 ) {
     return run<taiyin::runtime::BodyOsculatingOrbit>(
         context, jd_ut, out, diagnostic,
-        [&](taiyin::runtime::BodyOsculatingOrbit* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyOsculatingOrbit* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::calc_body_osculating_orbit_ut(
-                &context->value, body_id, cpp_date(jd_ut), reference_frame_id, flags,
+                calc, body_id, cpp_date(jd_ut), reference_frame_id, flags,
                 cpp_out, cpp_diagnostic);
         },
         &copy_orbit);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_tt,
@@ -213,16 +217,17 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_tt(
 ) {
     return run<taiyin::runtime::BodyOrbitReferencePoints>(
         context, jd_tt, out, diagnostic,
-        [&](taiyin::runtime::BodyOrbitReferencePoints* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyOrbitReferencePoints* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::calc_body_orbit_reference_points_tt(
-                &context->value, body_id, cpp_date(jd_tt), reference_frame_id, flags,
+                calc, body_id, cpp_date(jd_tt), reference_frame_id, flags,
                 cpp_out, cpp_diagnostic);
         },
         &copy_reference_points);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_ut,
@@ -233,16 +238,17 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_ut(
 ) {
     return run<taiyin::runtime::BodyOrbitReferencePoints>(
         context, jd_ut, out, diagnostic,
-        [&](taiyin::runtime::BodyOrbitReferencePoints* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyOrbitReferencePoints* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::calc_body_orbit_reference_points_ut(
-                &context->value, body_id, cpp_date(jd_ut), reference_frame_id, flags,
+                calc, body_id, cpp_date(jd_ut), reference_frame_id, flags,
                 cpp_out, cpp_diagnostic);
         },
         &copy_reference_points);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_apsis_tt(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -253,17 +259,18 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_tt(
 ) {
     return run<taiyin::runtime::BodyApsisSearchResult>(
         context, jd_start_tt, out, diagnostic,
-        [&](taiyin::runtime::BodyApsisSearchResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyApsisSearchResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_body_apsis_tt(
-                &context->value, body_id,
+                calc, body_id,
                 static_cast<taiyin::runtime::BodyApsisKind>(kind),
                 cpp_date(jd_start_tt), flags, cpp_out, cpp_diagnostic);
         },
         &copy_apsis);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_apsis_ut(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -274,17 +281,18 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_ut(
 ) {
     return run<taiyin::runtime::BodyApsisSearchResult>(
         context, jd_start_ut, out, diagnostic,
-        [&](taiyin::runtime::BodyApsisSearchResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyApsisSearchResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_body_apsis_ut(
-                &context->value, body_id,
+                calc, body_id,
                 static_cast<taiyin::runtime::BodyApsisKind>(kind),
                 cpp_date(jd_start_ut), flags, cpp_out, cpp_diagnostic);
         },
         &copy_apsis);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_plane_node_tt(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -296,17 +304,18 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_tt(
 ) {
     return run<taiyin::runtime::BodyNodeSearchResult>(
         context, jd_start_tt, out, diagnostic,
-        [&](taiyin::runtime::BodyNodeSearchResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyNodeSearchResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_body_plane_node_tt(
-                &context->value, body_id,
+                calc, body_id,
                 static_cast<taiyin::runtime::BodyNodeKind>(kind), cpp_date(jd_start_tt),
                 reference_frame_id, flags, cpp_out, cpp_diagnostic);
         },
         &copy_node);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_plane_node_ut(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -318,10 +327,11 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_ut(
 ) {
     return run<taiyin::runtime::BodyNodeSearchResult>(
         context, jd_start_ut, out, diagnostic,
-        [&](taiyin::runtime::BodyNodeSearchResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::runtime::BodyNodeSearchResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_body_plane_node_ut(
-                &context->value, body_id,
+                calc, body_id,
                 static_cast<taiyin::runtime::BodyNodeKind>(kind), cpp_date(jd_start_ut),
                 reference_frame_id, flags, cpp_out, cpp_diagnostic);
         },

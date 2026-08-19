@@ -55,6 +55,46 @@ inline bool status_ok(Status status) noexcept {
     return status == TAIYIN_STATUS_OK;
 }
 
+// Execution facts mirrored by the C ABI's taiyin_result_flag enum.  These
+// are warning lights for abnormal-but-successful execution: they tell the
+// caller something non-default happened that the input flags cannot reveal,
+// and that the diagnostic record explains in detail.  They never alter the
+// Status itself.
+enum ResultFlag {
+    // Within one operation, two evaluations of the same (target, center)
+    // were served by different ephemeris source ids — a continuity hazard
+    // for iterative searches regardless of the direction of the switch.
+    kResultFlagFallbackOccurred = 1u << 0,
+    // A requested state's velocity/acceleration came from finite
+    // differences of a position-only evaluator.
+    kResultFlagNumericalDerivative = 1u << 1,
+    // A requested physical body had no COB/center-of-body correction in
+    // the selected route, so its system barycenter stood in for the body.
+    kResultFlagBarycenterApprox = 1u << 2,
+    // The preferred precise time-scale route (UTC/EOP) was unavailable and
+    // an estimated delta-T model produced the conversion.
+    kResultFlagTimeScaleFallback = 1u << 3,
+    // Historical civil-day assignment for new moons/solar terms (the
+    // historical profile's day table, not an ancient algorithm's instant)
+    // participated in constructing a Chinese lunar calendar result.  Only
+    // possible when the calendar context's historical mode is enabled.
+    kResultFlagHistoricalEventAssignmentApplied = 1u << 4,
+    // Era-specific historical calendar rules (year-start shifts, special
+    // month names, early-historical arrangements) actually modified a
+    // Chinese lunar calendar result.  Only possible in historical mode.
+    kResultFlagHistoricalCalendarRulesApplied = 1u << 5,
+    // A four-pillars (ganzhi) calculation assigned its solar-term boundary
+    // days using the historical profile.  Independent of lunar-calendar
+    // arrangement and gated by the ganzhi module's own historical switch.
+    kResultFlagHistoricalPillarTermsApplied = 1u << 6
+};
+
+inline void set_result_flag(uint32_t* result_flags, ResultFlag flag) noexcept {
+    if (result_flags) {
+        *result_flags |= flag;
+    }
+}
+
 inline const char* status_name(Status status) noexcept {
     switch (status) {
     case TAIYIN_STATUS_OK: return "TAIYIN_STATUS_OK";

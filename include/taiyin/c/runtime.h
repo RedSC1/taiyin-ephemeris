@@ -77,10 +77,10 @@ taiyin_runtime_registered_data_source_init(
  * as a fallback by a non-C-API C++ house model is retained until that dependent
  * C++ model is removed.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_runtime_initialize(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_runtime_initialize(
     const taiyin_runtime_config* config
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_runtime_add_source_path(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_runtime_add_source_path(
     const char* path
 );
 /* Setup-time selection override. `path_or_basename` may be the exact loaded
@@ -91,12 +91,12 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_runtime_add_source_path(
  * boundaries remain unchanged. Clearing an override restores the provider
  * default. Matching follows platform path-case convention: case-insensitive
  * on Windows, case-sensitive on POSIX. */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_runtime_set_ephemeris_source_priority(
     const char* path_or_basename,
     int32_t priority
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_runtime_clear_ephemeris_source_priority(
     const char* path_or_basename
 );
@@ -106,14 +106,14 @@ taiyin_runtime_clear_all_ephemeris_source_priorities(void);
  * Global EOP and lunar-limb mutations are setup-time operations. Do not call
  * them concurrently with calculations.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_runtime_load_eop_table(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_runtime_load_eop_table(
     const char* path
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_runtime_load_builtin_eop_table(void);
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_runtime_clear_eop_table(void);
 TAIYIN_C_API taiyin_bool TAIYIN_C_CALL taiyin_runtime_has_eop_table(void);
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_runtime_load_lunar_limb_model(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_runtime_load_lunar_limb_model(
     const char* path
 );
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_runtime_clear_lunar_limb_model(void);
@@ -128,7 +128,7 @@ taiyin_runtime_registered_data_source_count(void);
  * "builtin:semi-analytic" for built-in data. Call with source=NULL and
  * source_capacity=0 to query the required UTF-8 byte count, including NUL.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_runtime_get_registered_data_source(
     size_t index,
     taiyin_runtime_registered_data_source* out,

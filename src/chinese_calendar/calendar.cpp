@@ -80,9 +80,16 @@ bool valid_utc_offset_minutes(int32_t offset_minutes) noexcept {
     return offset_minutes >= -14 * 60 && offset_minutes <= 14 * 60;
 }
 
+bool valid_pillar_historical_mode(int32_t mode) noexcept {
+    return mode == TAIYIN_GANZHI_PILLAR_HISTORICAL_FOLLOW_CALENDAR
+        || mode == TAIYIN_GANZHI_PILLAR_HISTORICAL_OFF
+        || mode == TAIYIN_GANZHI_PILLAR_HISTORICAL_ON;
+}
+
 bool valid_config(const ChineseCalendarConfig& config) noexcept {
     if (!valid_calendar_mode(config.mode)
-        || !valid_day_boundary_mode(config.day_boundary_mode)) {
+        || !valid_day_boundary_mode(config.day_boundary_mode)
+        || !valid_pillar_historical_mode(config.pillar_historical_mode)) {
         return false;
     }
     if (config.day_boundary_mode
@@ -327,9 +334,16 @@ int64_t assigned_event_day(
     SplitJulianDate precise_jd_ut
 ) noexcept {
     if (uses_historical_china_profile(context)) {
+        const double estimate = split_julian_date_to_double(estimate_jd_ut);
+        std::size_t event_index = 0;
+        if (historical_profile_event_index(kind, estimate, &event_index)) {
+            runtime::set_operation_flag(
+                &context.astronomy,
+                kResultFlagHistoricalEventAssignmentApplied);
+        }
         return historical_calendar_day(
             kind,
-            split_julian_date_to_double(estimate_jd_ut),
+            estimate,
             precise_jd_ut,
             structure_day_offset(context));
     }
@@ -862,6 +876,11 @@ Status assign_months(
             uses_historical_china_profile(context)
             && day_count == 28
             && out->new_moons[i].civil_day_number == INT64_C(1807696);
+        if (jingchu_transition_month) {
+            runtime::set_operation_flag(
+                &context.astronomy,
+                kResultFlagHistoricalCalendarRulesApplied);
+        }
         if (!jingchu_transition_month && (day_count < 29 || day_count > 30)) {
             return TAIYIN_ERROR_INTERNAL;
         }
@@ -879,6 +898,9 @@ Status assign_months(
         / DAYS_PER_TROPICAL_YEAR)) + 2000;
     if (uses_historical_china_profile(context)
         && year_hint >= -721 && year_hint <= -104) {
+        runtime::set_operation_flag(
+            &context.astronomy,
+            kResultFlagHistoricalCalendarRulesApplied);
         return assign_early_historical_months(context, year_hint, out);
     }
 
@@ -903,20 +925,35 @@ Status assign_months(
         if ((first_day >= 1724360 && first_day <= 1729794)
             || (first_day >= 1807724 && first_day <= 1808699)) {
             month.month = month_number_from_sequence(month_sequence + 1);
+            runtime::set_operation_flag(
+                &context.astronomy,
+                kResultFlagHistoricalCalendarRulesApplied);
         } else if (first_day >= 1999349 && first_day <= 1999467) {
             month.month = month_number_from_sequence(month_sequence + 2);
+            runtime::set_operation_flag(
+                &context.astronomy,
+                kResultFlagHistoricalCalendarRulesApplied);
         } else if (first_day >= 1973067 && first_day <= 1977052) {
             if (month_sequence % 12 == 0) {
                 month.month = 1;
+                runtime::set_operation_flag(
+                    &context.astronomy,
+                    kResultFlagHistoricalCalendarRulesApplied);
             }
             if (month_sequence == 2) {
                 month.month = 1;
                 month.month_name = TAIYIN_CHINESE_MONTH_NAME_ALT_ONE;
+                runtime::set_operation_flag(
+                    &context.astronomy,
+                    kResultFlagHistoricalCalendarRulesApplied);
             }
         }
         if (first_day == 1729794 || first_day == 1808699) {
             month.month = 12;
             month.month_name = TAIYIN_CHINESE_MONTH_NAME_ALT_TWELVE;
+            runtime::set_operation_flag(
+                &context.astronomy,
+                kResultFlagHistoricalCalendarRulesApplied);
         }
         // At the Wu-Zetian and 761/762 restoration boundaries, the profile
         // contains two months in one lunar year with exactly the same written
@@ -925,6 +962,9 @@ Status assign_months(
         if (first_day == 1977112 || first_day == 1999526) {
             month.month_name =
                 TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME;
+            runtime::set_operation_flag(
+                &context.astronomy,
+                kResultFlagHistoricalCalendarRulesApplied);
         }
     }
     assign_lunar_years(out);
@@ -962,11 +1002,36 @@ Status calc_year_for_lunar_search(
 
 }  // namespace
 
+namespace internal {
+
+bool historical_profile_term_day(
+    const ChineseCalendarContext& context,
+    const SolarTermEvent& term,
+    int64_t* out_civil_day_number
+) noexcept {
+    if (!out_civil_day_number) return false;
+    const double estimate = split_julian_date_to_double(term.jd_ut);
+    std::size_t event_index = 0;
+    if (!historical_profile_event_index(
+            HistoricalSolarTerm, estimate, &event_index)) {
+        return false;
+    }
+    // The pillar historical switch is independent of the calendar
+    // arrangement mode, so answer from the profile even when this context
+    // does not use the historical profile for its own month layout.
+    *out_civil_day_number = historical_calendar_day(
+        HistoricalSolarTerm, estimate, term.jd_ut,
+        structure_day_offset(context));
+    return true;
+}
+
+}  // namespace internal
+
 ChineseCalendarConfig::ChineseCalendarConfig() noexcept
     : mode(TAIYIN_CHINESE_CALENDAR_CHINA_STANDARD_HISTORICAL),
       day_boundary_mode(TAIYIN_CHINESE_CALENDAR_FIXED_UTC_OFFSET),
       utc_offset_minutes(kModernChinaUtcOffsetMinutes),
-      reserved(0),
+      pillar_historical_mode(TAIYIN_GANZHI_PILLAR_HISTORICAL_FOLLOW_CALENDAR),
       calendar_meridian_deg(kModernChinaMeridianDeg) {}
 
 ChineseCalendarContext::ChineseCalendarContext() noexcept

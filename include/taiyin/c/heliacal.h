@@ -74,7 +74,7 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_heliacal_visibility_search_result_init(
     taiyin_heliacal_visibility_search_result* value
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_heliacal_visibility_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_heliacal_visibility_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_ut,
@@ -83,7 +83,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_heliacal_visibility_ut
     taiyin_heliacal_visibility_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_heliacal_visibility_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_heliacal_visibility_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_ut,
@@ -92,7 +92,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_heliacal_visibility_ut
     taiyin_heliacal_visibility_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_body_heliacal_visibility_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -104,7 +104,7 @@ taiyin_search_next_body_heliacal_visibility_ut(
     taiyin_heliacal_visibility_search_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_next_star_heliacal_visibility_ut(
     const taiyin_context* context,
     const char* star_key,

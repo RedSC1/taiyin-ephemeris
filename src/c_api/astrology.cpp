@@ -220,7 +220,7 @@ void copy_apsis(
 }
 
 template <typename CppOut, typename COut, typename Eval, typename Copy>
-taiyin_status run_with_diagnostic(
+taiyin_call_result run_with_diagnostic(
     const taiyin_context* context,
     COut* out,
     taiyin_ephemeris_diagnostic* diagnostic,
@@ -229,15 +229,17 @@ taiyin_status run_with_diagnostic(
 ) {
     if (!context || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     CppOut cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
-        eval(&cpp_out, diagnostic ? &cpp_diagnostic : nullptr);
+        eval(&tracked.value, &cpp_out, diagnostic ? &cpp_diagnostic : nullptr);
     if (status == taiyin::TAIYIN_STATUS_OK) copy(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // namespace
@@ -490,46 +492,50 @@ void TAIYIN_C_CALL taiyin_lunar_apsis_position_init(
     init_struct(value);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_ayanamsha_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_ayanamsha_tt(
     const taiyin_context* context, int32_t ayanamsha_id,
     const taiyin_split_julian_date* jd_tt, uint64_t flags,
     double* out_ayanamsha_rad
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(jd_tt)
         || !out_ayanamsha_rad) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::astrology::calc_ayanamsha_tt(
-        &context->value, ayanamsha_id,
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
+    const taiyin::Status status = taiyin::astrology::calc_ayanamsha_tt(
+        &tracked.value, ayanamsha_id,
         taiyin_c_internal::to_cpp_split_jd(*jd_tt), flags,
         out_ayanamsha_rad);
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // extern "C"
 
 template <typename Eval>
-taiyin_status calc_sidereal(
+taiyin_call_result calc_sidereal(
     const taiyin_context* context, int32_t ayanamsha_id,
     taiyin_sidereal_position* out,
     taiyin_ephemeris_diagnostic* diagnostic, const Eval& eval
 ) {
     if (!context || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::astrology::SiderealPosition cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = eval(
-        &context->value, ayanamsha_id, &cpp_out,
+        &tracked.value, ayanamsha_id, &cpp_out,
         diagnostic ? &cpp_diagnostic : nullptr);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_sidereal(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 extern "C" {
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_position_tt(
     const taiyin_context* context, int32_t ayanamsha_id,
     int32_t body_id, const taiyin_split_julian_date* jd_tt,
     uint64_t flags, const taiyin_split_julian_date* reference_epoch_jd,
@@ -539,7 +545,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_tt(
     if (!taiyin_c_internal::valid_split_jd(jd_tt)
         || (reference_epoch_jd
             && !taiyin_c_internal::valid_split_jd(reference_epoch_jd))) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_tt =
         taiyin_c_internal::to_cpp_split_jd(*jd_tt);
@@ -557,7 +563,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_tt(
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_position_ut(
     const taiyin_context* context, int32_t ayanamsha_id,
     int32_t body_id, const taiyin_split_julian_date* jd_ut,
     uint64_t flags, const taiyin_split_julian_date* reference_epoch_jd,
@@ -567,7 +573,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_ut(
     if (!taiyin_c_internal::valid_split_jd(jd_ut)
         || (reference_epoch_jd
             && !taiyin_c_internal::valid_split_jd(reference_epoch_jd))) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_ut =
         taiyin_c_internal::to_cpp_split_jd(*jd_ut);
@@ -588,7 +594,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_ut(
 }  // extern "C"
 
 template <typename Eval>
-taiyin_status calc_sidereal_coordinates(
+taiyin_call_result calc_sidereal_coordinates(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     taiyin_sidereal_coordinates* out,
@@ -597,23 +603,25 @@ taiyin_status calc_sidereal_coordinates(
 ) {
     if (!context || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::astrology::SiderealCoordinates cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = eval(
-        &context->value, ayanamsha_id, &cpp_out,
+        &tracked.value, ayanamsha_id, &cpp_out,
         diagnostic ? &cpp_diagnostic : nullptr);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         copy_sidereal_coordinates(cpp_out, out);
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 extern "C" {
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_tt(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     int32_t body_id,
@@ -626,7 +634,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_tt(
     if (!taiyin_c_internal::valid_split_jd(jd_tt)
         || (reference_epoch_jd
             && !taiyin_c_internal::valid_split_jd(reference_epoch_jd))) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_tt =
         taiyin_c_internal::to_cpp_split_jd(*jd_tt);
@@ -644,7 +652,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_tt(
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_ut(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     int32_t body_id,
@@ -657,7 +665,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_ut(
     if (!taiyin_c_internal::valid_split_jd(jd_ut)
         || (reference_epoch_jd
             && !taiyin_c_internal::valid_split_jd(reference_epoch_jd))) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_ut =
         taiyin_c_internal::to_cpp_split_jd(*jd_ut);
@@ -675,60 +683,62 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_ut(
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_houses_from_armc(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_houses_from_armc(
     double armc_rad, double observer_latitude_rad, double true_obliquity_rad,
     int32_t house_system_id, taiyin_house_result* out
 ) {
     if (!taiyin_c_internal::valid_struct(out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::astrology::HouseResult cpp_out;
     const taiyin::Status status = taiyin::astrology::calc_houses_from_armc(
         armc_rad, observer_latitude_rad, true_obliquity_rad, house_system_id,
         &cpp_out);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_house(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_houses_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_houses_ut(
     const taiyin_context* context, const taiyin_split_julian_date* jd_ut,
     int32_t house_system_id, taiyin_house_result* out
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !taiyin_c_internal::valid_struct(out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::astrology::HouseResult cpp_out;
     const taiyin::Status status = taiyin::astrology::calc_houses_ut(
-        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
+        &tracked.value, taiyin_c_internal::to_cpp_split_jd(*jd_ut),
         house_system_id, &cpp_out);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_house(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_houses_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_houses_tt(
     const taiyin_context* context, const taiyin_split_julian_date* jd_tt,
     int32_t house_system_id, taiyin_house_result* out
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(jd_tt)
         || !taiyin_c_internal::valid_struct(out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::astrology::HouseResult cpp_out;
     const taiyin::Status status = taiyin::astrology::calc_houses_tt(
-        &context->value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
+        &tracked.value, taiyin_c_internal::to_cpp_split_jd(*jd_tt),
         house_system_id, &cpp_out);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_house(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_house_position_from_longitude(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_house_position_from_longitude(
     const taiyin_house_result* houses, double ecliptic_longitude_rad,
     taiyin_house_position_result* out
 ) {
     if (!taiyin_c_internal::valid_struct(houses)
         || !taiyin_c_internal::valid_struct(out)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::astrology::HouseResult cpp_houses = to_cpp_house(*houses);
     taiyin::astrology::HousePositionResult cpp_out;
@@ -740,7 +750,7 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_house_position_from_longitude(
         out->fraction = cpp_out.fraction;
         out->continuous_house_position = cpp_out.continuous_house_position;
     }
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
 taiyin_bool TAIYIN_C_CALL taiyin_has_house_system_model(int32_t model_id) {
@@ -751,82 +761,82 @@ taiyin_bool TAIYIN_C_CALL taiyin_has_ayanamsha_model(int32_t model_id) {
     return taiyin::astrology::has_ayanamsha_model(model_id) ? 1u : 0u;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_astrology_module_shutdown(void) {
-    return TAIYIN_ERROR_UNSUPPORTED;
+taiyin_call_result TAIYIN_C_CALL taiyin_astrology_module_shutdown(void) {
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_register_ayanamsha_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_register_ayanamsha_model(
     int32_t model_id,
     taiyin_ayanamsha_evaluator_fn evaluator,
     int32_t reference_precession_model_id,
     void* user_data
 ) {
-    return register_ayanamsha_model_impl(
-        model_id, evaluator, reference_precession_model_id, user_data, nullptr);
+    return taiyin_c_internal::pack_call_result(register_ayanamsha_model_impl(
+        model_id, evaluator, reference_precession_model_id, user_data, nullptr));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_register_house_system_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_register_house_system_model(
     int32_t model_id,
     taiyin_house_system_evaluator_fn evaluator,
     int32_t fallback_model_id,
     void* user_data
 ) {
-    return register_house_system_model_impl(
-        model_id, evaluator, fallback_model_id, user_data, nullptr);
+    return taiyin_c_internal::pack_call_result(register_house_system_model_impl(
+        model_id, evaluator, fallback_model_id, user_data, nullptr));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_register_ayanamsha_model_with_token(
+taiyin_call_result TAIYIN_C_CALL taiyin_register_ayanamsha_model_with_token(
     int32_t model_id,
     taiyin_ayanamsha_evaluator_fn evaluator,
     int32_t reference_precession_model_id,
     void* user_data,
     uint64_t* out_registration_token
 ) {
-    if (!out_registration_token) return taiyin_c_internal::invalid_argument();
-    return register_ayanamsha_model_impl(
+    if (!out_registration_token) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
+    return taiyin_c_internal::pack_call_result(register_ayanamsha_model_impl(
         model_id, evaluator, reference_precession_model_id, user_data,
-        out_registration_token);
+        out_registration_token));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_register_house_system_model_with_token(
+taiyin_call_result TAIYIN_C_CALL taiyin_register_house_system_model_with_token(
     int32_t model_id,
     taiyin_house_system_evaluator_fn evaluator,
     int32_t fallback_model_id,
     void* user_data,
     uint64_t* out_registration_token
 ) {
-    if (!out_registration_token) return taiyin_c_internal::invalid_argument();
-    return register_house_system_model_impl(
+    if (!out_registration_token) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
+    return taiyin_c_internal::pack_call_result(register_house_system_model_impl(
         model_id, evaluator, fallback_model_id, user_data,
-        out_registration_token);
+        out_registration_token));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_unregister_ayanamsha_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_unregister_ayanamsha_model(
     int32_t model_id
 ) {
-    return unregister_ayanamsha_model_impl(model_id, 0, false);
+    return taiyin_c_internal::pack_call_result(unregister_ayanamsha_model_impl(model_id, 0, false));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_unregister_house_system_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_unregister_house_system_model(
     int32_t model_id
 ) {
-    return unregister_house_system_model_impl(model_id, 0, false);
+    return taiyin_c_internal::pack_call_result(unregister_house_system_model_impl(model_id, 0, false));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_unregister_ayanamsha_model_with_token(
+taiyin_call_result TAIYIN_C_CALL taiyin_unregister_ayanamsha_model_with_token(
     int32_t model_id,
     uint64_t registration_token
 ) {
-    return unregister_ayanamsha_model_impl(
-        model_id, registration_token, true);
+    return taiyin_c_internal::pack_call_result(unregister_ayanamsha_model_impl(
+        model_id, registration_token, true));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_unregister_house_system_model_with_token(
+taiyin_call_result TAIYIN_C_CALL taiyin_unregister_house_system_model_with_token(
     int32_t model_id,
     uint64_t registration_token
 ) {
-    return unregister_house_system_model_impl(
-        model_id, registration_token, true);
+    return taiyin_c_internal::pack_call_result(unregister_house_system_model_impl(
+        model_id, registration_token, true));
 }
 
 void TAIYIN_C_CALL taiyin_clear_ayanamsha_models(void) {
@@ -850,19 +860,20 @@ void TAIYIN_C_CALL taiyin_clear_house_system_models(void) {
 }
 
 #define TAIYIN_NODE_WRAPPER(c_name, cpp_name) \
-    taiyin_status TAIYIN_C_CALL c_name( \
+    taiyin_call_result TAIYIN_C_CALL c_name( \
         const taiyin_context* context, const taiyin_split_julian_date* jd, \
         int32_t kind, \
         uint32_t flags, taiyin_lunar_node_position* out, \
         taiyin_ephemeris_diagnostic* diagnostic) { \
         if (!taiyin_c_internal::valid_split_jd(jd)) \
-            return taiyin_c_internal::invalid_argument(); \
+            return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument()); \
         return run_with_diagnostic<taiyin::astrology::LunarNodePosition>( \
             context, out, diagnostic, \
-            [&](taiyin::astrology::LunarNodePosition* cpp_out, \
+            [&](const taiyin::runtime::NativeCalcContext* calc, \
+                taiyin::astrology::LunarNodePosition* cpp_out, \
                 taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) { \
                 return taiyin::astrology::cpp_name( \
-                    &context->value, taiyin_c_internal::to_cpp_split_jd(*jd), \
+                    calc, taiyin_c_internal::to_cpp_split_jd(*jd), \
                     static_cast<taiyin::astrology::LunarNodeKind>(kind), \
                     flags, cpp_out, cpp_diagnostic); \
             }, copy_node); \
@@ -876,19 +887,20 @@ TAIYIN_NODE_WRAPPER(taiyin_calc_lunar_mean_node_ut, calc_lunar_mean_node_ut)
 #undef TAIYIN_NODE_WRAPPER
 
 #define TAIYIN_APSIS_WRAPPER(c_name, cpp_name) \
-    taiyin_status TAIYIN_C_CALL c_name( \
+    taiyin_call_result TAIYIN_C_CALL c_name( \
         const taiyin_context* context, const taiyin_split_julian_date* jd, \
         uint32_t flags, \
         taiyin_lunar_apsis_position* out, \
         taiyin_ephemeris_diagnostic* diagnostic) { \
         if (!taiyin_c_internal::valid_split_jd(jd)) \
-            return taiyin_c_internal::invalid_argument(); \
+            return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument()); \
         return run_with_diagnostic<taiyin::astrology::LunarApsisPosition>( \
             context, out, diagnostic, \
-            [&](taiyin::astrology::LunarApsisPosition* cpp_out, \
+            [&](const taiyin::runtime::NativeCalcContext* calc, \
+                taiyin::astrology::LunarApsisPosition* cpp_out, \
                 taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) { \
                 return taiyin::astrology::cpp_name( \
-                    &context->value, taiyin_c_internal::to_cpp_split_jd(*jd), \
+                    calc, taiyin_c_internal::to_cpp_split_jd(*jd), \
                     flags, cpp_out, cpp_diagnostic); \
             }, copy_apsis); \
     }
@@ -902,8 +914,8 @@ TAIYIN_APSIS_WRAPPER(taiyin_calc_lunar_fitted_apogee_ut, calc_lunar_fitted_apoge
 
 #undef TAIYIN_APSIS_WRAPPER
 
-taiyin_status TAIYIN_C_CALL taiyin_register_builtin_astrology_targets(void) {
-    return taiyin::astrology::register_builtin_astrology_targets();
+taiyin_call_result TAIYIN_C_CALL taiyin_register_builtin_astrology_targets(void) {
+    return taiyin_c_internal::pack_call_result(taiyin::astrology::register_builtin_astrology_targets());
 }
 
 }  // extern "C"

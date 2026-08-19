@@ -404,7 +404,8 @@ NativeCalcContext::NativeCalcContext() noexcept
       route_rules(0),
       apparent_matrix_cache(),
       time_scale_cache(),
-      ephemeris_state_cache() {
+      ephemeris_state_cache(),
+      source_tracker(0) {
     apparent_options.model_context = &model_context;
     apparent_options.flags |= TAIYIN_APPARENT_ABERRATION
         | TAIYIN_APPARENT_DEFLECTION;

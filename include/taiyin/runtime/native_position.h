@@ -71,6 +71,17 @@ bool register_global_native_position_evaluator(
 // currently registered. Must not overlap calculations.
 bool unregister_global_native_position_evaluator(int target_id) noexcept;
 
+// The optional out_result_flags parameter (all entry points below) receives
+// per-call ResultFlag execution facts: kResultFlagFallbackOccurred when the
+// same (target, center) was served by different ephemeris source ids within
+// one search operation, kResultFlagNumericalDerivative when a state's
+// velocity/acceleration came from finite differences of a position-only
+// evaluator, kResultFlagBarycenterApprox when a physical body had no COB
+// correction and its system barycenter stood in, and
+// kResultFlagTimeScaleFallback when UTC resolution used an estimated delta-T
+// model.  Batch entry points OR-merge the flags of all items into the
+// single word; per-item detail belongs to the per-item diagnostics.  The
+// parameter is independent of the diagnostic and may be null.
 Status calc_position_tdb(
     const NativeCalcContext* context,
     int target_id,
@@ -78,7 +89,8 @@ Status calc_position_tdb(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_position_tt(
@@ -87,7 +99,8 @@ Status calc_position_tt(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_position_ut_delta_t(
@@ -97,7 +110,8 @@ Status calc_position_ut_delta_t(
     double delta_t_seconds,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_position_ut(
@@ -106,7 +120,8 @@ Status calc_position_ut(
     const SplitJulianDate& jd_ut,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_position_utc(
@@ -115,7 +130,8 @@ Status calc_position_utc(
     const CalendarDateTime& datetime_utc,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_positions_tdb(
@@ -126,7 +142,8 @@ Status calc_positions_tdb(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     double* out,
-    EphemerisEvalDiagnostic* diagnostics
+    EphemerisEvalDiagnostic* diagnostics,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_positions_tt(
@@ -136,7 +153,8 @@ Status calc_positions_tt(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     double* out,
-    EphemerisEvalDiagnostic* diagnostics
+    EphemerisEvalDiagnostic* diagnostics,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_positions_ut_delta_t(
@@ -147,7 +165,8 @@ Status calc_positions_ut_delta_t(
     double delta_t_seconds,
     uint32_t flags,
     double* out,
-    EphemerisEvalDiagnostic* diagnostics
+    EphemerisEvalDiagnostic* diagnostics,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_positions_ut(
@@ -157,7 +176,8 @@ Status calc_positions_ut(
     const SplitJulianDate& jd_ut,
     uint32_t flags,
     double* out,
-    EphemerisEvalDiagnostic* diagnostics
+    EphemerisEvalDiagnostic* diagnostics,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_positions_utc(
@@ -167,7 +187,8 @@ Status calc_positions_utc(
     const CalendarDateTime& datetime_utc,
     uint32_t flags,
     double* out,
-    EphemerisEvalDiagnostic* diagnostics
+    EphemerisEvalDiagnostic* diagnostics,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 // Returns Cartesian position, velocity, and acceleration in the same resolved
@@ -180,7 +201,8 @@ Status calc_state_tdb(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_state_tt(
@@ -189,7 +211,8 @@ Status calc_state_tt(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_state_ut_delta_t(
@@ -199,7 +222,8 @@ Status calc_state_ut_delta_t(
     double delta_t_seconds,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_state_ut(
@@ -208,7 +232,8 @@ Status calc_state_ut(
     const SplitJulianDate& jd_ut,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_state_utc(
@@ -217,7 +242,8 @@ Status calc_state_utc(
     const CalendarDateTime& datetime_utc,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_position_tdb(
@@ -226,7 +252,8 @@ Status calc_default_position_tdb(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_position_tt(
@@ -234,7 +261,8 @@ Status calc_default_position_tt(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_position_ut_delta_t(
@@ -243,7 +271,8 @@ Status calc_default_position_ut_delta_t(
     double delta_t_seconds,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_position_ut(
@@ -251,7 +280,8 @@ Status calc_default_position_ut(
     const SplitJulianDate& jd_ut,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_position_utc(
@@ -259,7 +289,8 @@ Status calc_default_position_utc(
     const CalendarDateTime& datetime_utc,
     uint32_t flags,
     double out[6],
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_state_tdb(
@@ -268,7 +299,8 @@ Status calc_default_state_tdb(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_state_tt(
@@ -276,7 +308,8 @@ Status calc_default_state_tt(
     const SplitJulianDate& jd_tt,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_state_ut_delta_t(
@@ -285,7 +318,8 @@ Status calc_default_state_ut_delta_t(
     double delta_t_seconds,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_state_ut(
@@ -293,7 +327,8 @@ Status calc_default_state_ut(
     const SplitJulianDate& jd_ut,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 Status calc_default_state_utc(
@@ -301,7 +336,8 @@ Status calc_default_state_utc(
     const CalendarDateTime& datetime_utc,
     uint32_t flags,
     CartesianState* out,
-    EphemerisEvalDiagnostic* diagnostic
+    EphemerisEvalDiagnostic* diagnostic,
+    uint32_t* out_result_flags = 0
 ) noexcept;
 
 }  // namespace runtime

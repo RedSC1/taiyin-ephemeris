@@ -156,73 +156,73 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_apparent_config_init(
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_apparent_deflector_init(
     taiyin_apparent_deflector* deflector
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_create(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_create(
     taiyin_context** out_context
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_clone(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_clone(
     const taiyin_context* source,
     taiyin_context** out_context
 );
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_context_destroy(taiyin_context* context);
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_reset(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_reset(
     taiyin_context* context
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_observer_location(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_observer_location(
     taiyin_context* context,
     const taiyin_observer_location* location
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_clear_observer_location(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_clear_observer_location(
     taiyin_context* context
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_atmosphere(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_atmosphere(
     taiyin_context* context,
     const taiyin_atmosphere* atmosphere
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_atmosphere_pressure_temperature(
     taiyin_context* context,
     double pressure_mbar,
     double temperature_celsius
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_standard_atmosphere(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_standard_atmosphere(
     taiyin_context* context
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_atmosphere_policy(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_atmosphere_policy(
     taiyin_context* context,
     uint32_t flags
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_meteorological_range_km(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_meteorological_range_km(
     taiyin_context* context,
     double range_km
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_geocentric_observer(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_geocentric_observer(
     taiyin_context* context,
     int32_t observer_id,
     int32_t center_id
 );
 /* Topocentric observer setters are Earth-only in the 1.0 API and return
  * TAIYIN_ERROR_UNSUPPORTED when the context observer is not Earth. */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_topocentric_observer_offset(
     taiyin_context* context,
     const taiyin_cartesian_state* observer_offset
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_simple_topocentric_observer(
     taiyin_context* context,
     const taiyin_observer_location* location,
     const taiyin_split_julian_date* jd_ut1,
     const taiyin_split_julian_date* jd_tt
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_precise_topocentric_observer(
     taiyin_context* context,
     const taiyin_observer_location* location,
     const taiyin_split_julian_date* jd_utc,
     const taiyin_split_julian_date* jd_tt
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_route_rule(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_route_rule(
     taiyin_context* context,
     uint64_t route_rule_id
 );
@@ -231,29 +231,29 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_route_rule(
  * out-of-range UTC/EOP data may fall back to approximate UT1 plus Delta-T.
  * This setting never changes the semantics of a *_ut entry point.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_allow_utc_out_of_range_estimate(
     taiyin_context* context,
     taiyin_bool allow
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_delta_t_model(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_delta_t_model(
     taiyin_context* context,
     int32_t delta_t_model_id,
     int32_t ephemeris_family_id
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_tdb_model(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_tdb_model(
     taiyin_context* context,
     int32_t tdb_model_id
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_astro_models(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_astro_models(
     taiyin_context* context,
     const taiyin_astro_model_config* config
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_apparent_config(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_apparent_config(
     taiyin_context* context,
     const taiyin_apparent_config* config
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_celestial_pole_offset(
     taiyin_context* context,
     double dx_rad,
@@ -261,40 +261,40 @@ taiyin_context_set_celestial_pole_offset(
     double dx_rate_rad_per_day,
     double dy_rate_rad_per_day
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_refraction_model(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_refraction_model(
     taiyin_context* context,
     int32_t refraction_model_id
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_heliacal_visibility_model(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_heliacal_visibility_model(
     taiyin_context* context,
     int32_t model_id
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_use_solar_deflector(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_use_solar_deflector(
     taiyin_context* context
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_clear_deflectors(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_clear_deflectors(
     taiyin_context* context
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_deflectors(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_deflectors(
     taiyin_context* context,
     const taiyin_apparent_deflector* deflectors,
     size_t deflector_count,
     int32_t solar_deflector_index
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_context_set_light_time_iteration(
     taiyin_context* context,
     int32_t max_iterations,
     double tolerance_days
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_enable_shapiro_delay(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_enable_shapiro_delay(
     taiyin_context* context,
     int32_t shapiro_delay_model_id
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_disable_shapiro_delay(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_disable_shapiro_delay(
     taiyin_context* context
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_context_set_eclipse_models(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_context_set_eclipse_models(
     taiyin_context* context,
     int32_t shadow_model_id,
     int32_t moon_radius_model_id

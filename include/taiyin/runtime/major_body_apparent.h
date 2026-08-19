@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 namespace taiyin {
+struct SourceSwitchTracker;
 namespace runtime {
 
 const size_t TAIYIN_MAJOR_BODY_COUNT = 10;
@@ -95,6 +96,8 @@ struct MajorBodyApparentBatchRequest {
     // preserving the caller's requested physical target in diagnostics.
     uint32_t position_flags;
     const ApparentOptions* options;
+    // Optional search-operation tracker forwarded into state evaluations.
+    SourceSwitchTracker* source_tracker;
 
     MajorBodyApparentBatchRequest() noexcept;
 };

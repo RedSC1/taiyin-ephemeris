@@ -11,7 +11,7 @@ not consume the C++ API. Include the umbrella header:
 
 The installed shared library is named `taiyin` on platforms with versioned
 SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). Windows includes the ABI in the
-runtime and import-library name, for example `taiyin-8.dll` and `taiyin-8.lib`.
+runtime and import-library name, for example `taiyin-9.dll` and `taiyin-9.lib`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
 the independent semantic library version; the current preview is
@@ -92,13 +92,15 @@ The install and CPack binary archives deliberately do not include OPM2, TSC1,
 TLL1, or other runtime data packs. Deploy a selected data root beside the
 application, or register separately distributed data files at runtime.
 
-The C ABI version is `8`. Version 3 replaced scalar Julian-day arguments and
+The C ABI version is `9`. Version 3 replaced scalar Julian-day arguments and
 time-bearing result fields with `taiyin_split_julian_date`. Version 5 enlarged
 `taiyin_bazi_context_config` for qi-yun and da-yun policy. Version 7 adds the
 planet-transit flag word and establishes the low-position/high-option layering
 for observed flags. Version 8 replaces the three-state time-scale policy with
 an explicit UTC out-of-range estimate flag; `*_ut` entry points now have fixed
-UT1 semantics. Callers compiled against an earlier ABI must be
+UT1 semantics. Version 9 returns `taiyin_call_result` (packed status plus
+result flags) from every status-returning function. Callers compiled against
+an earlier ABI must be
 rebuilt. Taiyin follows semantic versioning
 for the library: compatible additions retain the ABI major, while removing or
 changing an existing C symbol or structure contract requires a new ABI major.
@@ -126,10 +128,59 @@ does not participate in version ordering or ABI compatibility checks.
 - Functions returning arrays use `capacity` plus `out_count`. A count-only call
   uses a null output pointer and zero capacity when the declaration permits it.
 
-Callers must treat result values as valid only when a function returns
-`TAIYIN_STATUS_OK`. Structured-result wrappers avoid committing failed
-temporary results. Diagnostics are updated on both success and failure when
-supplied.
+Status-returning functions return `taiyin_call_result`, a packed 64-bit
+value: the high 32 bits hold the `taiyin_status` code and the low 32 bits
+hold per-call result flags. `TAIYIN_STATUS_OK` is zero and every error code
+is negative, so a non-negative return value means success — test with
+`result >= 0` or `taiyin_call_result_ok(result)`, never with
+`result == TAIYIN_STATUS_OK`, because successful calls may still carry
+flags. Decode the parts with `taiyin_call_result_status()` and
+`taiyin_call_result_flags()`; bindings must use these helpers (or the exact
+same shift/mask layout) rather than assuming the flags word is zero.
+
+Result flags report direct execution facts, independent of the diagnostic
+record. They are warning lights for abnormal-but-successful execution; the
+diagnostic record explains the details:
+
+- `TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED` — within one search operation
+  (eclipse, solar-term, new-moon, or similar iterative solving), two
+  evaluations of the same `(target, center)` pair were served by different
+  ephemeris source ids. This is a continuity hazard for the bracketing
+  solver regardless of which source is more precise. Single position calls
+  cannot switch sources and never report this flag.
+- `TAIYIN_RESULT_FLAG_NUMERICAL_DERIVATIVE` — velocity/acceleration came
+  from finite differences of a position-only evaluator rather than an exact
+  state evaluator.
+- `TAIYIN_RESULT_FLAG_BARYCENTER_APPROX` — a requested physical body had no
+  COB/center-of-body correction in the selected route, so its system
+  barycenter stood in for the body. Routine for ancient dates; reported on
+  its own bit so it does not drown out `FALLBACK_OCCURRED`.
+- `TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK` — the preferred precise
+  time-scale route (UTC leap seconds / EOP) was unavailable and an
+  estimated Delta-T model produced the conversion.
+- `TAIYIN_RESULT_FLAG_HISTORICAL_EVENT_ASSIGNMENT_APPLIED` — the historical
+  correction profile supplied the civil-day assignment of a new moon or
+  solar term used to arrange the calendar. Only reported when the context
+  runs in the historical calendar mode; purely astronomical queries never
+  set it.
+- `TAIYIN_RESULT_FLAG_HISTORICAL_CALENDAR_RULES_APPLIED` — a special-era
+  calendar rule (year-start change, month naming, early-history branch)
+  actually changed the arranged result. Only reported in historical mode,
+  and only when such a rule fired.
+- `TAIYIN_RESULT_FLAG_HISTORICAL_PILLAR_TERMS_APPLIED` — four-pillars
+  solar-term boundaries came from the historical correction profile (each
+  boundary normalized to the assigned civil day's 00:00 UTC+08) rather
+  than modern-ephemeris instants. Gated by the four-pillars' own
+  historical switch, independent of the calendar arrangement mode.
+
+Flags are kept on failure as well, so a negative return can still describe
+which paths were tried. Batch calls OR-merge the flags of all items into a
+single word; per-item detail stays in the per-item diagnostics.
+
+Callers must treat result values as valid only when a function returns a
+non-negative `taiyin_call_result`. Structured-result wrappers avoid
+committing failed temporary results. Diagnostics are updated on both
+success and failure when supplied.
 
 ## Threading And Callbacks
 
@@ -292,7 +343,7 @@ for (size_t i = 0; i < count; ++i) {
     taiyin_runtime_registered_data_source_init(&info);
     if (taiyin_runtime_get_registered_data_source(
             i, &info, source, sizeof(source), &required)
-            == TAIYIN_STATUS_OK) {
+            >= 0) {
         printf("%s: %llu items\n", source,
                (unsigned long long)info.item_count);
     }
@@ -310,17 +361,17 @@ taiyin_runtime_config config;
 taiyin_runtime_config_init(&config);
 config.data_root = "/path/to/taiyin-data";
 
-if (taiyin_runtime_initialize(&config) != TAIYIN_STATUS_OK) {
+if (taiyin_runtime_initialize(&config) < 0) {
     return 1;
 }
 
 taiyin_context* context = NULL;
-if (taiyin_context_create(&context) != TAIYIN_STATUS_OK) {
+if (taiyin_context_create(&context) < 0) {
     return 1;
 }
 
 double moon[6];
-taiyin_status status = taiyin_calc_position_tt(
+taiyin_call_result result = taiyin_calc_position_tt(
     context,
     TAIYIN_BODY_MOON,
     2460409.0,
@@ -329,5 +380,5 @@ taiyin_status status = taiyin_calc_position_tt(
     NULL);
 
 taiyin_context_destroy(context);
-return status == TAIYIN_STATUS_OK ? 0 : 1;
+return result >= 0 ? 0 : 1;
 ```

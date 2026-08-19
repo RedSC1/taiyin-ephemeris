@@ -295,29 +295,29 @@ void TAIYIN_C_CALL taiyin_bazi_renyuan_siling_result_init(
         std::numeric_limits<double>::quiet_NaN();
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_context_create(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_context_create(
     const taiyin_bazi_context_config* bazi_config,
     taiyin_bazi_context** out_context
 ) {
     if (out_context) *out_context = 0;
 #ifndef TAIYIN_C_HAS_BAZI_EXTENSION
     (void)bazi_config;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(bazi_config) || !out_context) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin_bazi_context* created = new (std::nothrow) taiyin_bazi_context();
-    if (!created) return TAIYIN_ERROR_OUT_OF_MEMORY;
+    if (!created) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     const taiyin::bazi::BaziContextConfig config = to_cpp_config(*bazi_config);
     const taiyin::Status status = taiyin::bazi::initialize_context(
         &created->value, &config);
     if (status != taiyin::TAIYIN_STATUS_OK) {
         delete created;
-        return status;
+        return taiyin_c_internal::pack_call_result(status);
     }
     *out_context = created;
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 #endif
 }
 
@@ -329,20 +329,20 @@ void TAIYIN_C_CALL taiyin_bazi_context_destroy(taiyin_bazi_context* context) {
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_get_kong_wang(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_kong_wang(
     taiyin_ganzhi value,
     uint8_t out_branches[2]
 ) {
 #ifndef TAIYIN_C_HAS_BAZI_EXTENSION
     (void)value;
     (void)out_branches;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::get_kong_wang(value, out_branches);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::get_kong_wang(value, out_branches));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_get_ten_god(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_ten_god(
     uint8_t day_stem_id,
     uint8_t target_stem_id,
     uint8_t* out_ten_god_id
@@ -351,14 +351,14 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_get_ten_god(
     (void)day_stem_id;
     (void)target_stem_id;
     (void)out_ten_god_id;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::get_ten_god(
-        day_stem_id, target_stem_id, out_ten_god_id);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::get_ten_god(
+        day_stem_id, target_stem_id, out_ten_god_id));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_get_hidden_stems(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_hidden_stems(
     uint8_t branch_id,
     uint8_t out_stems[TAIYIN_BAZI_HIDDEN_STEM_CAPACITY],
     uint8_t* out_count
@@ -367,13 +367,13 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_get_hidden_stems(
     (void)branch_id;
     (void)out_stems;
     (void)out_count;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::get_hidden_stems(branch_id, out_stems, out_count);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::get_hidden_stems(branch_id, out_stems, out_count));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_stem_relation(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_stem_relation(
     uint8_t stem_a,
     uint8_t stem_b,
     uint32_t* out_flags,
@@ -384,14 +384,14 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_stem_relation(
     (void)stem_b;
     (void)out_flags;
     (void)out_combined_element_id;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::calculate_stem_relation(
-        stem_a, stem_b, out_flags, out_combined_element_id);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_stem_relation(
+        stem_a, stem_b, out_flags, out_combined_element_id));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_branch_relation(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_branch_relation(
     uint8_t branch_a,
     uint8_t branch_b,
     uint32_t* out_flags,
@@ -402,14 +402,14 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_branch_relation(
     (void)branch_b;
     (void)out_flags;
     (void)out_combined_element_id;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::calculate_branch_relation(
-        branch_a, branch_b, out_flags, out_combined_element_id);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_branch_relation(
+        branch_a, branch_b, out_flags, out_combined_element_id));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_branch_triple_relation(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_branch_triple_relation(
     uint8_t branch_a,
     uint8_t branch_b,
     uint8_t branch_c,
@@ -422,14 +422,14 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_branch_triple_relation(
     (void)branch_c;
     (void)out_flags;
     (void)out_combined_element_id;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::calculate_branch_triple_relation(
-        branch_a, branch_b, branch_c, out_flags, out_combined_element_id);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_branch_triple_relation(
+        branch_a, branch_b, branch_c, out_flags, out_combined_element_id));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_get_life_stage(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_life_stage(
     uint8_t stem_id,
     uint8_t branch_id,
     int32_t earth_palace_mode,
@@ -440,14 +440,14 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_get_life_stage(
     (void)branch_id;
     (void)earth_palace_mode;
     (void)out_life_stage_id;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::get_life_stage(
-        stem_id, branch_id, earth_palace_mode, out_life_stage_id);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::get_life_stage(
+        stem_id, branch_id, earth_palace_mode, out_life_stage_id));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_chart(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_chart(
     const taiyin_bazi_context* context,
     const taiyin_ganzhi_four_pillars* pillars,
     taiyin_bazi_chart* out
@@ -456,11 +456,11 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_chart(
     (void)context;
     (void)pillars;
     (void)out;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!context || !taiyin_c_internal::valid_struct(pillars)
         || !taiyin_c_internal::valid_struct(out)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin::bazi::BaziChart cpp_out;
     const taiyin::Status status = taiyin::bazi::calculate_chart(
@@ -468,24 +468,24 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_chart(
         to_cpp_pillars(*pillars),
         &cpp_out);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_chart(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liunian(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liunian(
     int32_t effective_year,
     taiyin_ganzhi* out
 ) {
 #ifndef TAIYIN_C_HAS_BAZI_EXTENSION
     (void)effective_year;
     (void)out;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::calculate_flow_year(effective_year, out);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_flow_year(effective_year, out));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liuyue(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liuyue(
     taiyin_ganzhi year_pillar,
     uint8_t month_branch,
     taiyin_ganzhi* out
@@ -494,30 +494,30 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liuyue(
     (void)year_pillar;
     (void)month_branch;
     (void)out;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::calculate_flow_month(year_pillar, month_branch, out);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_flow_month(year_pillar, month_branch, out));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liuri(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liuri(
     const taiyin_calendar_datetime* civil_date,
     taiyin_ganzhi* out
 ) {
 #ifndef TAIYIN_C_HAS_BAZI_EXTENSION
     (void)civil_date;
     (void)out;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(civil_date) || !out) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
-    return taiyin::bazi::calculate_flow_day(
-        taiyin_c_internal::to_cpp_datetime(*civil_date), out);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_flow_day(
+        taiyin_c_internal::to_cpp_datetime(*civil_date), out));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liushi(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_liushi(
     taiyin_ganzhi day_pillar,
     uint8_t hour_index,
     taiyin_ganzhi* out
@@ -526,13 +526,13 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_liushi(
     (void)day_pillar;
     (void)hour_index;
     (void)out;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
-    return taiyin::bazi::calculate_flow_hour(day_pillar, hour_index, out);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_flow_hour(day_pillar, hour_index, out));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_xiaoyun(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_xiaoyun(
     const taiyin_bazi_chart* chart,
     int32_t direction,
     int32_t age,
@@ -543,18 +543,18 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_xiaoyun(
     (void)direction;
     (void)age;
     (void)out;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(chart) || !out) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
-    return taiyin::bazi::calculate_xiaoyun(
-        &cpp_chart, direction, age, out);
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::calculate_xiaoyun(
+        &cpp_chart, direction, age, out));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
     const taiyin_bazi_chart* chart,
     int32_t direction,
     int32_t start_age,
@@ -571,11 +571,11 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
     (void)requested_count;
     (void)out;
     (void)capacity;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(chart) || !out_count
         || (capacity != 0u && !out)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
@@ -589,8 +589,8 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
             0u,
             &required_count);
         *out_count = required_count;
-        if (status != taiyin::TAIYIN_STATUS_OK || !out) return status;
-        if (capacity < required_count) return TAIYIN_ERROR_OUT_OF_MEMORY;
+        if (status != taiyin::TAIYIN_STATUS_OK || !out) return taiyin_c_internal::pack_call_result(status);
+        if (capacity < required_count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
         std::vector<taiyin::bazi::BaziXiaoYun> cpp_xiaoyun(required_count);
         status = taiyin::bazi::fill_xiaoyun(
             &cpp_chart,
@@ -600,22 +600,22 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_xiaoyun(
             cpp_xiaoyun.empty() ? nullptr : cpp_xiaoyun.data(),
             cpp_xiaoyun.size(),
             out_count);
-        if (status != taiyin::TAIYIN_STATUS_OK) return status;
+        if (status != taiyin::TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status);
         for (size_t i = 0; i < *out_count; ++i) {
             copy_xiaoyun(cpp_xiaoyun[i], &out[i]);
         }
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (const std::bad_alloc&) {
         *out_count = 0u;
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     } catch (...) {
         *out_count = 0u;
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
     }
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_chart_relations(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_collect_chart_relations(
     const taiyin_bazi_chart* chart,
     uint32_t pillar_mask,
     uint32_t relation_mask,
@@ -630,11 +630,11 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_chart_relations(
     (void)relation_mask;
     (void)out;
     (void)capacity;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(chart) || !out_count
         || (capacity != 0u && !out)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
@@ -643,30 +643,30 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_chart_relations(
             &cpp_chart, pillar_mask, relation_mask,
             nullptr, 0u, &required_count);
         *out_count = required_count;
-        if (status != taiyin::TAIYIN_STATUS_OK || !out) return status;
-        if (capacity < required_count) return TAIYIN_ERROR_OUT_OF_MEMORY;
+        if (status != taiyin::TAIYIN_STATUS_OK || !out) return taiyin_c_internal::pack_call_result(status);
+        if (capacity < required_count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
 
         std::vector<taiyin::bazi::BaziRelation> cpp_relations(required_count);
         status = taiyin::bazi::collect_chart_relations(
             &cpp_chart, pillar_mask, relation_mask,
             cpp_relations.empty() ? nullptr : cpp_relations.data(),
             cpp_relations.size(), out_count);
-        if (status != taiyin::TAIYIN_STATUS_OK) return status;
+        if (status != taiyin::TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status);
         for (size_t i = 0; i < *out_count; ++i) {
             copy_relation(cpp_relations[i], &out[i]);
         }
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (const std::bad_alloc&) {
         *out_count = 0u;
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     } catch (...) {
         *out_count = 0u;
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
     }
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sha(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sha(
     const taiyin_bazi_chart* chart,
     taiyin_ganzhi target_ganzhi,
     int32_t target_kind,
@@ -681,25 +681,24 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sha(
     (void)target_kind;
     (void)out_words;
     (void)word_capacity;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(chart) || !out_word_count
         || (word_capacity != 0u && !out_words)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
-    return taiyin::bazi::collect_target_shen_sha(
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::collect_target_shen_sha(
         &cpp_chart,
         target_ganzhi,
         target_kind,
         out_words,
         word_capacity,
-        out_word_count);
+        out_word_count));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_bazi_collect_target_shen_sha_with_gender(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_collect_target_shen_sha_with_gender(
     const taiyin_bazi_chart* chart,
     taiyin_ganzhi target_ganzhi,
     int32_t target_kind,
@@ -716,25 +715,25 @@ taiyin_bazi_collect_target_shen_sha_with_gender(
     (void)gender;
     (void)out_words;
     (void)word_capacity;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!taiyin_c_internal::valid_struct(chart) || !out_word_count
         || (word_capacity != 0u && !out_words)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
-    return taiyin::bazi::collect_target_shen_sha_with_gender(
+    return taiyin_c_internal::pack_call_result(taiyin::bazi::collect_target_shen_sha_with_gender(
         &cpp_chart,
         target_ganzhi,
         target_kind,
         gender,
         out_words,
         word_capacity,
-        out_word_count);
+        out_word_count));
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
     const taiyin_bazi_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* birth_jd_ut,
@@ -753,7 +752,7 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
     (void)gender;
     (void)out;
     (void)diagnostic;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!context || !calendar_context
         || !taiyin_c_internal::valid_split_jd(birth_jd_ut)
@@ -761,14 +760,15 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
         || !taiyin_c_internal::valid_struct(chart)
         || !taiyin_c_internal::valid_struct(out)
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin::bazi::BaziQiYunResult cpp_out;
     const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
     const taiyin::Status status = taiyin::bazi::calculate_qiyun(
         &context->value,
-        &calendar_context->value,
+        &tracked.value,
         taiyin_c_internal::to_cpp_split_jd(*birth_jd_ut),
         taiyin_c_internal::to_cpp_datetime(*birth_civil_time),
         &cpp_chart,
@@ -777,11 +777,11 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_qiyun(
         diagnostic ? &cpp_diagnostic : nullptr);
     if (diagnostic) taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_qiyun(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_dayun(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_fill_dayun(
     const taiyin_bazi_context* context,
     const taiyin_calendar_datetime* birth_civil_time,
     const taiyin_bazi_chart* chart,
@@ -800,13 +800,13 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_dayun(
     (void)requested_count;
     (void)out;
     (void)capacity;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!context || !taiyin_c_internal::valid_struct(birth_civil_time)
         || !taiyin_c_internal::valid_struct(chart)
         || !taiyin_c_internal::valid_struct(qiyun) || !out_count
         || (capacity != 0u && !out)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
@@ -822,8 +822,8 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_dayun(
             0u,
             &required_count);
         *out_count = required_count;
-        if (status != taiyin::TAIYIN_STATUS_OK || !out) return status;
-        if (capacity < required_count) return TAIYIN_ERROR_OUT_OF_MEMORY;
+        if (status != taiyin::TAIYIN_STATUS_OK || !out) return taiyin_c_internal::pack_call_result(status);
+        if (capacity < required_count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
         std::vector<taiyin::bazi::BaziDaYun> cpp_dayun(required_count);
         status = taiyin::bazi::fill_dayun(
             &context->value,
@@ -834,20 +834,20 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_fill_dayun(
             cpp_dayun.empty() ? nullptr : cpp_dayun.data(),
             cpp_dayun.size(),
             out_count);
-        if (status != taiyin::TAIYIN_STATUS_OK) return status;
+        if (status != taiyin::TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status);
         for (size_t i = 0; i < *out_count; ++i) copy_dayun(cpp_dayun[i], &out[i]);
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (const std::bad_alloc&) {
         *out_count = 0u;
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     } catch (...) {
         *out_count = 0u;
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
     }
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_segments(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_segments(
     uint8_t month_branch_id,
     int32_t table_model,
     taiyin_bazi_renyuan_siling_segment* out,
@@ -860,10 +860,10 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_segments(
     (void)table_model;
     (void)out;
     (void)capacity;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!out_count || (capacity != 0u && !out) || month_branch_id >= 12u) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin::bazi::BaziRenyuanSilingSegment cpp_segments[
         taiyin::bazi::kRenyuanSilingMaxSegments];
@@ -873,16 +873,16 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_get_renyuan_siling_segments(
         out ? cpp_segments : nullptr,
         out ? taiyin::bazi::kRenyuanSilingMaxSegments : 0u,
         out_count);
-    if (status != taiyin::TAIYIN_STATUS_OK || !out) return status;
-    if (capacity < *out_count) return TAIYIN_ERROR_OUT_OF_MEMORY;
+    if (status != taiyin::TAIYIN_STATUS_OK || !out) return taiyin_c_internal::pack_call_result(status);
+    if (capacity < *out_count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     for (size_t i = 0; i < *out_count; ++i) {
         copy_siling_segment(cpp_segments[i], &out[i]);
     }
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 #endif
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* instant_jd_ut,
     const taiyin_bazi_chart* chart,
@@ -899,19 +899,20 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
     (void)time_model;
     (void)out;
     (void)diagnostic;
-    return TAIYIN_ERROR_UNSUPPORTED;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
 #else
     if (!calendar_context || !taiyin_c_internal::valid_split_jd(instant_jd_ut)
         || !taiyin_c_internal::valid_struct(chart)
         || !taiyin_c_internal::valid_struct(out)
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     const taiyin::bazi::BaziChart cpp_chart = to_cpp_chart(*chart);
     taiyin::bazi::BaziRenyuanSilingResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
     const taiyin::Status status = taiyin::bazi::calculate_renyuan_siling(
-        &calendar_context->value,
+        &tracked.value,
         taiyin_c_internal::to_cpp_split_jd(*instant_jd_ut),
         &cpp_chart,
         table_model,
@@ -922,7 +923,7 @@ taiyin_status TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
         taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
     }
     if (status == taiyin::TAIYIN_STATUS_OK) copy_siling_result(cpp_out, out);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 #endif
 }
 

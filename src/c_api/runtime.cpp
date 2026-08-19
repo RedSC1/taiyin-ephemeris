@@ -36,13 +36,13 @@ void TAIYIN_C_CALL taiyin_runtime_registered_data_source_init(
     value->struct_size = sizeof(*value);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_initialize(
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_initialize(
     const taiyin_runtime_config* config
 ) {
     if (!taiyin_c_internal::valid_struct(config)
         || config->api_version != TAIYIN_C_ABI_VERSION
         || (!config->source_paths && config->source_path_count != 0)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::runtime::EphemerisRuntimeConfig cpp;
     cpp.segment_cache_max_entries = config->segment_cache_max_entries;
@@ -67,59 +67,59 @@ taiyin_status TAIYIN_C_CALL taiyin_runtime_initialize(
             taiyin_c_internal::clear_native_position_evaluators_locked();
         }
         if (!taiyin::runtime::initialize_global_ephemeris_runtime(cpp)) {
-            return taiyin::TAIYIN_ERROR_INTERNAL;
+            return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL);
         }
         g_c_runtime_initialized = true;
-        return taiyin::TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_STATUS_OK);
     } catch (...) {
-        return taiyin::TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL);
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_add_source_path(const char* path) {
-    if (!path || path[0] == '\0') return taiyin_c_internal::invalid_argument();
-    return taiyin::runtime::add_global_ephemeris_source_path(path)
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_add_source_path(const char* path) {
+    if (!path || path[0] == '\0') return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::add_global_ephemeris_source_path(path)
         ? taiyin::TAIYIN_STATUS_OK
-        : taiyin::TAIYIN_FILE_ERROR_DISCOVERY_FAILED;
+        : taiyin::TAIYIN_FILE_ERROR_DISCOVERY_FAILED);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_set_ephemeris_source_priority(
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_set_ephemeris_source_priority(
     const char* path_or_basename,
     int32_t priority
 ) {
     if (!path_or_basename || path_or_basename[0] == '\0') {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::set_global_ephemeris_source_priority(
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::set_global_ephemeris_source_priority(
         path_or_basename,
         static_cast<int>(priority))
         ? TAIYIN_STATUS_OK
-        : TAIYIN_ERROR_INTERNAL;
+        : TAIYIN_ERROR_INTERNAL);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_clear_ephemeris_source_priority(
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_clear_ephemeris_source_priority(
     const char* path_or_basename
 ) {
     if (!path_or_basename || path_or_basename[0] == '\0') {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return taiyin::runtime::clear_global_ephemeris_source_priority(
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::clear_global_ephemeris_source_priority(
         path_or_basename)
         ? TAIYIN_STATUS_OK
-        : TAIYIN_ERROR_INTERNAL;
+        : TAIYIN_ERROR_INTERNAL);
 }
 
 void TAIYIN_C_CALL taiyin_runtime_clear_all_ephemeris_source_priorities(void) {
     taiyin::runtime::clear_all_global_ephemeris_source_priorities();
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_load_eop_table(const char* path) {
-    if (!path || path[0] == '\0') return taiyin_c_internal::invalid_argument();
-    return taiyin::runtime::load_global_earth_orientation_table(path);
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_load_eop_table(const char* path) {
+    if (!path || path[0] == '\0') return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::load_global_earth_orientation_table(path));
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_load_builtin_eop_table(void) {
-    return taiyin::runtime::load_global_builtin_earth_orientation_table();
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_load_builtin_eop_table(void) {
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::load_global_builtin_earth_orientation_table());
 }
 
 void TAIYIN_C_CALL taiyin_runtime_clear_eop_table(void) {
@@ -130,11 +130,11 @@ taiyin_bool TAIYIN_C_CALL taiyin_runtime_has_eop_table(void) {
     return taiyin::runtime::global_earth_orientation_table() ? 1u : 0u;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_load_lunar_limb_model(
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_load_lunar_limb_model(
     const char* path
 ) {
-    if (!path || path[0] == '\0') return taiyin_c_internal::invalid_argument();
-    return taiyin::runtime::load_global_lunar_limb_model(path);
+    if (!path || path[0] == '\0') return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
+    return taiyin_c_internal::pack_call_result(taiyin::runtime::load_global_lunar_limb_model(path));
 }
 
 void TAIYIN_C_CALL taiyin_runtime_clear_lunar_limb_model(void) {
@@ -160,7 +160,7 @@ size_t TAIYIN_C_CALL taiyin_runtime_registered_data_source_count(void) {
         : 0u;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_runtime_get_registered_data_source(
+taiyin_call_result TAIYIN_C_CALL taiyin_runtime_get_registered_data_source(
     size_t index,
     taiyin_runtime_registered_data_source* out,
     char* source,
@@ -170,15 +170,15 @@ taiyin_status TAIYIN_C_CALL taiyin_runtime_get_registered_data_source(
     if (!taiyin_c_internal::valid_struct(out)
         || (!source && source_capacity != 0u)
         || !out_required_source_size) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     try {
         std::vector<taiyin::runtime::RegisteredDataSource> sources;
         if (!taiyin::runtime::get_global_registered_data_sources(&sources)) {
-            return taiyin::TAIYIN_ERROR_INTERNAL;
+            return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL);
         }
         if (index >= sources.size()) {
-            return taiyin_c_internal::invalid_argument();
+            return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
         }
         const taiyin::runtime::RegisteredDataSource& item = sources[index];
         taiyin_runtime_registered_data_source_init(out);
@@ -197,13 +197,13 @@ taiyin_status TAIYIN_C_CALL taiyin_runtime_get_registered_data_source(
             std::memcpy(source, item.source.data(), copy_size);
             source[copy_size] = '\0';
         }
-        return !source || source_capacity >= *out_required_source_size
+        return taiyin_c_internal::pack_call_result(!source || source_capacity >= *out_required_source_size
             ? taiyin::TAIYIN_STATUS_OK
-            : taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+            : taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
     } catch (const std::bad_alloc&) {
-        return taiyin::TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_OUT_OF_MEMORY);
     } catch (...) {
-        return taiyin::TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(taiyin::TAIYIN_ERROR_INTERNAL);
     }
 }
 

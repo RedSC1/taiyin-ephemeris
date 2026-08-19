@@ -91,7 +91,7 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_solar_transit_fast_result_init(
     taiyin_solar_transit_fast_result* value
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_rise_set_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -101,7 +101,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_ut(
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_at_horizon_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_rise_set_at_horizon_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -112,7 +112,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_rise_set_at_horizon_
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_transit_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -121,7 +121,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_transit_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_planet_rise_set_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -132,7 +132,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_ut(
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizon_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizon_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -148,7 +148,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_rise_set_at_horizo
  * Transit flags use the shared uint64 layering convention: low 32 bits are
  * taiyin_position_flags passed through unchanged; high 32 bits are reserved.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_planet_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -159,7 +159,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_planet_transit_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_rise_set_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -169,7 +169,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_ut(
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_at_horizon_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_rise_set_at_horizon_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -180,7 +180,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_rise_set_at_horizon
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_twilight_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_twilight_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -189,7 +189,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_twilight_ut(
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_transit_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd_ut,
     const taiyin_split_julian_date* end_jd_ut,
@@ -197,7 +197,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_transit_ut(
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* center_jd_tt,
     double longitude_deg,
@@ -209,7 +209,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_rise_set_fast_tt(
     taiyin_solar_rise_set_fast_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* center_jd_tt,
     double longitude_deg,
@@ -219,7 +219,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_solar_transit_fast_tt(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_star_rise_set_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* start_jd_ut,
@@ -229,7 +229,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_ut(
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_at_horizon_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_star_rise_set_at_horizon_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* start_jd_ut,
@@ -240,7 +240,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_star_rise_set_at_horizon_
     taiyin_visibility_event_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_star_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_star_transit_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* start_jd_ut,

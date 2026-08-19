@@ -181,14 +181,14 @@ TAIYIN_C_ASTROLOGY_API void TAIYIN_C_CALL taiyin_house_position_result_init(taiy
 TAIYIN_C_ASTROLOGY_API void TAIYIN_C_CALL taiyin_lunar_node_position_init(taiyin_lunar_node_position*);
 TAIYIN_C_ASTROLOGY_API void TAIYIN_C_CALL taiyin_lunar_apsis_position_init(taiyin_lunar_apsis_position*);
 
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_ayanamsha_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_ayanamsha_tt(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     const taiyin_split_julian_date* jd_tt,
     uint64_t flags,
     double* out_ayanamsha_rad
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_position_tt(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     int32_t body_id,
@@ -198,7 +198,7 @@ TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position
     taiyin_sidereal_position* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_position_ut(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     int32_t body_id,
@@ -208,7 +208,7 @@ TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_position
     taiyin_sidereal_position* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_tt(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     int32_t body_id,
@@ -218,7 +218,7 @@ TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordina
     taiyin_sidereal_coordinates* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_sidereal_coordinates_ut(
     const taiyin_context* context,
     int32_t ayanamsha_id,
     int32_t body_id,
@@ -229,26 +229,26 @@ TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_sidereal_coordina
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_houses_from_armc(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_houses_from_armc(
     double armc_rad,
     double observer_latitude_rad,
     double true_obliquity_rad,
     int32_t house_system_id,
     taiyin_house_result* out
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_houses_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_houses_ut(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_ut,
     int32_t house_system_id,
     taiyin_house_result* out
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_houses_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_houses_tt(
     const taiyin_context* context,
     const taiyin_split_julian_date* jd_tt,
     int32_t house_system_id,
     taiyin_house_result* out
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_calc_house_position_from_longitude(
     const taiyin_house_result* houses,
     double ecliptic_longitude_rad,
@@ -266,7 +266,7 @@ TAIYIN_C_ASTROLOGY_API taiyin_bool TAIYIN_C_CALL taiyin_has_ayanamsha_model(
  * layouts, so it is not independently unloadable and this returns
  * TAIYIN_ERROR_UNSUPPORTED.
  */
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
     taiyin_astrology_module_shutdown(void);
 
 /*
@@ -277,13 +277,13 @@ TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
  * Registration changes and runtime initialization must be serialized and must
  * not overlap evaluation.
  */
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_register_ayanamsha_model(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_register_ayanamsha_model(
     int32_t model_id,
     taiyin_ayanamsha_evaluator_fn evaluator,
     int32_t reference_precession_model_id,
     void* user_data
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_register_house_system_model(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_register_house_system_model(
     int32_t model_id,
     taiyin_house_system_evaluator_fn evaluator,
     int32_t fallback_model_id,
@@ -297,7 +297,7 @@ TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_register_house_system_
  * unregister_with_token function so an old handle cannot remove a later
  * same-ID registration. out_registration_token must not be NULL.
  */
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_register_ayanamsha_model_with_token(
     int32_t model_id,
     taiyin_ayanamsha_evaluator_fn evaluator,
@@ -305,7 +305,7 @@ taiyin_register_ayanamsha_model_with_token(
     void* user_data,
     uint64_t* out_registration_token
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_register_house_system_model_with_token(
     int32_t model_id,
     taiyin_house_system_evaluator_fn evaluator,
@@ -322,9 +322,9 @@ taiyin_register_house_system_model_with_token(
  * evaluation. A house-system unregister also returns TAIYIN_ERROR_UNSUPPORTED
  * while another registered house system selects it as a fallback.
  */
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_unregister_ayanamsha_model(int32_t model_id);
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_unregister_house_system_model(int32_t model_id);
 
 /*
@@ -334,12 +334,12 @@ taiyin_unregister_house_system_model(int32_t model_id);
  * but unregister returns TAIYIN_ERROR_UNSUPPORTED until dependents are
  * removed first.
  */
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_unregister_ayanamsha_model_with_token(
     int32_t model_id,
     uint64_t registration_token
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_unregister_house_system_model_with_token(
     int32_t model_id,
     uint64_t registration_token
@@ -356,47 +356,47 @@ taiyin_unregister_house_system_model_with_token(
 TAIYIN_C_ASTROLOGY_API void TAIYIN_C_CALL taiyin_clear_ayanamsha_models(void);
 TAIYIN_C_ASTROLOGY_API void TAIYIN_C_CALL taiyin_clear_house_system_models(void);
 
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_true_node_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_true_node_tt(
     const taiyin_context*, const taiyin_split_julian_date*, int32_t, uint32_t,
     taiyin_lunar_node_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_true_node_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_true_node_ut(
     const taiyin_context*, const taiyin_split_julian_date*, int32_t, uint32_t,
     taiyin_lunar_node_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_mean_node_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_mean_node_tt(
     const taiyin_context*, const taiyin_split_julian_date*, int32_t, uint32_t,
     taiyin_lunar_node_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_mean_node_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_mean_node_ut(
     const taiyin_context*, const taiyin_split_julian_date*, int32_t, uint32_t,
     taiyin_lunar_node_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_mean_apogee_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_mean_apogee_tt(
     const taiyin_context*, const taiyin_split_julian_date*, uint32_t,
     taiyin_lunar_apsis_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_mean_apogee_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_mean_apogee_ut(
     const taiyin_context*, const taiyin_split_julian_date*, uint32_t,
     taiyin_lunar_apsis_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_osculating_apogee_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_osculating_apogee_tt(
     const taiyin_context*, const taiyin_split_julian_date*, uint32_t,
     taiyin_lunar_apsis_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_osculating_apogee_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_osculating_apogee_ut(
     const taiyin_context*, const taiyin_split_julian_date*, uint32_t,
     taiyin_lunar_apsis_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_fitted_apogee_tt(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_fitted_apogee_tt(
     const taiyin_context*, const taiyin_split_julian_date*, uint32_t,
     taiyin_lunar_apsis_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL taiyin_calc_lunar_fitted_apogee_ut(
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_lunar_fitted_apogee_ut(
     const taiyin_context*, const taiyin_split_julian_date*, uint32_t,
     taiyin_lunar_apsis_position*, taiyin_ephemeris_diagnostic*
 );
-TAIYIN_C_ASTROLOGY_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_ASTROLOGY_API taiyin_call_result TAIYIN_C_CALL
 taiyin_register_builtin_astrology_targets(void);
 
 #ifdef __cplusplus

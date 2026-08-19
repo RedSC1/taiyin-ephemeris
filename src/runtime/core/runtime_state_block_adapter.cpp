@@ -162,7 +162,9 @@ RuntimeStateEvalContext::RuntimeStateEvalContext() noexcept
       route_rule_id(0),
       route_rules(0),
       epoch_state_cache(0),
-      epoch_jd_tdb() {}
+      epoch_jd_tdb(),
+      result_flags(0),
+      source_tracker(0) {}
 
 RuntimeCompiledBlockData::RuntimeCompiledBlockData() noexcept
     : context(),
@@ -250,7 +252,20 @@ Status eval_runtime_body_state(
         body_id, center_id, jd_tdb, components, route_rule_id, route_rules);
     request.epoch_state_cache = context.epoch_state_cache;
     request.epoch_jd_tdb = context.epoch_jd_tdb;
-    return eval_runtime_state_in_context(context, request, out, diagnostic);
+    request.result_flags = context.result_flags
+        ? context.result_flags
+        : (context.source_tracker ? context.source_tracker->flags : 0);
+    if (context.source_tracker) {
+        request.include_descriptor = true;
+    }
+    const Status status =
+        eval_runtime_state_in_context(context, request, out, diagnostic);
+    if (context.source_tracker && status == TAIYIN_STATUS_OK && out
+        && out->descriptor.source_key.source_id != 0) {
+        context.source_tracker->observe(
+            body_id, center_id, out->descriptor.source_key.source_id);
+    }
+    return status;
 }
 
 internal::CompiledEphemerisBlock make_runtime_compiled_block(RuntimeCompiledBlockData* data) noexcept {

@@ -396,6 +396,7 @@ Status eval_context_relative_state(
     eval_context.route_rules = context.route_rules;
     eval_context.epoch_state_cache = &context.ephemeris_state_cache;
     eval_context.epoch_jd_tdb = jd_tdb;
+    eval_context.source_tracker = context.source_tracker;
     EphemerisResult result;
     const Status status = eval_runtime_body_state(
         eval_context,

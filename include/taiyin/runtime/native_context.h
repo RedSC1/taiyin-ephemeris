@@ -4,6 +4,7 @@
 #include "taiyin/field_set.h"
 #include "taiyin/runtime/ephemeris_route.h"
 #include "taiyin/runtime/major_body_apparent.h"
+#include "taiyin/runtime/source_switch_tracker.h"
 #include "taiyin/status.h"
 #include "taiyin/time.h"
 
@@ -199,9 +200,25 @@ struct NativeCalcContext {
     mutable NativeApparentMatrixCache apparent_matrix_cache;
     mutable NativeTimeScaleCache time_scale_cache;
     mutable NativeEphemerisStateCache ephemeris_state_cache;
+    // Set by search wrappers for the duration of one operation.  Evaluations
+    // report per-(target, center) source-id switches and execution flags into
+    // the tracker's operation flags word.  Null outside search operations.
+    SourceSwitchTracker* source_tracker;
 
     NativeCalcContext() noexcept;
 };
+
+// Mirrors an execution fact into a search operation's shared flags word when
+// the context carries a tracker.  Single position calls have no tracker and
+// report through their own result-flags word instead.
+inline void set_operation_flag(
+    const NativeCalcContext* context,
+    ResultFlag flag
+) noexcept {
+    if (context && context->source_tracker) {
+        set_result_flag(context->source_tracker->flags, flag);
+    }
+}
 
 NativeObserverLocation native_observer_location_degrees(
     double longitude_deg,

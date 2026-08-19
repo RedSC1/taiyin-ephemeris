@@ -228,14 +228,14 @@ void clear_native_position_evaluators_locked() noexcept {
 
 extern "C" {
 
-taiyin_status TAIYIN_C_CALL taiyin_register_native_position_evaluator(
+taiyin_call_result TAIYIN_C_CALL taiyin_register_native_position_evaluator(
     int32_t target_id,
     taiyin_native_position_evaluator_fn position_evaluator,
     taiyin_native_state_evaluator_fn state_evaluator,
     void* user_data
 ) {
     if (target_id >= 0 || !position_evaluator) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     try {
         std::lock_guard<std::mutex> lifecycle_lock(
@@ -243,7 +243,7 @@ taiyin_status TAIYIN_C_CALL taiyin_register_native_position_evaluator(
         std::lock_guard<std::mutex> lock(g_c_position_evaluator_mutex);
         if (g_c_position_evaluators.find(target_id)
             != g_c_position_evaluators.end()) {
-            return TAIYIN_ERROR_INVALID_ARGUMENT;
+            return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
         }
         CPositionEvaluatorEntry entry = {
             position_evaluator, state_evaluator, user_data};
@@ -251,27 +251,27 @@ taiyin_status TAIYIN_C_CALL taiyin_register_native_position_evaluator(
             std::unordered_map<int, CPositionEvaluatorEntry>::iterator,
             bool> inserted =
             g_c_position_evaluators.emplace(target_id, entry);
-        if (!inserted.second) return TAIYIN_ERROR_INTERNAL;
+        if (!inserted.second) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
         const bool registered =
             taiyin::runtime::register_global_native_position_evaluator(
                 target_id, &c_position_evaluator_bridge,
                 state_evaluator ? &c_state_evaluator_bridge : nullptr);
         if (!registered) {
             g_c_position_evaluators.erase(target_id);
-            return TAIYIN_ERROR_INVALID_ARGUMENT;
+            return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
         }
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (const std::bad_alloc&) {
-        return TAIYIN_ERROR_OUT_OF_MEMORY;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     } catch (...) {
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_unregister_native_position_evaluator(
+taiyin_call_result TAIYIN_C_CALL taiyin_unregister_native_position_evaluator(
     int32_t target_id
 ) {
-    if (target_id >= 0) return taiyin_c_internal::invalid_argument();
+    if (target_id >= 0) return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     try {
         std::lock_guard<std::mutex> lifecycle_lock(
             taiyin_c_internal::native_position_lifecycle_mutex());
@@ -279,16 +279,16 @@ taiyin_status TAIYIN_C_CALL taiyin_unregister_native_position_evaluator(
         const std::unordered_map<int, CPositionEvaluatorEntry>::iterator it =
             g_c_position_evaluators.find(target_id);
         if (it == g_c_position_evaluators.end()) {
-            return TAIYIN_ERROR_INVALID_ARGUMENT;
+            return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
         }
         if (!taiyin::runtime::unregister_global_native_position_evaluator(
                 target_id)) {
-            return TAIYIN_ERROR_INTERNAL;
+            return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
         }
         g_c_position_evaluators.erase(it);
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL);
     }
 }
 
@@ -302,7 +302,7 @@ void TAIYIN_C_CALL taiyin_clear_native_position_evaluators(void) {
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_position_tdb(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_tdb(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tdb,
@@ -314,12 +314,13 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_position_tdb(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_tdb)
         || !taiyin_c_internal::valid_optional_split_jd(jd_tt)
         || !out_position || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_tdb = cpp_date(jd_tdb);
     const taiyin::SplitJulianDate cpp_jd_tt = jd_tt
         ? cpp_date(jd_tt)
         : cpp_jd_tdb;
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_position_tdb(
         &context->value,
@@ -328,12 +329,13 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_position_tdb(
         cpp_jd_tt,
         flags,
         out_position,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_position_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_tt(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tt,
@@ -343,17 +345,19 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_position_tt(
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(jd_tt)
         || !out_position || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_position_tt(
         &context->value, target_id, cpp_date(jd_tt), flags, out_position,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_ut(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut,
@@ -363,17 +367,19 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut(
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !out_position || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_position_ut(
         &context->value, target_id, cpp_date(jd_ut), flags, out_position,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut_delta_t(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_ut_delta_t(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut1,
@@ -384,17 +390,19 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_position_ut_delta_t(
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut1)
         || !out_position || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_position_ut_delta_t(
         &context->value, target_id, cpp_date(jd_ut1), delta_t_seconds, flags, out_position,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_position_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_position_utc(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_calendar_datetime* datetime_utc,
@@ -404,19 +412,21 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_position_utc(
 ) {
     if (!context || !taiyin_c_internal::valid_struct(datetime_utc)
         || !out_position || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::CalendarDateTime cpp_datetime =
         taiyin_c_internal::to_cpp_datetime(*datetime_utc);
     const taiyin::Status status = taiyin::runtime::calc_position_utc(
         &context->value, target_id, cpp_datetime, flags, out_position,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_ut(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -426,19 +436,21 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut(
     taiyin_ephemeris_diagnostic* diagnostics
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return calc_positions_batch(
+    uint32_t result_flags = 0u;
+    return taiyin_c_internal::pack_call_result(calc_positions_batch(
         context, target_ids, target_count, out_positions, diagnostics,
         [&](const int* cpp_ids,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_positions_ut(
                 &context->value, cpp_ids, target_count, cpp_date(jd_ut), flags,
-                out_positions, cpp_diagnostics);
-        });
+                out_positions, cpp_diagnostics,
+                &result_flags);
+        }), result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tdb(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_tdb(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -450,23 +462,25 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tdb(
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_tdb)
         || !taiyin_c_internal::valid_optional_split_jd(jd_tt)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_tdb = cpp_date(jd_tdb);
     const taiyin::SplitJulianDate cpp_jd_tt = jd_tt
         ? cpp_date(jd_tt)
         : cpp_jd_tdb;
-    return calc_positions_batch(
+    uint32_t result_flags = 0u;
+    return taiyin_c_internal::pack_call_result(calc_positions_batch(
         context, target_ids, target_count, out_positions, diagnostics,
         [&](const int* cpp_ids,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_positions_tdb(
                 &context->value, cpp_ids, target_count, cpp_jd_tdb, cpp_jd_tt, flags,
-                out_positions, cpp_diagnostics);
-        });
+                out_positions, cpp_diagnostics,
+                &result_flags);
+        }), result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_tt(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -476,19 +490,21 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_positions_tt(
     taiyin_ephemeris_diagnostic* diagnostics
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_tt)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return calc_positions_batch(
+    uint32_t result_flags = 0u;
+    return taiyin_c_internal::pack_call_result(calc_positions_batch(
         context, target_ids, target_count, out_positions, diagnostics,
         [&](const int* cpp_ids,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_positions_tt(
                 &context->value, cpp_ids, target_count, cpp_date(jd_tt), flags,
-                out_positions, cpp_diagnostics);
-        });
+                out_positions, cpp_diagnostics,
+                &result_flags);
+        }), result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut_delta_t(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_ut_delta_t(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -499,19 +515,21 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_positions_ut_delta_t(
     taiyin_ephemeris_diagnostic* diagnostics
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_ut1)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
-    return calc_positions_batch(
+    uint32_t result_flags = 0u;
+    return taiyin_c_internal::pack_call_result(calc_positions_batch(
         context, target_ids, target_count, out_positions, diagnostics,
         [&](const int* cpp_ids,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_positions_ut_delta_t(
                 &context->value, cpp_ids, target_count, cpp_date(jd_ut1),
-                delta_t_seconds, flags, out_positions, cpp_diagnostics);
-        });
+                delta_t_seconds, flags, out_positions, cpp_diagnostics,
+                &result_flags);
+        }), result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_positions_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_positions_utc(
     const taiyin_context* context,
     const int32_t* target_ids,
     size_t target_count,
@@ -521,21 +539,23 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_positions_utc(
     taiyin_ephemeris_diagnostic* diagnostics
 ) {
     if (!taiyin_c_internal::valid_struct(datetime_utc)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::CalendarDateTime cpp_datetime =
         taiyin_c_internal::to_cpp_datetime(*datetime_utc);
-    return calc_positions_batch(
+    uint32_t result_flags = 0u;
+    return taiyin_c_internal::pack_call_result(calc_positions_batch(
         context, target_ids, target_count, out_positions, diagnostics,
         [&](const int* cpp_ids,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostics) {
             return taiyin::runtime::calc_positions_utc(
                 &context->value, cpp_ids, target_count, cpp_datetime, flags,
-                out_positions, cpp_diagnostics);
-        });
+                out_positions, cpp_diagnostics,
+                &result_flags);
+        }), result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_state_tdb(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_tdb(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tdb,
@@ -548,13 +568,14 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_state_tdb(
         || !taiyin_c_internal::valid_optional_split_jd(jd_tt)
         || !taiyin_c_internal::valid_struct(out_state)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     const taiyin::SplitJulianDate cpp_jd_tdb = cpp_date(jd_tdb);
     const taiyin::SplitJulianDate cpp_jd_tt = jd_tt
         ? cpp_date(jd_tt)
         : cpp_jd_tdb;
     taiyin::CartesianState cpp_state;
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_state_tdb(
         &context->value,
@@ -563,15 +584,16 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_state_tdb(
         cpp_jd_tt,
         flags,
         &cpp_state,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_state(cpp_state, out_state);
     }
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_state_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_tt(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_tt,
@@ -582,21 +604,23 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_state_tt(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_tt)
         || !taiyin_c_internal::valid_struct(out_state)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::CartesianState cpp_state;
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_state_tt(
         &context->value, target_id, cpp_date(jd_tt), flags, &cpp_state,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_state(cpp_state, out_state);
     }
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_ut(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut,
@@ -607,21 +631,23 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut)
         || !taiyin_c_internal::valid_struct(out_state)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::CartesianState cpp_state;
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_state_ut(
         &context->value, target_id, cpp_date(jd_ut), flags, &cpp_state,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_state(cpp_state, out_state);
     }
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut_delta_t(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_ut_delta_t(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_split_julian_date* jd_ut1,
@@ -633,21 +659,23 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_state_ut_delta_t(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_ut1)
         || !taiyin_c_internal::valid_struct(out_state)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::CartesianState cpp_state;
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::calc_state_ut_delta_t(
         &context->value, target_id, cpp_date(jd_ut1), delta_t_seconds, flags, &cpp_state,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_state(cpp_state, out_state);
     }
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_calc_state_utc(
+taiyin_call_result TAIYIN_C_CALL taiyin_calc_state_utc(
     const taiyin_context* context,
     int32_t target_id,
     const taiyin_calendar_datetime* datetime_utc,
@@ -658,20 +686,22 @@ taiyin_status TAIYIN_C_CALL taiyin_calc_state_utc(
     if (!context || !taiyin_c_internal::valid_struct(datetime_utc)
         || !taiyin_c_internal::valid_struct(out_state)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     taiyin::CartesianState cpp_state;
+    uint32_t result_flags = 0u;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::CalendarDateTime cpp_datetime =
         taiyin_c_internal::to_cpp_datetime(*datetime_utc);
     const taiyin::Status status = taiyin::runtime::calc_state_utc(
         &context->value, target_id, cpp_datetime, flags, &cpp_state,
-        diagnostic ? &cpp_diagnostic : 0);
+        diagnostic ? &cpp_diagnostic : 0,
+        &result_flags);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_state(cpp_state, out_state);
     }
     finish_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, result_flags);
 }
 
 }  // extern "C"

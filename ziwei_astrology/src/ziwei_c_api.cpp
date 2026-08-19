@@ -365,21 +365,21 @@ void TAIYIN_C_CALL taiyin_ziwei_reverse_candidate_init(
     value->rat_hour_segment = 0xffu;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_data_catalog_create(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_data_catalog_create(
     const char* profile_path,
     taiyin_ziwei_data_catalog** out_catalog
 ) {
     if (out_catalog) *out_catalog = NULL;
     if (!profile_path || profile_path[0] == '\0' || !out_catalog) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         taiyin_ziwei_data_catalog* created =
             new taiyin_ziwei_data_catalog(profile_path);
         *out_catalog = created;
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
@@ -389,15 +389,15 @@ void TAIYIN_C_CALL taiyin_ziwei_data_catalog_destroy(
     delete catalog;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_data_catalog_reload(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_data_catalog_reload(
     taiyin_ziwei_data_catalog* catalog
 ) {
-    if (!catalog) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    if (!catalog) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     try {
         catalog->value.reload();
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
@@ -407,7 +407,7 @@ uint64_t TAIYIN_C_CALL taiyin_ziwei_data_catalog_generation(
     return catalog ? catalog->value.generation() : 0u;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_context_create(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create(
     const taiyin_ziwei_data_catalog* catalog,
     const taiyin_ziwei_option_override* overrides,
     size_t override_count,
@@ -415,21 +415,21 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_context_create(
 ) {
     if (out_context) *out_context = NULL;
     if (!catalog || !out_context || (override_count != 0u && !overrides)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         taiyin::ziwei::ZiweiOptionSelection selection;
         for (std::size_t i = 0u; i < override_count; ++i) {
             if (!apply_override(overrides[i], &selection)) {
-                return TAIYIN_ERROR_INVALID_ARGUMENT;
+                return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
             }
         }
         taiyin_ziwei_context* created = new taiyin_ziwei_context(
             catalog->value.create_context(selection));
         *out_context = created;
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
@@ -451,22 +451,22 @@ size_t TAIYIN_C_CALL taiyin_ziwei_star_count(
     return context ? context->value.star_registry().size() : 0u;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_find_star(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_find_star(
     const taiyin_ziwei_context* context,
     const char* key,
     uint16_t* out_star_id
 ) {
     if (out_star_id) *out_star_id = TAIYIN_ZIWEI_INVALID_STAR_ID;
-    if (!context || !key || !out_star_id) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    if (!context || !key || !out_star_id) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     try {
-        return context->value.star_registry().find(key, out_star_id)
-            ? TAIYIN_STATUS_OK : TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(context->value.star_registry().find(key, out_star_id)
+            ? TAIYIN_STATUS_OK : TAIYIN_ERROR_INVALID_ARGUMENT);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
     const taiyin_ziwei_context* context,
     uint16_t star_id,
     int32_t* out_category,
@@ -478,23 +478,23 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
     if (!context || !out_category || !out_required_size
         || star_id >= context->value.star_registry().size()
         || (capacity != 0u && !buffer)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         const taiyin::ziwei::StarMetadata& metadata =
             context->value.star_registry().at(star_id);
         *out_category = static_cast<int32_t>(metadata.category);
         *out_required_size = metadata.key.size() + 1u;
-        if (!buffer) return TAIYIN_STATUS_OK;
-        if (capacity < *out_required_size) return TAIYIN_ERROR_OUT_OF_MEMORY;
+        if (!buffer) return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+        if (capacity < *out_required_size) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
         std::memcpy(buffer, metadata.key.c_str(), *out_required_size);
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_create(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* instant_utc,
@@ -514,15 +514,16 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_create(
         || gender > TAIYIN_ZIWEI_GENDER_FEMALE
         || !out_chart
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         taiyin_ziwei_chart* created = new taiyin_ziwei_chart();
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         const taiyin::ziwei::BirthResolutionOptions cpp_options =
             to_cpp_birth_options(*options);
+        taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
         taiyin::Status status = taiyin::ziwei::resolve_birth_from_calendar(
-            &calendar_context->value,
+            &tracked.value,
             taiyin_c_internal::to_cpp_split_jd(*instant_utc),
             taiyin_c_internal::to_cpp_datetime(*virtual_time),
             static_cast<taiyin::ziwei::Gender>(gender),
@@ -543,14 +544,14 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_create(
         }
         if (status != TAIYIN_STATUS_OK) {
             delete created;
-            return status;
+            return taiyin_c_internal::pack_call_result(status, tracked.flags);
         }
         created->registry_fingerprint =
             context->value.compiled_tables().registry_fingerprint;
         *out_chart = created;
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK, tracked.flags);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
@@ -558,7 +559,7 @@ void TAIYIN_C_CALL taiyin_ziwei_chart_destroy(taiyin_ziwei_chart* chart) {
     delete chart;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_ziwei_reverse_request* request,
@@ -580,7 +581,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
         || request->gender > TAIYIN_ZIWEI_GENDER_FEMALE
         || (capacity != 0u && !out_candidates)
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
         taiyin::ziwei::ReverseLookupRequest cpp_request;
@@ -595,39 +596,40 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
         cpp_request.query = to_cpp_reverse_query(request->query);
         std::vector<taiyin::ziwei::ReverseLookupCandidate> candidates;
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+        taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
         const taiyin::Status status =
             taiyin::ziwei::reverse_lookup_tier1_from_calendar(
-                &calendar_context->value, cpp_request,
+                &tracked.value, cpp_request,
                 context->value.compiled_tables(), context->value.star_registry(),
                 &candidates, diagnostic ? &cpp_diagnostic : NULL);
         if (diagnostic) {
             taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
         }
-        if (status != TAIYIN_STATUS_OK) return status;
+        if (status != TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status, tracked.flags);
         *out_count = candidates.size();
-        if (!out_candidates) return TAIYIN_STATUS_OK;
-        if (capacity < candidates.size()) return TAIYIN_ERROR_OUT_OF_MEMORY;
+        if (!out_candidates) return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK, tracked.flags);
+        if (capacity < candidates.size()) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY, tracked.flags);
         for (std::size_t i = 0u; i < candidates.size(); ++i) {
             copy_reverse_candidate(candidates[i], &out_candidates[i]);
         }
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK, tracked.flags);
     } catch (...) {
-        return exception_status();
+        return taiyin_c_internal::pack_call_result(exception_status());
     }
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_anchors(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_anchors(
     const taiyin_ziwei_chart* chart,
     uint8_t out_anchors[TAIYIN_ZIWEI_ANCHOR_COUNT]
 ) {
-    if (!chart || !out_anchors) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    if (!chart || !out_anchors) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     const std::array<uint8_t, taiyin::ziwei::kAnchorCount> anchors =
         taiyin::ziwei::flatten_anchors(chart->value.natal.anchors);
     std::memcpy(out_anchors, anchors.data(), anchors.size());
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
     const taiyin_ziwei_chart* chart,
     uint8_t* out_gender,
     uint8_t* out_bureau,
@@ -639,7 +641,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
     if (!chart || !out_gender || !out_bureau || !out_body_palace
         || !out_life_master || !out_body_master
         || !taiyin_c_internal::valid_struct(out_transforms)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     *out_gender = taiyin::ziwei::to_index(chart->value.natal.gender);
     *out_bureau = taiyin::ziwei::to_index(chart->value.natal.anchors.bureau);
@@ -648,36 +650,36 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_summary(
     *out_life_master = chart->value.natal.life_master;
     *out_body_master = chart->value.natal.body_master;
     copy_transforms(chart->value.natal.transformations.birth_year, out_transforms);
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_branch(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_branch(
     const taiyin_ziwei_chart* chart,
     uint8_t palace_id,
     uint8_t* out_branch
 ) {
     if (!chart || !out_branch || palace_id >= taiyin::ziwei::kPalaceCount) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     *out_branch = taiyin::ziwei::to_index(
         chart->value.natal.anchors.palace_positions[palace_id]);
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stem(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stem(
     const taiyin_ziwei_chart* chart,
     uint8_t branch,
     uint8_t* out_stem
 ) {
     if (!chart || !out_stem || branch >= taiyin::ziwei::kBranchCount) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     *out_stem = taiyin::ziwei::to_index(
         chart->value.natal.palace_stems[branch]);
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_position(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_star_position(
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     uint8_t* out_branch
@@ -685,30 +687,30 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_position(
     if (out_branch) *out_branch = TAIYIN_ZIWEI_INVALID_POSITION;
     if (!chart || !out_branch
         || star_id >= chart->value.natal.palaces[0].stars.size()) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     for (uint8_t branch = 0u; branch < taiyin::ziwei::kBranchCount; ++branch) {
         if (chart->value.natal.palaces[branch].stars.test(star_id)) {
             *out_branch = branch;
-            return TAIYIN_STATUS_OK;
+            return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
         }
     }
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_palace(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_star_palace(
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     uint8_t* out_palace_id
 ) {
     if (out_palace_id) *out_palace_id = TAIYIN_ZIWEI_INVALID_POSITION;
-    if (!chart || !out_palace_id) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    if (!chart || !out_palace_id) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     uint8_t branch = TAIYIN_ZIWEI_INVALID_POSITION;
     const taiyin_status status = taiyin_ziwei_chart_get_star_position(
         chart, star_id, &branch);
     if (status != TAIYIN_STATUS_OK
         || branch == TAIYIN_ZIWEI_INVALID_POSITION) {
-        return status;
+        return taiyin_c_internal::pack_call_result(status);
     }
     for (uint8_t palace = 0u; palace < taiyin::ziwei::kPalaceCount; ++palace) {
         if (taiyin::ziwei::to_index(
@@ -717,10 +719,10 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_palace(
             break;
         }
     }
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_brightness(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_brightness(
     const taiyin_ziwei_context* context,
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
@@ -728,15 +730,15 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_brightness(
 ) {
     if (!context || !chart || !out_brightness
         || !chart_matches_context(chart, context)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     uint8_t branch = TAIYIN_ZIWEI_INVALID_POSITION;
     taiyin_status status = taiyin_ziwei_chart_get_star_position(
         chart, star_id, &branch);
-    if (status != TAIYIN_STATUS_OK) return status;
+    if (status != TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status);
     if (branch == TAIYIN_ZIWEI_INVALID_POSITION) {
         *out_brightness = TAIYIN_ZIWEI_BRIGHTNESS_NONE;
-        return TAIYIN_STATUS_OK;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     }
     taiyin::ziwei::Brightness brightness = taiyin::ziwei::Brightness::None;
     status = taiyin::ziwei::brightness_at(
@@ -745,10 +747,10 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_brightness(
     if (status == TAIYIN_STATUS_OK) {
         *out_brightness = static_cast<int32_t>(brightness);
     }
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_has_star_transform_mark(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_has_star_transform_mark(
     const taiyin_ziwei_chart* chart,
     int32_t mark,
     uint16_t star_id,
@@ -757,15 +759,15 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_has_star_transform_mark(
     if (out_has_mark) *out_has_mark = 0u;
     if (!chart || !out_has_mark || !valid_star_transform_mark(mark)
         || star_id >= chart->value.natal.palaces[0].stars.size()) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     *out_has_mark = taiyin::ziwei::has_star_transform_mark(
         chart->value.natal,
         static_cast<taiyin::ziwei::StarTransformMark>(mark), star_id) ? 1u : 0u;
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_transformation_mask(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_star_transformation_mask(
     const taiyin_ziwei_chart* chart,
     uint16_t star_id,
     uint16_t* out_mask
@@ -773,14 +775,14 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_star_transformation_mask(
     if (out_mask) *out_mask = 0u;
     if (!chart || !out_mask
         || star_id >= chart->value.natal.palaces[0].stars.size()) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     *out_mask = taiyin::ziwei::star_transform_mask(
         chart->value.natal, star_id);
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stars(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stars(
     const taiyin_ziwei_chart* chart,
     uint8_t branch,
     uint16_t* out_star_ids,
@@ -790,21 +792,21 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stars(
     if (out_count) *out_count = 0u;
     if (!chart || branch >= taiyin::ziwei::kBranchCount || !out_count
         || (capacity != 0u && !out_star_ids)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     const taiyin::ziwei::DynamicBitset& stars =
         chart->value.natal.palaces[branch].stars;
     *out_count = stars.count();
-    if (!out_star_ids) return TAIYIN_STATUS_OK;
-    if (capacity < *out_count) return TAIYIN_ERROR_OUT_OF_MEMORY;
+    if (!out_star_ids) return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+    if (capacity < *out_count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     std::size_t cursor = 0u;
     for (std::size_t id = 0u; id < stars.size(); ++id) {
         if (stars.test(id)) out_star_ids[cursor++] = static_cast<uint16_t>(id);
     }
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* target_instant_utc,
@@ -824,7 +826,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
         || !chart || !taiyin_c_internal::valid_struct(out_summary)
         || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic))
         || !chart_matches_context(chart, context)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin::ziwei::ResolvedFlow resolved;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
@@ -844,19 +846,19 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
         taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
     }
     if (status == TAIYIN_STATUS_OK) copy_flow_summary(resolved, out_summary);
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_truncate_flow(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_truncate_flow(
     taiyin_ziwei_chart* chart,
     int32_t first_removed_level
 ) {
     if (!chart || !valid_level(first_removed_level)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
-    return taiyin::ziwei::truncate_flow_stack(
+    return taiyin_c_internal::pack_call_result(taiyin::ziwei::truncate_flow_stack(
         &chart->value,
-        static_cast<taiyin::ziwei::FlowLevel>(first_removed_level));
+        static_cast<taiyin::ziwei::FlowLevel>(first_removed_level)));
 }
 
 size_t TAIYIN_C_CALL taiyin_ziwei_chart_flow_layer_count(
@@ -865,7 +867,7 @@ size_t TAIYIN_C_CALL taiyin_ziwei_chart_flow_layer_count(
     return chart ? chart->value.flow_stack.size() : 0u;
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_star_position(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_star_position(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     uint16_t star_id,
@@ -874,7 +876,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_star_position(
     if (out_branch) *out_branch = TAIYIN_ZIWEI_INVALID_POSITION;
     const taiyin::ziwei::FlowLayer* layer = find_flow_layer(chart, level);
     if (!layer || !out_branch || star_id >= layer->stars[0].size()) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     for (uint8_t branch = 0u; branch < taiyin::ziwei::kBranchCount; ++branch) {
         if (layer->stars[branch].test(star_id)) {
@@ -882,10 +884,10 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_star_position(
             break;
         }
     }
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_layer_summary(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_layer_summary(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     uint8_t* out_life_palace,
@@ -895,15 +897,15 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_layer_summary(
     const taiyin::ziwei::FlowLayer* layer = find_flow_layer(chart, level);
     if (!layer || !out_life_palace || !out_coordinate_stem
         || !out_coordinate_branch) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     *out_life_palace = taiyin::ziwei::to_index(layer->life_palace);
     *out_coordinate_stem = taiyin::ziwei::to_index(layer->coordinate.stem);
     *out_coordinate_branch = taiyin::ziwei::to_index(layer->coordinate.branch);
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_palace_stars(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_palace_stars(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     uint8_t branch,
@@ -915,33 +917,33 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_palace_stars(
     const taiyin::ziwei::FlowLayer* layer = find_flow_layer(chart, level);
     if (!layer || branch >= taiyin::ziwei::kBranchCount || !out_count
         || (capacity != 0u && !out_star_ids)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     const taiyin::ziwei::DynamicBitset& stars = layer->stars[branch];
     *out_count = stars.count();
-    if (!out_star_ids) return TAIYIN_STATUS_OK;
-    if (capacity < *out_count) return TAIYIN_ERROR_OUT_OF_MEMORY;
+    if (!out_star_ids) return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+    if (capacity < *out_count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
     std::size_t cursor = 0u;
     for (std::size_t id = 0u; id < stars.size(); ++id) {
         if (stars.test(id)) out_star_ids[cursor++] = static_cast<uint16_t>(id);
     }
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_transforms(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_flow_transforms(
     const taiyin_ziwei_chart* chart,
     int32_t level,
     taiyin_ziwei_transform_set* out_transforms
 ) {
     const taiyin::ziwei::FlowLayer* layer = find_flow_layer(chart, level);
     if (!layer || !taiyin_c_internal::valid_struct(out_transforms)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     copy_transforms(layer->transforms, out_transforms);
-    return TAIYIN_STATUS_OK;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_step_flow_hour_target(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_hour_target(
     const taiyin_split_julian_date* current_instant_utc,
     const taiyin_calendar_datetime* current_virtual_time,
     int32_t rat_hour_mode,
@@ -955,7 +957,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_step_flow_hour_target(
         || !out_instant_utc
         || !taiyin_c_internal::valid_struct(out_virtual_time)
         || !out_rat_hour_segment) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin::SplitJulianDate cpp_instant;
     taiyin::CalendarDateTime cpp_time;
@@ -974,10 +976,10 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_step_flow_hour_target(
         taiyin_c_internal::from_cpp_datetime(cpp_time, out_virtual_time);
         *out_rat_hour_segment = taiyin::ziwei::to_index(cpp_segment);
     }
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_ziwei_step_flow_day_target(
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_day_target(
     const taiyin_split_julian_date* current_instant_utc,
     const taiyin_calendar_datetime* current_virtual_time,
     int32_t direction,
@@ -988,7 +990,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_step_flow_day_target(
         || !taiyin_c_internal::valid_struct(current_virtual_time)
         || !out_instant_utc
         || !taiyin_c_internal::valid_struct(out_virtual_time)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     taiyin::SplitJulianDate cpp_instant;
     taiyin::CalendarDateTime cpp_time;
@@ -1002,7 +1004,7 @@ taiyin_status TAIYIN_C_CALL taiyin_ziwei_step_flow_day_target(
         taiyin_c_internal::from_cpp_split_jd(cpp_instant, out_instant_utc);
         taiyin_c_internal::from_cpp_datetime(cpp_time, out_virtual_time);
     }
-    return status;
+    return taiyin_c_internal::pack_call_result(status);
 }
 
 }  // extern "C"

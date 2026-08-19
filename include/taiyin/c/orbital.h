@@ -97,7 +97,7 @@ TAIYIN_C_API void TAIYIN_C_CALL taiyin_body_node_search_result_init(
     taiyin_body_node_search_result* value
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_tt,
@@ -106,7 +106,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_tt(
     taiyin_body_osculating_orbit* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_ut,
@@ -115,7 +115,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_osculating_orbit_ut(
     taiyin_body_osculating_orbit* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_tt,
@@ -124,7 +124,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points
     taiyin_body_orbit_reference_points* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_ut,
@@ -133,7 +133,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_body_orbit_reference_points
     taiyin_body_orbit_reference_points* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_apsis_tt(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -142,7 +142,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_tt(
     taiyin_body_apsis_search_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_apsis_ut(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -151,7 +151,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_apsis_ut(
     taiyin_body_apsis_search_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_plane_node_tt(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,
@@ -161,7 +161,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_tt(
     taiyin_body_node_search_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_body_plane_node_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_next_body_plane_node_ut(
     const taiyin_context* context,
     int32_t body_id,
     int32_t kind,

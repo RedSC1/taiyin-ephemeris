@@ -116,7 +116,7 @@ TAIYIN_C_API double TAIYIN_C_CALL taiyin_recommended_aspect_search_step_days(
     int32_t body_b_id
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_longitude_ut(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_ut,
@@ -124,7 +124,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_ut(
     taiyin_split_julian_date* out_jd_ut,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_longitude_tt(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_tt,
@@ -132,7 +132,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_tt(
     taiyin_split_julian_date* out_jd_tt,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_longitude_ut(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_ut,
@@ -140,7 +140,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_ut(
     taiyin_split_julian_date* out_jd_ut,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_longitude_tt(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_tt,
@@ -149,7 +149,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_tt(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_crossings_ut(
     const taiyin_context* context,
     int32_t body_id,
     double target_longitude_rad,
@@ -162,7 +162,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_crossings_tt(
     const taiyin_context* context,
     int32_t body_id,
     double target_longitude_rad,
@@ -175,7 +175,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_stations_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -188,7 +188,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_u
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_stations_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_tt,
@@ -201,7 +201,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_t
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_aspect_crossings_ut(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -215,7 +215,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_ut(
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_aspect_crossings_tt(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -229,7 +229,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_tt(
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_exact_aspects_ut(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -245,7 +245,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_ut(
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_body_exact_aspects_tt(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -262,7 +262,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_tt(
     taiyin_ephemeris_diagnostic* diagnostic
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_greatest_elongation_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_greatest_elongation_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -271,7 +271,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_greatest_elongation_ut(
     taiyin_greatest_elongation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_minimum_angular_separation_ut(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -282,7 +282,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separatio
     taiyin_angular_separation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_minimum_angular_separation_tt(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -293,7 +293,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separatio
     taiyin_angular_separation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_minimum_body_star_angular_separation_ut(
     const taiyin_context* context,
     int32_t body_id,
@@ -305,7 +305,7 @@ taiyin_search_minimum_body_star_angular_separation_ut(
     taiyin_body_star_angular_separation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL
 taiyin_search_minimum_body_star_angular_separation_tt(
     const taiyin_context* context,
     int32_t body_id,
@@ -317,7 +317,7 @@ taiyin_search_minimum_body_star_angular_separation_tt(
     taiyin_body_star_angular_separation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
@@ -325,7 +325,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(
     taiyin_solar_transit_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_solar_transit_ut(
     const taiyin_context* context,
     const taiyin_solar_transit_result* global_transit,
     double longitude_deg,
@@ -335,7 +335,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_transit_ut(
     taiyin_local_solar_transit_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_local_solar_transit_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_solar_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
@@ -346,7 +346,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_next_local_solar_transit_
     taiyin_local_solar_transit_result* out,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_ut(
     const taiyin_context* context,
     double phase_rad,
     const taiyin_split_julian_date* start_jd_ut,
@@ -358,7 +358,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_ut(
     size_t* out_count,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_tt(
     const taiyin_context* context,
     double phase_rad,
     const taiyin_split_julian_date* start_jd_tt,

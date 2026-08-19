@@ -39,14 +39,14 @@ int main(int argc, char** argv) {
     runtime_config.source_path_count = 1;
     runtime_config.load_packaged_data = 0u;
     taiyin_chinese_calendar_config_init_utc_offset(&calendar_config, 8 * 60);
-    if (taiyin_runtime_initialize(&runtime_config) != TAIYIN_STATUS_OK
-        || taiyin_context_create(&native_context) != TAIYIN_STATUS_OK
+    if (taiyin_runtime_initialize(&runtime_config) < 0
+        || taiyin_context_create(&native_context) < 0
         || taiyin_context_set_geocentric_observer(
             native_context, TAIYIN_BODY_EARTH, TAIYIN_BODY_EARTH)
-            != TAIYIN_STATUS_OK
+            < 0
         || taiyin_chinese_calendar_context_create(
             native_context, &calendar_config, &calendar_context)
-            != TAIYIN_STATUS_OK) {
+            < 0) {
         taiyin_chinese_calendar_context_destroy(calendar_context);
         taiyin_context_destroy(native_context);
         return fail("initialize BaZi C ABI integration context");
@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
         || config.dayun_boundary_model != TAIYIN_BAZI_DAYUN_CIVIL_YEARS) {
         return fail("BaZi fortune profile defaults");
     }
-    if (taiyin_bazi_context_create(&config, &context) != TAIYIN_STATUS_OK
+    if (taiyin_bazi_context_create(&config, &context) < 0
         || context == NULL) {
         return fail("create BaZi context");
     }
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     pillars.day = 0x42u;
     pillars.hour = 0x35u;
     taiyin_bazi_chart_init(&chart);
-    if (taiyin_bazi_calc_chart(context, &pillars, &chart) != TAIYIN_STATUS_OK
+    if (taiyin_bazi_calc_chart(context, &pillars, &chart) < 0
         || chart.year_pillar != pillars.year
         || chart.month_pillar != pillars.month
         || chart.day_pillar != pillars.day
@@ -97,22 +97,22 @@ int main(int argc, char** argv) {
         size_t word_count = 0u;
         if (taiyin_bazi_collect_target_shen_sha(
                 &chart, chart.day_pillar, TAIYIN_BAZI_SHEN_SHA_TARGET_DAY,
-                NULL, 0u, &word_count) != TAIYIN_STATUS_OK
+                NULL, 0u, &word_count) < 0
             || word_count != TAIYIN_BAZI_SHEN_SHA_WORD_COUNT
-            || taiyin_bazi_collect_target_shen_sha(
+            || taiyin_call_result_status(taiyin_bazi_collect_target_shen_sha(
                 &chart, chart.day_pillar, TAIYIN_BAZI_SHEN_SHA_TARGET_DAY,
-                &short_word, 1u, &word_count) != TAIYIN_ERROR_OUT_OF_MEMORY
+                &short_word, 1u, &word_count)) != TAIYIN_ERROR_OUT_OF_MEMORY
             || short_word != 0u
             || word_count != TAIYIN_BAZI_SHEN_SHA_WORD_COUNT
             || taiyin_bazi_collect_target_shen_sha(
                 &chart, chart.day_pillar, TAIYIN_BAZI_SHEN_SHA_TARGET_DAY,
                 words, TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count)
-                != TAIYIN_STATUS_OK
+                < 0
             || (words[TAIYIN_BAZI_SHEN_SHA_TIAN_SHE_DAY / 64u]
                 & (UINT64_C(1) << (TAIYIN_BAZI_SHEN_SHA_TIAN_SHE_DAY % 64u))) == 0u
-            || taiyin_bazi_collect_target_shen_sha(
+            || taiyin_call_result_status(taiyin_bazi_collect_target_shen_sha(
                 &chart, chart.day_pillar, -1,
-                words, TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count)
+                words, TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_bazi_context_destroy(context);
             return fail("BaZi Shen Sha bitset C ABI");
@@ -128,17 +128,17 @@ int main(int argc, char** argv) {
                 &chart, 0x19u, TAIYIN_BAZI_SHEN_SHA_TARGET_YEAR,
                 TAIYIN_BAZI_GENDER_MALE, words,
                 TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count)
-                != TAIYIN_STATUS_OK
+                < 0
             || (words[TAIYIN_BAZI_SHEN_SHA_GOU_SHA / 64u]
                 & (UINT64_C(1) << (TAIYIN_BAZI_SHEN_SHA_GOU_SHA % 64u))) == 0u
-            || taiyin_bazi_collect_target_shen_sha_with_gender(
+            || taiyin_call_result_status(taiyin_bazi_collect_target_shen_sha_with_gender(
                 &chart, 0x19u, TAIYIN_BAZI_SHEN_SHA_TARGET_YEAR, 2,
-                words, TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count)
+                words, TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_bazi_collect_target_shen_sha_with_gender(
+            || taiyin_call_result_status(taiyin_bazi_collect_target_shen_sha_with_gender(
                 &invalid_hour_chart, 0x19u, TAIYIN_BAZI_SHEN_SHA_TARGET_YEAR,
                 TAIYIN_BAZI_GENDER_MALE, words,
-                TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count)
+                TAIYIN_BAZI_SHEN_SHA_WORD_COUNT, &word_count))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_bazi_context_destroy(context);
             return fail("gender-aware BaZi Shen Sha C ABI");
@@ -157,15 +157,15 @@ int main(int argc, char** argv) {
             || result.stem_id != TAIYIN_GANZHI_INVALID
             || taiyin_bazi_get_renyuan_siling_segments(
                 2u, TAIYIN_BAZI_RENYUAN_SILING_SAN_MING_TONG_HUI,
-                NULL, 0, &segment_count) != TAIYIN_STATUS_OK
+                NULL, 0, &segment_count) < 0
+            || segment_count != 3u
+            || taiyin_call_result_status(taiyin_bazi_get_renyuan_siling_segments(
+                2u, TAIYIN_BAZI_RENYUAN_SILING_SAN_MING_TONG_HUI,
+                segments, 2, &segment_count)) != TAIYIN_ERROR_OUT_OF_MEMORY
             || segment_count != 3u
             || taiyin_bazi_get_renyuan_siling_segments(
                 2u, TAIYIN_BAZI_RENYUAN_SILING_SAN_MING_TONG_HUI,
-                segments, 2, &segment_count) != TAIYIN_ERROR_OUT_OF_MEMORY
-            || segment_count != 3u
-            || taiyin_bazi_get_renyuan_siling_segments(
-                2u, TAIYIN_BAZI_RENYUAN_SILING_SAN_MING_TONG_HUI,
-                segments, 3, &segment_count) != TAIYIN_STATUS_OK
+                segments, 3, &segment_count) < 0
             || segments[0].stem_id != 4u
             || segments[0].origin_kind
                 != TAIYIN_BAZI_RENYUAN_SILING_ORIGIN_GEN_EARTH
@@ -174,9 +174,9 @@ int main(int argc, char** argv) {
             || segments[1].start_day != 5.0 || segments[1].end_day != 10.0
             || segments[2].stem_id != 0u
             || segments[2].start_day != 10.0 || segments[2].end_day != 30.0
-            || taiyin_bazi_get_renyuan_siling_segments(
+            || taiyin_call_result_status(taiyin_bazi_get_renyuan_siling_segments(
                 12u, TAIYIN_BAZI_RENYUAN_SILING_COMMON,
-                NULL, 0, &segment_count) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                NULL, 0, &segment_count)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_bazi_context_destroy(context);
             return fail("Renyuan Siling C ABI table and initializers");
         }
@@ -187,10 +187,10 @@ int main(int argc, char** argv) {
         uint8_t element = TAIYIN_BAZI_INVALID_WUXING;
         uint8_t branches[2] = {TAIYIN_GANZHI_INVALID, TAIYIN_GANZHI_INVALID};
         if (taiyin_bazi_calc_stem_relation(0, 5, &flags, &element)
-                != TAIYIN_STATUS_OK
+                < 0
             || (flags & TAIYIN_BAZI_STEM_RELATION_COMBINATION) == 0u
             || element != TAIYIN_BAZI_WUXING_EARTH
-            || taiyin_bazi_get_kong_wang(0x00u, branches) != TAIYIN_STATUS_OK
+            || taiyin_bazi_get_kong_wang(0x00u, branches) < 0
             || branches[0] != 10u || branches[1] != 11u) {
             taiyin_bazi_context_destroy(context);
             return fail("BaZi rules");
@@ -211,24 +211,24 @@ int main(int argc, char** argv) {
         if (taiyin_bazi_collect_chart_relations(
                 &chart, TAIYIN_BAZI_RELATION_PILLAR_PRIMARY,
                 TAIYIN_BAZI_RELATION_KIND_MASK_ALL, NULL, 0, &relation_count)
-                != TAIYIN_STATUS_OK
+                < 0
             || relation_count == 0
-            || taiyin_bazi_collect_chart_relations(
+            || taiyin_call_result_status(taiyin_bazi_collect_chart_relations(
                 &chart, TAIYIN_BAZI_RELATION_PILLAR_PRIMARY,
-                TAIYIN_BAZI_RELATION_KIND_MASK_ALL, &relation, 1, &relation_count)
+                TAIYIN_BAZI_RELATION_KIND_MASK_ALL, &relation, 1, &relation_count))
                 != TAIYIN_ERROR_OUT_OF_MEMORY
             || relation_count <= 1
             || relation.struct_size != sizeof(relation)
-            || taiyin_bazi_collect_chart_relations(
-                &chart, 0, TAIYIN_BAZI_RELATION_KIND_MASK_ALL, NULL, 0, &relation_count)
+            || taiyin_call_result_status(taiyin_bazi_collect_chart_relations(
+                &chart, 0, TAIYIN_BAZI_RELATION_KIND_MASK_ALL, NULL, 0, &relation_count))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_bazi_collect_chart_relations(
+            || taiyin_call_result_status(taiyin_bazi_collect_chart_relations(
                 &chart, 0x100u, TAIYIN_BAZI_RELATION_KIND_MASK_ALL,
-                NULL, 0, &relation_count)
+                NULL, 0, &relation_count))
                 != TAIYIN_ERROR_INVALID_ARGUMENT
-            || taiyin_bazi_collect_chart_relations(
+            || taiyin_call_result_status(taiyin_bazi_collect_chart_relations(
                 &chart, TAIYIN_BAZI_RELATION_PILLAR_PRIMARY, 0x10000u,
-                NULL, 0, &relation_count)
+                NULL, 0, &relation_count))
                 != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_bazi_context_destroy(context);
             return fail("BaZi aggregate relation C ABI");
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
             || taiyin_bazi_collect_chart_relations(
                 &chart, TAIYIN_BAZI_RELATION_PILLAR_PRIMARY,
                 TAIYIN_BAZI_RELATION_KIND_MASK_ALL, relations, 32, &relation_count)
-                != TAIYIN_STATUS_OK) {
+                < 0) {
             taiyin_bazi_context_destroy(context);
             return fail("copy BaZi aggregate relation C ABI");
         }
@@ -284,25 +284,25 @@ int main(int argc, char** argv) {
         birth_civil.hour = 23;
         birth_civil.minute = 28;
         if (taiyin_julian_day_split(&birth_civil, &birth_local_jd)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_add_seconds_to_split_jd(
                 &birth_local_jd, -8.0 * 3600.0, &birth_jd_ut)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_calc_four_pillars_ut(
                 calendar_context,
                 &birth_jd_ut,
                 &birth_civil,
                 TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT,
                 &birth_pillars,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || taiyin_bazi_calc_chart(context, &birth_pillars, &birth_chart)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_chinese_calendar_get_prev_jie_ut(
                 calendar_context, &birth_jd_ut, &previous_jie, NULL)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_add_seconds_to_split_jd(
                 &previous_jie.jd_ut, 5.0 * 86400.0, &siling_boundary_jd)
-                != TAIYIN_STATUS_OK
+                < 0
             || taiyin_bazi_calc_renyuan_siling(
                 calendar_context,
                 &siling_boundary_jd,
@@ -310,21 +310,21 @@ int main(int argc, char** argv) {
                 TAIYIN_BAZI_RENYUAN_SILING_SAN_MING_TONG_HUI,
                 TAIYIN_BAZI_RENYUAN_SILING_ELAPSED_24_HOURS,
                 &siling,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || siling.struct_size != sizeof(siling)
             || siling.month_branch_id != 2u
             || siling.stem_id != 2u
             || siling.origin_kind != TAIYIN_BAZI_RENYUAN_SILING_ORIGIN_STEM
             || siling.segment_index != 1u
             || siling.segment_start_day != 5.0
-            || taiyin_bazi_calc_renyuan_siling(
+            || taiyin_call_result_status(taiyin_bazi_calc_renyuan_siling(
                 calendar_context,
                 &siling_boundary_jd,
                 &birth_chart,
                 99,
                 TAIYIN_BAZI_RENYUAN_SILING_ELAPSED_24_HOURS,
                 &siling,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
             || taiyin_bazi_calc_qiyun(
                 context,
                 calendar_context,
@@ -333,7 +333,7 @@ int main(int argc, char** argv) {
                 &birth_chart,
                 TAIYIN_BAZI_GENDER_MALE,
                 &qiyun,
-                NULL) != TAIYIN_STATUS_OK
+                NULL) < 0
             || qiyun.struct_size != sizeof(qiyun)
             || qiyun.direction != 1
             || qiyun.start_civil_time.year != 2030
@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
                 2,
                 NULL,
                 0,
-                &dayun_count) != TAIYIN_STATUS_OK
+                &dayun_count) < 0
             || dayun_count != 2
             || taiyin_bazi_fill_dayun(
                 context,
@@ -368,7 +368,7 @@ int main(int argc, char** argv) {
                 2,
                 dayun,
                 2,
-                &dayun_count) != TAIYIN_STATUS_OK
+                &dayun_count) < 0
             || dayun[0].struct_size != sizeof(dayun[0])
             || dayun[0].ganzhi != 0x73u
             || dayun[1].ganzhi != 0x84u
@@ -399,36 +399,36 @@ int main(int argc, char** argv) {
             flow_date.day = 1;
             flow_date.hour = 23;
             flow_date.minute = 59;
-            if (taiyin_bazi_calc_liunian(2024, &flow_year) != TAIYIN_STATUS_OK
+            if (taiyin_bazi_calc_liunian(2024, &flow_year) < 0
                 || flow_year != 0x04u
                 || taiyin_bazi_calc_liuyue(flow_year, 2u, &flow_month)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || flow_month != 0x22u
                 || taiyin_bazi_calc_liuri(&flow_date, &flow_day)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || flow_day != 0x46u
                 || taiyin_bazi_calc_liushi(flow_day, 0u, &flow_hour)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || flow_hour != 0x80u
                 || taiyin_bazi_calc_xiaoyun(
-                    &birth_chart, -1, 7, &xiao_yun) != TAIYIN_STATUS_OK
+                    &birth_chart, -1, 7, &xiao_yun) < 0
                 || taiyin_ganzhi_advance(
                     birth_chart.hour_pillar, -7, &expected_xiao_yun)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || xiao_yun != expected_xiao_yun
-                || taiyin_bazi_calc_liushi(flow_day, 12u, &flow_hour)
+                || taiyin_call_result_status(taiyin_bazi_calc_liushi(flow_day, 12u, &flow_hour))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
-                || taiyin_bazi_calc_xiaoyun(
-                    &birth_chart, 0, 1, &xiao_yun)
+                || taiyin_call_result_status(taiyin_bazi_calc_xiaoyun(
+                    &birth_chart, 0, 1, &xiao_yun))
                     != TAIYIN_ERROR_INVALID_ARGUMENT
                 || taiyin_bazi_fill_xiaoyun(
                     &birth_chart, 1, 1, 3, NULL, 0, &xiao_count)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || xiao_count != 3u
                 || taiyin_bazi_fill_xiaoyun(
                     &birth_chart, -1, 1, 3,
                     xiao_entries, 3, &xiao_count)
-                    != TAIYIN_STATUS_OK
+                    < 0
                 || xiao_count != 3u
                 || xiao_entries[0].struct_size != sizeof(xiao_entries[0])
                 || xiao_entries[0].age != 1u
@@ -441,14 +441,14 @@ int main(int argc, char** argv) {
             }
         }
         --birth_chart.struct_size;
-        if (taiyin_bazi_calc_renyuan_siling(
+        if (taiyin_call_result_status(taiyin_bazi_calc_renyuan_siling(
                 calendar_context,
                 &siling_boundary_jd,
                 &birth_chart,
                 TAIYIN_BAZI_RENYUAN_SILING_SAN_MING_TONG_HUI,
                 TAIYIN_BAZI_RENYUAN_SILING_ELAPSED_24_HOURS,
                 &siling,
-                NULL) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) {
             taiyin_bazi_context_destroy(context);
             taiyin_chinese_calendar_context_destroy(calendar_context);
             taiyin_context_destroy(native_context);

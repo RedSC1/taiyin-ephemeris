@@ -5,6 +5,35 @@
 #include <cstdio>
 #include <cstring>
 
+// The C ABI enum and the C++ runtime constants must stay in lockstep.
+static_assert(
+    TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED == taiyin::kResultFlagFallbackOccurred,
+    "C and C++ FALLBACK_OCCURRED flag values diverged");
+static_assert(
+    TAIYIN_RESULT_FLAG_NUMERICAL_DERIVATIVE
+        == taiyin::kResultFlagNumericalDerivative,
+    "C and C++ NUMERICAL_DERIVATIVE flag values diverged");
+static_assert(
+    TAIYIN_RESULT_FLAG_BARYCENTER_APPROX
+        == taiyin::kResultFlagBarycenterApprox,
+    "C and C++ BARYCENTER_APPROX flag values diverged");
+static_assert(
+    TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK
+        == taiyin::kResultFlagTimeScaleFallback,
+    "C and C++ TIME_SCALE_FALLBACK flag values diverged");
+static_assert(
+    TAIYIN_RESULT_FLAG_HISTORICAL_EVENT_ASSIGNMENT_APPLIED
+        == taiyin::kResultFlagHistoricalEventAssignmentApplied,
+    "C and C++ HISTORICAL_EVENT_ASSIGNMENT_APPLIED flag values diverged");
+static_assert(
+    TAIYIN_RESULT_FLAG_HISTORICAL_CALENDAR_RULES_APPLIED
+        == taiyin::kResultFlagHistoricalCalendarRulesApplied,
+    "C and C++ HISTORICAL_CALENDAR_RULES_APPLIED flag values diverged");
+static_assert(
+    TAIYIN_RESULT_FLAG_HISTORICAL_PILLAR_TERMS_APPLIED
+        == taiyin::kResultFlagHistoricalPillarTermsApplied,
+    "C and C++ HISTORICAL_PILLAR_TERMS_APPLIED flag values diverged");
+
 extern "C" {
 
 void TAIYIN_C_CALL taiyin_cartesian_state_init(taiyin_cartesian_state* value) {
@@ -119,6 +148,32 @@ taiyin_status TAIYIN_C_CALL taiyin_format_ephemeris_diagnostic(
 
 const char* TAIYIN_C_CALL taiyin_status_name(taiyin_status status) {
     return taiyin::status_name(status);
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_make_call_result(
+    taiyin_status status,
+    uint32_t result_flags
+) {
+    // The status sign bit lands on the int64 sign bit, so a non-negative
+    // taiyin_call_result always means success, with or without flags.
+    return static_cast<taiyin_call_result>(
+        (static_cast<uint64_t>(static_cast<uint32_t>(status)) << 32)
+        | static_cast<uint64_t>(result_flags));
+}
+
+taiyin_status TAIYIN_C_CALL taiyin_call_result_status(
+    taiyin_call_result result
+) {
+    return static_cast<taiyin_status>(
+        static_cast<uint32_t>(static_cast<uint64_t>(result) >> 32));
+}
+
+uint32_t TAIYIN_C_CALL taiyin_call_result_flags(taiyin_call_result result) {
+    return static_cast<uint32_t>(static_cast<uint64_t>(result) & 0xFFFFFFFFu);
+}
+
+taiyin_bool TAIYIN_C_CALL taiyin_call_result_ok(taiyin_call_result result) {
+    return result >= 0 ? 1u : 0u;
 }
 
 const char* TAIYIN_C_CALL taiyin_status_message(taiyin_status status) {

@@ -208,7 +208,7 @@ void init_path(taiyin_lunar_occultation_path_point* value) noexcept {
 }
 
 template <typename Eval>
-taiyin_status run_search(
+taiyin_call_result run_search(
     const taiyin_context* context,
     taiyin_lunar_occultation_result* out,
     taiyin_ephemeris_diagnostic* diagnostic,
@@ -216,19 +216,21 @@ taiyin_status run_search(
 ) {
     if (!context || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     CppResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
-    const taiyin::Status status =
-        eval(&cpp_out, diagnostic ? &cpp_diagnostic : 0);
+    const taiyin::Status status = eval(
+        &tracked.value, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_result(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 template <typename Eval>
-taiyin_status run_visibility(
+taiyin_call_result run_visibility(
     const taiyin_context* context,
     const taiyin_lunar_occultation_result* occultation,
     taiyin_lunar_occultation_local_visibility* out,
@@ -238,20 +240,23 @@ taiyin_status run_visibility(
     if (!context || !taiyin_c_internal::valid_struct(occultation)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const CppResult cpp_occultation = to_cpp_result(*occultation);
     taiyin::runtime::LunarOccultationLocalVisibility cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = eval(
-        &cpp_occultation, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
+        &tracked.value, &cpp_occultation, &cpp_out,
+        diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_visibility(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 template <typename Eval>
-taiyin_status run_where(
+taiyin_call_result run_where(
     const taiyin_context* context,
     const taiyin_lunar_occultation_result* occultation,
     taiyin_lunar_occultation_where_result* out,
@@ -261,16 +266,19 @@ taiyin_status run_where(
     if (!context || !taiyin_c_internal::valid_struct(occultation)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const CppResult cpp_occultation = to_cpp_result(*occultation);
     taiyin::runtime::LunarOccultationWhereResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = eval(
-        &cpp_occultation, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
+        &tracked.value, &cpp_occultation, &cpp_out,
+        diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_where(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 }  // namespace
@@ -321,8 +329,7 @@ void TAIYIN_C_CALL taiyin_lunar_occultation_where_result_init(
     }
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_next_geocentric_lunar_star_occultation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_geocentric_lunar_star_occultation_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_start_ut,
@@ -332,23 +339,23 @@ taiyin_search_next_geocentric_lunar_star_occultation_ut(
 ) {
     if (!star_key || star_key[0] == '\0'
         || !taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_search(
         context, out, diagnostic,
-        [&](CppResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            CppResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 search_next_geocentric_lunar_star_occultation_ut(
-                    &context->value, star_key,
+                    calc, star_key,
                     taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), flags,
                     cpp_out,
                     cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_next_local_lunar_star_occultation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_lunar_star_occultation_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_start_ut,
@@ -358,22 +365,22 @@ taiyin_search_next_local_lunar_star_occultation_ut(
 ) {
     if (!star_key || star_key[0] == '\0'
         || !taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_search(
         context, out, diagnostic,
-        [&](CppResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            CppResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_lunar_star_occultation_ut(
-                &context->value, star_key,
+                calc, star_key,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), flags,
                 cpp_out,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_next_geocentric_lunar_body_occultation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_geocentric_lunar_body_occultation_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
@@ -382,23 +389,23 @@ taiyin_search_next_geocentric_lunar_body_occultation_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_search(
         context, out, diagnostic,
-        [&](CppResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            CppResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 search_next_geocentric_lunar_body_occultation_ut(
-                    &context->value, body_id,
+                    calc, body_id,
                     taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), flags,
                     cpp_out,
                     cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_next_geocentric_lunar_body_occultation_with_radius_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_geocentric_lunar_body_occultation_with_radius_ut(
     const taiyin_context* context,
     int32_t body_id,
     double target_radius_km,
@@ -408,22 +415,22 @@ taiyin_search_next_geocentric_lunar_body_occultation_with_radius_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_search(
         context, out, diagnostic,
-        [&](CppResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            CppResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 search_next_geocentric_lunar_body_occultation_ut(
-                    &context->value, body_id, target_radius_km,
+                    calc, body_id, target_radius_km,
                     taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), flags,
                     cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_next_local_lunar_body_occultation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_lunar_body_occultation_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
@@ -432,22 +439,22 @@ taiyin_search_next_local_lunar_body_occultation_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_search(
         context, out, diagnostic,
-        [&](CppResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            CppResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_lunar_body_occultation_ut(
-                &context->value, body_id,
+                calc, body_id,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), flags,
                 cpp_out,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_next_local_lunar_body_occultation_with_radius_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_lunar_body_occultation_with_radius_ut(
     const taiyin_context* context,
     int32_t body_id,
     double target_radius_km,
@@ -457,21 +464,21 @@ taiyin_search_next_local_lunar_body_occultation_with_radius_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!taiyin_c_internal::valid_split_jd(jd_start_ut)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_search(
         context, out, diagnostic,
-        [&](CppResult* cpp_out,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            CppResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_next_local_lunar_body_occultation_ut(
-                &context->value, body_id, target_radius_km,
+                calc, body_id, target_radius_km,
                 taiyin_c_internal::to_cpp_split_jd(*jd_start_ut), flags,
                 cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_compute_lunar_star_occultation_local_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_lunar_star_occultation_local_visibility_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_lunar_occultation_result* occultation,
@@ -480,22 +487,22 @@ taiyin_compute_lunar_star_occultation_local_visibility_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!star_key || star_key[0] == '\0') {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_visibility(
         context, occultation, out, diagnostic,
-        [&](const CppResult* cpp_occultation,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const CppResult* cpp_occultation,
             taiyin::runtime::LunarOccultationLocalVisibility* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_lunar_star_occultation_local_visibility_ut(
-                    &context->value, star_key, cpp_occultation,
+                    calc, star_key, cpp_occultation,
                     visibility_flags, cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_compute_lunar_body_occultation_local_visibility_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_lunar_body_occultation_local_visibility_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_lunar_occultation_result* occultation,
@@ -505,17 +512,18 @@ taiyin_compute_lunar_body_occultation_local_visibility_ut(
 ) {
     return run_visibility(
         context, occultation, out, diagnostic,
-        [&](const CppResult* cpp_occultation,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const CppResult* cpp_occultation,
             taiyin::runtime::LunarOccultationLocalVisibility* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::
                 compute_lunar_body_occultation_local_visibility_ut(
-                    &context->value, body_id, cpp_occultation, visibility_flags,
+                    calc, body_id, cpp_occultation, visibility_flags,
                     cpp_out, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_lunar_star_occultation_where_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_lunar_star_occultation_where_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_lunar_occultation_result* occultation,
@@ -524,20 +532,21 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_lunar_star_occultation_where_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (!star_key || star_key[0] == '\0') {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return run_where(
         context, occultation, out, diagnostic,
-        [&](const CppResult* cpp_occultation,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const CppResult* cpp_occultation,
             taiyin::runtime::LunarOccultationWhereResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_lunar_star_occultation_where_ut(
-                &context->value, star_key, cpp_occultation, flags, cpp_out,
+                calc, star_key, cpp_occultation, flags, cpp_out,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_lunar_body_occultation_where_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_lunar_body_occultation_where_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_lunar_occultation_result* occultation,
@@ -547,17 +556,17 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_lunar_body_occultation_where_ut(
 ) {
     return run_where(
         context, occultation, out, diagnostic,
-        [&](const CppResult* cpp_occultation,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const CppResult* cpp_occultation,
             taiyin::runtime::LunarOccultationWhereResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_lunar_body_occultation_where_ut(
-                &context->value, body_id, cpp_occultation, flags, cpp_out,
+                calc, body_id, cpp_occultation, flags, cpp_out,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_compute_lunar_body_occultation_where_with_radius_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_lunar_body_occultation_where_with_radius_ut(
     const taiyin_context* context,
     int32_t body_id,
     double target_radius_km,
@@ -568,11 +577,12 @@ taiyin_compute_lunar_body_occultation_where_with_radius_ut(
 ) {
     return run_where(
         context, occultation, out, diagnostic,
-        [&](const CppResult* cpp_occultation,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            const CppResult* cpp_occultation,
             taiyin::runtime::LunarOccultationWhereResult* cpp_out,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::compute_lunar_body_occultation_where_ut(
-                &context->value, body_id, target_radius_km, cpp_occultation,
+                calc, body_id, target_radius_km, cpp_occultation,
                 flags, cpp_out, cpp_diagnostic);
         });
 }

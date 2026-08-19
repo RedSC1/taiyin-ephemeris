@@ -7,6 +7,7 @@
 #include "taiyin/vector3.h"
 
 namespace taiyin {
+struct SourceSwitchTracker;
 namespace runtime {
 
 struct NativeEphemerisStateCache;
@@ -18,6 +19,12 @@ struct RuntimeStateEvalContext {
     const internal::EphemerisRouteRuleTable* route_rules;
     NativeEphemerisStateCache* epoch_state_cache;
     SplitJulianDate epoch_jd_tdb;
+    // Optional per-call execution-fact sink forwarded into EphemerisRequest.
+    uint32_t* result_flags;
+    // Optional search-operation tracker.  When set, successful evaluations
+    // report their winning source id into it and the request's result flags
+    // fall back to the tracker's operation word.
+    SourceSwitchTracker* source_tracker;
 
     RuntimeStateEvalContext() noexcept;
 };

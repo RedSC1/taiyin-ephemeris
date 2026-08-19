@@ -8,19 +8,19 @@
 extern "C" {
 #endif
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_star_catalog_add_tsc1(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_star_catalog_add_tsc1(
     const char* path
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_star_catalog_add_tsc1_memory(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_star_catalog_add_tsc1_memory(
     const uint8_t* data,
     size_t size
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_star_catalog_add_tsf1(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_star_catalog_add_tsf1(
     const char* path
 );
 TAIYIN_C_API void TAIYIN_C_CALL taiyin_star_catalog_clear(void);
 TAIYIN_C_API size_t TAIYIN_C_CALL taiyin_star_catalog_count(void);
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_star_find_magnitude(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_star_find_magnitude(
     const char* star_key,
     double* out_magnitude
 );
@@ -31,7 +31,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_star_find_magnitude(
  * Fixed-star position and observation are Earth-observer-only in the 1.0 API;
  * calls return TAIYIN_ERROR_UNSUPPORTED for a non-Earth context observer.
  */
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_tdb(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_position_tdb(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_tdb,
@@ -40,7 +40,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_tdb(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_position_tt(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_tt,
@@ -48,7 +48,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_tt(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_position_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_ut,
@@ -56,7 +56,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_ut(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_ut_delta_t(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_position_ut_delta_t(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_ut1,
@@ -65,7 +65,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_position_ut_delta_t(
     double out_position[6],
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_tdb(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_positions_tdb(
     const taiyin_context* context,
     const char* const* star_keys,
     size_t star_count,
@@ -75,7 +75,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_tdb(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_tt(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_positions_tt(
     const taiyin_context* context,
     const char* const* star_keys,
     size_t star_count,
@@ -84,7 +84,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_tt(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_positions_ut(
     const taiyin_context* context,
     const char* const* star_keys,
     size_t star_count,
@@ -93,7 +93,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_ut(
     double* out_positions,
     taiyin_ephemeris_diagnostic* diagnostics
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_ut_delta_t(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_star_positions_ut_delta_t(
     const taiyin_context* context,
     const char* const* star_keys,
     size_t star_count,
@@ -104,7 +104,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_star_positions_ut_delta_t(
     taiyin_ephemeris_diagnostic* diagnostics
 );
 
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_observed_star_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_observed_star_ut(
     const taiyin_context* context,
     const char* star_key,
     const taiyin_split_julian_date* jd_ut,
@@ -112,7 +112,7 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_observed_star_ut(
     taiyin_observed_position* out_position,
     taiyin_ephemeris_diagnostic* diagnostic
 );
-TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_calc_observed_stars_ut(
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_calc_observed_stars_ut(
     const taiyin_context* context,
     const char* const* star_keys,
     size_t star_count,

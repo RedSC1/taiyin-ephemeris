@@ -47,13 +47,13 @@ bool test_mixed_c_and_cpp_model_ownership() {
     uint64_t ayanamsha_token = 0;
     if (taiyin_register_ayanamsha_model_with_token(
             10071, &c_ayanamsha_callback, -1, nullptr, &ayanamsha_token)
-            != TAIYIN_STATUS_OK
+            < 0
         || ayanamsha_token == 0
         || !taiyin::astrology::remove_ayanamsha_model(10071)
         || !taiyin::astrology::add_ayanamsha_model(
             taiyin::astrology::AyanamshaModelEntry(
                 10071, &cpp_ayanamsha_callback))
-        || taiyin_unregister_ayanamsha_model_with_token(10071, ayanamsha_token)
+        || taiyin_call_result_status(taiyin_unregister_ayanamsha_model_with_token(10071, ayanamsha_token))
             != TAIYIN_ERROR_INVALID_ARGUMENT
         || !taiyin::astrology::has_ayanamsha_model(10071)
         || !taiyin::astrology::remove_ayanamsha_model(10071)) {
@@ -63,13 +63,13 @@ bool test_mixed_c_and_cpp_model_ownership() {
     uint64_t house_token = 0;
     if (taiyin_register_house_system_model_with_token(
             10072, &c_house_callback, -1, nullptr, &house_token)
-            != TAIYIN_STATUS_OK
+            < 0
         || house_token == 0
         || !taiyin::astrology::remove_house_system_model(10072)
         || !taiyin::astrology::add_house_system_model(
             taiyin::astrology::HouseSystemModelEntry(
                 10072, &cpp_house_callback))
-        || taiyin_unregister_house_system_model_with_token(10072, house_token)
+        || taiyin_call_result_status(taiyin_unregister_house_system_model_with_token(10072, house_token))
             != TAIYIN_ERROR_INVALID_ARGUMENT
         || !taiyin::astrology::has_house_system_model(10072)
         || !taiyin::astrology::remove_house_system_model(10072)) {
@@ -80,11 +80,11 @@ bool test_mixed_c_and_cpp_model_ownership() {
     uint64_t dependent_token = 0;
     if (taiyin_register_house_system_model_with_token(
             10073, &c_house_callback, -1, nullptr, &fallback_token)
-            != TAIYIN_STATUS_OK
+            < 0
         || taiyin_register_house_system_model_with_token(
             10074, &c_house_callback, 10073, nullptr, &dependent_token)
-            != TAIYIN_STATUS_OK
-        || taiyin_unregister_house_system_model_with_token(10073, fallback_token)
+            < 0
+        || taiyin_call_result_status(taiyin_unregister_house_system_model_with_token(10073, fallback_token))
             != TAIYIN_ERROR_UNSUPPORTED) {
         return false;
     }
@@ -97,7 +97,7 @@ bool test_mixed_c_and_cpp_model_ownership() {
     uint64_t cpp_dependent_token = 0;
     if (taiyin_register_house_system_model_with_token(
             10075, &c_house_callback, -1, nullptr, &cpp_dependent_token)
-            != TAIYIN_STATUS_OK
+            < 0
         || !taiyin::astrology::add_house_system_model(
             taiyin::astrology::HouseSystemModelEntry(
                 10076, &cpp_house_callback, 10075))) {

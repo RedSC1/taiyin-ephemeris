@@ -94,7 +94,7 @@
 extern "C" {
 #endif
 
-#define TAIYIN_C_ABI_VERSION 8u
+#define TAIYIN_C_ABI_VERSION 9u
 #define TAIYIN_LIBRARY_VERSION_MAJOR 1u
 #define TAIYIN_LIBRARY_VERSION_MINOR 0u
 #define TAIYIN_LIBRARY_VERSION_PATCH 0u
@@ -126,6 +126,58 @@ enum taiyin_capability {
 
 typedef int32_t taiyin_status;
 typedef uint8_t taiyin_bool;
+
+/*
+ * Packed call result for operations that report execution facts alongside the
+ * final status.  The high 32 bits carry the int32 taiyin_status; the low 32
+ * bits carry taiyin_result_flag execution facts.  Because a status of OK is 0
+ * and every error is negative, a non-negative taiyin_call_result means the
+ * call succeeded regardless of its result flags.  Result flags are
+ * independent of the rich taiyin_ephemeris_diagnostic: a flag is a stable
+ * summary fact about how the call executed, not route/candidate history.
+ */
+typedef int64_t taiyin_call_result;
+
+/*
+ * Execution facts for the low 32 bits of taiyin_call_result.  These are
+ * warning lights for abnormal-but-successful execution: each bit answers
+ * "did something happen that the caller cannot see from the input flags but
+ * may change how they judge this result?"  The rich diagnostic explains the
+ * details.  Only add flags with a clear, stable meaning; route names,
+ * source IDs, and model names belong in the diagnostic, not here.
+ */
+enum taiyin_result_flag {
+    /* Within one operation, two evaluations of the same (target, center)
+     * were served by different ephemeris source ids.  A continuity hazard
+     * for iterative searches (eclipse/solar-term/new-moon solving),
+     * regardless of which source is more precise. */
+    TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED = 1u << 0,
+    /* The requested state's velocity/acceleration came from finite
+     * differences of a position-only evaluator instead of an exact state
+     * evaluation. */
+    TAIYIN_RESULT_FLAG_NUMERICAL_DERIVATIVE = 1u << 1,
+    /* A requested physical body had no COB/center-of-body correction in
+     * the selected route, so its system barycenter stood in for the body.
+     * Routine for ancient dates; reported separately so it does not
+     * drown out FALLBACK_OCCURRED. */
+    TAIYIN_RESULT_FLAG_BARYCENTER_APPROX = 1u << 2,
+    /* The preferred precise time-scale route (UTC/EOP) was unavailable and
+     * an estimated delta-T model produced the conversion. */
+    TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK = 1u << 3,
+    /* Historical civil-day assignment for new moons/solar terms (the
+     * historical profile's day table, not an ancient algorithm's instant)
+     * participated in constructing a Chinese lunar calendar result.  Only
+     * possible when the calendar context's historical mode is enabled. */
+    TAIYIN_RESULT_FLAG_HISTORICAL_EVENT_ASSIGNMENT_APPLIED = 1u << 4,
+    /* Era-specific historical calendar rules (year-start shifts, special
+     * month names, early-historical arrangements) actually modified a
+     * Chinese lunar calendar result.  Only possible in historical mode. */
+    TAIYIN_RESULT_FLAG_HISTORICAL_CALENDAR_RULES_APPLIED = 1u << 5,
+    /* A four-pillars (ganzhi) calculation assigned its solar-term boundary
+     * days using the historical profile.  Independent of lunar-calendar
+     * arrangement and gated by the ganzhi module's own historical switch. */
+    TAIYIN_RESULT_FLAG_HISTORICAL_PILLAR_TERMS_APPLIED = 1u << 6
+};
 
 typedef struct taiyin_split_julian_date {
     int64_t day_number;
@@ -237,6 +289,19 @@ TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_format_ephemeris_diagnostic(
     char* buffer,
     size_t capacity,
     size_t* out_required_size
+);
+TAIYIN_C_API taiyin_call_result TAIYIN_C_CALL taiyin_make_call_result(
+    taiyin_status status,
+    uint32_t result_flags
+);
+TAIYIN_C_API taiyin_status TAIYIN_C_CALL taiyin_call_result_status(
+    taiyin_call_result result
+);
+TAIYIN_C_API uint32_t TAIYIN_C_CALL taiyin_call_result_flags(
+    taiyin_call_result result
+);
+TAIYIN_C_API taiyin_bool TAIYIN_C_CALL taiyin_call_result_ok(
+    taiyin_call_result result
 );
 TAIYIN_C_API const char* TAIYIN_C_CALL taiyin_status_name(taiyin_status status);
 TAIYIN_C_API const char* TAIYIN_C_CALL taiyin_status_message(taiyin_status status);

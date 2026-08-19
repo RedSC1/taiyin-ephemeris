@@ -35,6 +35,9 @@ struct EphemerisRequest {
     SplitJulianDate epoch_jd_tdb;
     uint64_t runtime_generation;
     bool include_descriptor;
+    // Optional per-call execution-fact sink.  The engine ORs ResultFlag bits
+    // into it; it is independent of the rich diagnostic and may be null.
+    uint32_t* result_flags;
 
     EphemerisRequest()
         : target_id(0),
@@ -47,7 +50,8 @@ struct EphemerisRequest {
           epoch_state_cache(0),
           epoch_jd_tdb(),
           runtime_generation(0u),
-          include_descriptor(true) {}
+          include_descriptor(true),
+          result_flags(0) {}
 };
 
 struct EphemerisResult {

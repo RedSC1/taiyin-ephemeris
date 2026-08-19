@@ -137,7 +137,7 @@ void copy_local_transit(
 }
 
 template <typename Eval>
-taiyin_status scalar_search(
+taiyin_call_result scalar_search(
     const taiyin_context* context,
     const taiyin_split_julian_date* required_jd,
     taiyin_split_julian_date* out_jd,
@@ -146,21 +146,23 @@ taiyin_status scalar_search(
 ) {
     if (!context || !taiyin_c_internal::valid_split_jd(required_jd)
         || !out_jd || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::SplitJulianDate cpp_jd;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
-    const taiyin::Status status =
-        eval(&cpp_jd, diagnostic ? &cpp_diagnostic : 0);
+    const taiyin::Status status = eval(
+        &tracked.value, &cpp_jd, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         taiyin_c_internal::from_cpp_split_jd(cpp_jd, out_jd);
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 template <typename Eval>
-taiyin_status array_search(
+taiyin_call_result array_search(
     const taiyin_context* context,
     const taiyin_split_julian_date* start_jd,
     const taiyin_split_julian_date* end_jd,
@@ -175,14 +177,17 @@ taiyin_status array_search(
         || !taiyin_c_internal::valid_split_jd(end_jd)
         || !out_count || !valid_diagnostic(diagnostic)
         || (capacity != 0 && !out_primary)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     try {
         std::vector<taiyin::SplitJulianDate> cpp_primary(capacity);
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         const taiyin::Status status = eval(
-            capacity ? cpp_primary.data() : nullptr, out_secondary, capacity,
-            out_count, diagnostic ? &cpp_diagnostic : 0);
+            &tracked.value, capacity ? cpp_primary.data() : nullptr,
+            out_secondary, capacity, out_count,
+            diagnostic ? &cpp_diagnostic : 0);
         if (status == taiyin::TAIYIN_STATUS_OK) {
             const size_t copied = *out_count < capacity ? *out_count : capacity;
             for (size_t i = 0; i < copied; ++i) {
@@ -191,13 +196,15 @@ taiyin_status array_search(
             }
         }
         taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-        return status;
+        return taiyin_c_internal::pack_call_result(status, tracked.flags);
     } catch (const std::bad_alloc&) {
         *out_count = 0;
-        return taiyin_c_internal::out_of_memory();
+        return taiyin_c_internal::pack_call_result(
+            taiyin_c_internal::out_of_memory(), tracked.flags);
     } catch (...) {
         *out_count = 0;
-        return TAIYIN_ERROR_INTERNAL;
+        return taiyin_c_internal::pack_call_result(
+            taiyin::TAIYIN_ERROR_INTERNAL, tracked.flags);
     }
 }
 
@@ -262,7 +269,7 @@ double TAIYIN_C_CALL taiyin_recommended_aspect_search_step_days(
         body_a_id, body_b_id);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_longitude_ut(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_ut,
@@ -272,15 +279,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_ut(
 ) {
     return scalar_search(
         context, estimate_jd_ut, out_jd_ut, diagnostic,
-        [&](taiyin::SplitJulianDate* cpp_out_jd,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* cpp_out_jd,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_longitude_ut(
-                &context->value, target_longitude_rad,
+                calc, target_longitude_rad,
                 cpp_date(estimate_jd_ut), flags, cpp_out_jd, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_solar_longitude_tt(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_tt,
@@ -290,15 +298,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_solar_longitude_tt(
 ) {
     return scalar_search(
         context, estimate_jd_tt, out_jd_tt, diagnostic,
-        [&](taiyin::SplitJulianDate* cpp_out_jd,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* cpp_out_jd,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_solar_longitude_tt(
-                &context->value, target_longitude_rad,
+                calc, target_longitude_rad,
                 cpp_date(estimate_jd_tt), flags, cpp_out_jd, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_longitude_ut(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_ut,
@@ -308,15 +317,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_ut(
 ) {
     return scalar_search(
         context, estimate_jd_ut, out_jd_ut, diagnostic,
-        [&](taiyin::SplitJulianDate* cpp_out_jd,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* cpp_out_jd,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_moon_longitude_ut(
-                &context->value, target_longitude_rad,
+                calc, target_longitude_rad,
                 cpp_date(estimate_jd_ut), flags, cpp_out_jd, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_moon_longitude_tt(
     const taiyin_context* context,
     double target_longitude_rad,
     const taiyin_split_julian_date* estimate_jd_tt,
@@ -326,15 +336,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_moon_longitude_tt(
 ) {
     return scalar_search(
         context, estimate_jd_tt, out_jd_tt, diagnostic,
-        [&](taiyin::SplitJulianDate* cpp_out_jd,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* cpp_out_jd,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_moon_longitude_tt(
-                &context->value, target_longitude_rad,
+                calc, target_longitude_rad,
                 cpp_date(estimate_jd_tt), flags, cpp_out_jd, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_crossings_ut(
     const taiyin_context* context,
     int32_t body_id,
     double target_longitude_rad,
@@ -349,16 +360,17 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_ut(
 ) {
     return array_search(
         context, start_jd_ut, end_jd_ut, out_jd_ut, 0, capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_longitude_crossings_ut(
-                &context->value, body_id, target_longitude_rad, cpp_date(start_jd_ut),
+                calc, body_id, target_longitude_rad, cpp_date(start_jd_ut),
                 cpp_date(end_jd_ut), max_step_days, flags, primary, cap, count,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_crossings_tt(
     const taiyin_context* context,
     int32_t body_id,
     double target_longitude_rad,
@@ -373,16 +385,17 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_crossings_tt(
 ) {
     return array_search(
         context, start_jd_tt, end_jd_tt, out_jd_tt, nullptr, capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_longitude_crossings_tt(
-                &context->value, body_id, target_longitude_rad, cpp_date(start_jd_tt),
+                calc, body_id, target_longitude_rad, cpp_date(start_jd_tt),
                 cpp_date(end_jd_tt), max_step_days, flags, primary, cap, count,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_stations_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -396,21 +409,22 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_ut(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (capacity != 0 && !out_longitude_rad) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return array_search(
         context, start_jd_ut, end_jd_ut, out_jd_ut, out_longitude_rad,
         capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_longitude_stations_ut(
-                &context->value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut),
+                calc, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut),
                 max_step_days, flags, primary, secondary, cap, count,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_longitude_stations_tt(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_tt,
@@ -424,21 +438,22 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_longitude_stations_tt(
     taiyin_ephemeris_diagnostic* diagnostic
 ) {
     if (capacity != 0 && !out_longitude_rad) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return array_search(
         context, start_jd_tt, end_jd_tt, out_jd_tt, out_longitude_rad,
         capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_longitude_stations_tt(
-                &context->value, body_id, cpp_date(start_jd_tt), cpp_date(end_jd_tt),
+                calc, body_id, cpp_date(start_jd_tt), cpp_date(end_jd_tt),
                 max_step_days, flags, primary, secondary, cap, count,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_aspect_crossings_ut(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -454,16 +469,17 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_ut(
 ) {
     return array_search(
         context, start_jd_ut, end_jd_ut, out_jd_ut, 0, capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_aspect_crossings_ut(
-                &context->value, body_a_id, body_b_id, aspect_rad, cpp_date(start_jd_ut),
+                calc, body_a_id, body_b_id, aspect_rad, cpp_date(start_jd_ut),
                 cpp_date(end_jd_ut), max_step_days, flags, primary, cap, count,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_aspect_crossings_tt(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -479,16 +495,17 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_aspect_crossings_tt(
 ) {
     return array_search(
         context, start_jd_tt, end_jd_tt, out_jd_tt, nullptr, capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_aspect_crossings_tt(
-                &context->value, body_a_id, body_b_id, aspect_rad, cpp_date(start_jd_tt),
+                calc, body_a_id, body_b_id, aspect_rad, cpp_date(start_jd_tt),
                 cpp_date(end_jd_tt), max_step_days, flags, primary, cap, count,
                 cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_exact_aspects_ut(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -506,22 +523,23 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_ut(
 ) {
     if ((!aspect_separations_rad && aspect_count != 0)
         || (capacity != 0 && !out_target_aspect_rad)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return array_search(
         context, start_jd_ut, end_jd_ut, out_jd_ut, out_target_aspect_rad,
         capacity, out_count,
         diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_exact_aspects_ut(
-                &context->value, body_a_id, body_b_id, aspect_separations_rad,
+                calc, body_a_id, body_b_id, aspect_separations_rad,
                 aspect_count, cpp_date(start_jd_ut), cpp_date(end_jd_ut), max_step_days, flags,
                 primary, secondary, cap, count, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_body_exact_aspects_tt(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -539,22 +557,23 @@ taiyin_status TAIYIN_C_CALL taiyin_search_body_exact_aspects_tt(
 ) {
     if ((!aspect_separations_rad && aspect_count != 0)
         || (capacity != 0 && !out_target_aspect_rad)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
     return array_search(
         context, start_jd_tt, end_jd_tt, out_jd_tt, out_target_aspect_rad,
         capacity, out_count,
         diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double* secondary, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_body_exact_aspects_tt(
-                &context->value, body_a_id, body_b_id, aspect_separations_rad,
+                calc, body_a_id, body_b_id, aspect_separations_rad,
                 aspect_count, cpp_date(start_jd_tt), cpp_date(end_jd_tt), max_step_days, flags,
                 primary, secondary, cap, count, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_greatest_elongation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_greatest_elongation_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* start_jd_ut,
@@ -567,20 +586,21 @@ taiyin_status TAIYIN_C_CALL taiyin_search_greatest_elongation_ut(
         || !taiyin_c_internal::valid_split_jd(end_jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::GreatestElongationSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::search_greatest_elongation_ut(
-            &context->value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), flags,
+            &tracked.value, body_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut), flags,
             &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_elongation(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_minimum_angular_separation_ut(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -595,21 +615,22 @@ taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_ut(
         || !taiyin_c_internal::valid_split_jd(end_jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::AngularSeparationSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::search_minimum_angular_separation_ut(
-            &context->value, body_a_id, body_b_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut),
+            &tracked.value, body_a_id, body_b_id, cpp_date(start_jd_ut), cpp_date(end_jd_ut),
             max_step_days, flags, &cpp_out,
             diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_separation(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_minimum_angular_separation_tt(
     const taiyin_context* context,
     int32_t body_a_id,
     int32_t body_b_id,
@@ -624,22 +645,22 @@ taiyin_status TAIYIN_C_CALL taiyin_search_minimum_angular_separation_tt(
         || !taiyin_c_internal::valid_split_jd(end_jd_tt)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::AngularSeparationSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::search_minimum_angular_separation_tt(
-            &context->value, body_a_id, body_b_id, cpp_date(start_jd_tt), cpp_date(end_jd_tt),
+            &tracked.value, body_a_id, body_b_id, cpp_date(start_jd_tt), cpp_date(end_jd_tt),
             max_step_days, flags, &cpp_out,
             diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_separation(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_minimum_body_star_angular_separation_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_minimum_body_star_angular_separation_ut(
     const taiyin_context* context,
     int32_t body_id,
     const char* star_key,
@@ -655,24 +676,24 @@ taiyin_search_minimum_body_star_angular_separation_ut(
         || !taiyin_c_internal::valid_split_jd(end_jd_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::BodyStarAngularSeparationSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::search_minimum_body_star_angular_separation_ut(
-            &context->value, body_id, star_key,
+            &tracked.value, body_id, star_key,
             cpp_date(start_jd_ut), cpp_date(end_jd_ut), max_step_days, flags,
             &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         copy_body_star_separation(cpp_out, out);
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL
-taiyin_search_minimum_body_star_angular_separation_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_minimum_body_star_angular_separation_tt(
     const taiyin_context* context,
     int32_t body_id,
     const char* star_key,
@@ -688,23 +709,24 @@ taiyin_search_minimum_body_star_angular_separation_tt(
         || !taiyin_c_internal::valid_split_jd(end_jd_tt)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::BodyStarAngularSeparationSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::search_minimum_body_star_angular_separation_tt(
-            &context->value, body_id, star_key,
+            &tracked.value, body_id, star_key,
             cpp_date(start_jd_tt), cpp_date(end_jd_tt), max_step_days, flags,
             &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) {
         copy_body_star_separation(cpp_out, out);
     }
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
@@ -715,19 +737,20 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_solar_transit_ut(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_start_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::SolarTransitSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status = taiyin::runtime::search_next_solar_transit_ut(
-        &context->value, body_id, cpp_date(jd_start_ut), flags, &cpp_out,
+        &tracked.value, body_id, cpp_date(jd_start_ut), flags, &cpp_out,
         diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_transit(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_compute_local_solar_transit_ut(
     const taiyin_context* context,
     const taiyin_solar_transit_result* global_transit,
     double longitude_deg,
@@ -740,22 +763,23 @@ taiyin_status TAIYIN_C_CALL taiyin_compute_local_solar_transit_ut(
     if (!context || !taiyin_c_internal::valid_struct(global_transit)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     const taiyin::runtime::SolarTransitSearchResult cpp_global =
         to_cpp_transit(*global_transit);
     taiyin::runtime::LocalSolarTransitSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::compute_local_solar_transit_ut(
-            &context->value, &cpp_global, longitude_deg, latitude_deg, height_m,
+            &tracked.value, &cpp_global, longitude_deg, latitude_deg, height_m,
             flags, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_local_transit(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_next_local_solar_transit_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_next_local_solar_transit_ut(
     const taiyin_context* context,
     int32_t body_id,
     const taiyin_split_julian_date* jd_start_ut,
@@ -769,20 +793,21 @@ taiyin_status TAIYIN_C_CALL taiyin_search_next_local_solar_transit_ut(
     if (!context || !taiyin_c_internal::valid_split_jd(jd_start_ut)
         || !taiyin_c_internal::valid_struct(out)
         || !valid_diagnostic(diagnostic)) {
-        return taiyin_c_internal::invalid_argument();
+        return taiyin_c_internal::pack_call_result(taiyin_c_internal::invalid_argument());
     }
+    taiyin_c_internal::TrackedCalcContext tracked(context->value);
     taiyin::runtime::LocalSolarTransitSearchResult cpp_out;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
     const taiyin::Status status =
         taiyin::runtime::search_next_local_solar_transit_ut(
-            &context->value, body_id, cpp_date(jd_start_ut), longitude_deg, latitude_deg,
+            &tracked.value, body_id, cpp_date(jd_start_ut), longitude_deg, latitude_deg,
             height_m, flags, &cpp_out, diagnostic ? &cpp_diagnostic : 0);
     if (status == taiyin::TAIYIN_STATUS_OK) copy_local_transit(cpp_out, out);
     taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
-    return status;
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_ut(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_ut(
     const taiyin_context* context,
     double phase_rad,
     const taiyin_split_julian_date* start_jd_ut,
@@ -796,15 +821,16 @@ taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_ut(
 ) {
     return array_search(
         context, start_jd_ut, end_jd_ut, out_jd_ut, 0, capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_lunar_phase_crossings_ut(
-                &context->value, phase_rad, cpp_date(start_jd_ut), cpp_date(end_jd_ut),
+                calc, phase_rad, cpp_date(start_jd_ut), cpp_date(end_jd_ut),
                 max_step_days, flags, primary, cap, count, cpp_diagnostic);
         });
 }
 
-taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_tt(
+taiyin_call_result TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_tt(
     const taiyin_context* context,
     double phase_rad,
     const taiyin_split_julian_date* start_jd_tt,
@@ -818,10 +844,11 @@ taiyin_status TAIYIN_C_CALL taiyin_search_lunar_phase_crossings_tt(
 ) {
     return array_search(
         context, start_jd_tt, end_jd_tt, out_jd_tt, nullptr, capacity, out_count, diagnostic,
-        [&](taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
+        [&](const taiyin::runtime::NativeCalcContext* calc,
+            taiyin::SplitJulianDate* primary, double*, size_t cap, size_t* count,
             taiyin::runtime::EphemerisEvalDiagnostic* cpp_diagnostic) {
             return taiyin::runtime::search_lunar_phase_crossings_tt(
-                &context->value, phase_rad, cpp_date(start_jd_tt), cpp_date(end_jd_tt),
+                calc, phase_rad, cpp_date(start_jd_tt), cpp_date(end_jd_tt),
                 max_step_days, flags, primary, cap, count, cpp_diagnostic);
         });
 }

@@ -31,6 +31,30 @@ typedef Status (*PositionFunction)(
     double[6],
     EphemerisEvalDiagnostic*);
 
+// Adapters keeping PositionFunction at its historical signature now that the
+// public calc entries carry an optional result-flags out-param.
+Status phenomena_position_tt(
+    const NativeCalcContext* context,
+    int target_id,
+    const SplitJulianDate& jd_tt,
+    uint32_t flags,
+    double out[6],
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    return calc_position_tt(context, target_id, jd_tt, flags, out, diagnostic);
+}
+
+Status phenomena_position_ut(
+    const NativeCalcContext* context,
+    int target_id,
+    const SplitJulianDate& jd_ut,
+    uint32_t flags,
+    double out[6],
+    EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    return calc_position_ut(context, target_id, jd_ut, flags, out, diagnostic);
+}
+
 void clear_phenomena(BodyPhenomena* out) noexcept {
     if (!out) return;
     out->phase_angle_rad = NAN;
@@ -899,7 +923,7 @@ Status calc_body_phenomena_tt(
         flags,
         out,
         diagnostic,
-        &calc_position_tt);
+        &phenomena_position_tt);
 }
 
 Status calc_body_phenomena_ut(
@@ -917,7 +941,7 @@ Status calc_body_phenomena_ut(
         flags,
         out,
         diagnostic,
-        &calc_position_ut);
+        &phenomena_position_ut);
 }
 
 }  // namespace runtime
