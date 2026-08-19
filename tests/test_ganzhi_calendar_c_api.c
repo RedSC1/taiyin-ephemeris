@@ -116,6 +116,7 @@ int main(int argc, char** argv) {
         taiyin_chinese_solar_term_event jie;
         taiyin_precise_time_scales scales;
         taiyin_call_result result;
+        taiyin_chinese_solar_term_event_init(&jie);
         if (taiyin_context_create(&astronomy) < 0
             || taiyin_context_set_geocentric_observer(
                    astronomy, TAIYIN_BODY_EARTH, TAIYIN_BODY_EARTH)
