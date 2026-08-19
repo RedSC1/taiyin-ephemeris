@@ -7,31 +7,35 @@
 
 // The C ABI enum and the C++ runtime constants must stay in lockstep.
 static_assert(
-    TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED == taiyin::kResultFlagFallbackOccurred,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_FALLBACK_OCCURRED)
+        == static_cast<uint32_t>(taiyin::kResultFlagFallbackOccurred),
     "C and C++ FALLBACK_OCCURRED flag values diverged");
 static_assert(
-    TAIYIN_RESULT_FLAG_NUMERICAL_DERIVATIVE
-        == taiyin::kResultFlagNumericalDerivative,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_NUMERICAL_DERIVATIVE)
+        == static_cast<uint32_t>(taiyin::kResultFlagNumericalDerivative),
     "C and C++ NUMERICAL_DERIVATIVE flag values diverged");
 static_assert(
-    TAIYIN_RESULT_FLAG_BARYCENTER_APPROX
-        == taiyin::kResultFlagBarycenterApprox,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_BARYCENTER_APPROX)
+        == static_cast<uint32_t>(taiyin::kResultFlagBarycenterApprox),
     "C and C++ BARYCENTER_APPROX flag values diverged");
 static_assert(
-    TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK
-        == taiyin::kResultFlagTimeScaleFallback,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_TIME_SCALE_FALLBACK)
+        == static_cast<uint32_t>(taiyin::kResultFlagTimeScaleFallback),
     "C and C++ TIME_SCALE_FALLBACK flag values diverged");
 static_assert(
-    TAIYIN_RESULT_FLAG_HISTORICAL_EVENT_ASSIGNMENT_APPLIED
-        == taiyin::kResultFlagHistoricalEventAssignmentApplied,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_HISTORICAL_EVENT_ASSIGNMENT_APPLIED)
+        == static_cast<uint32_t>(
+            taiyin::kResultFlagHistoricalEventAssignmentApplied),
     "C and C++ HISTORICAL_EVENT_ASSIGNMENT_APPLIED flag values diverged");
 static_assert(
-    TAIYIN_RESULT_FLAG_HISTORICAL_CALENDAR_RULES_APPLIED
-        == taiyin::kResultFlagHistoricalCalendarRulesApplied,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_HISTORICAL_CALENDAR_RULES_APPLIED)
+        == static_cast<uint32_t>(
+            taiyin::kResultFlagHistoricalCalendarRulesApplied),
     "C and C++ HISTORICAL_CALENDAR_RULES_APPLIED flag values diverged");
 static_assert(
-    TAIYIN_RESULT_FLAG_HISTORICAL_PILLAR_TERMS_APPLIED
-        == taiyin::kResultFlagHistoricalPillarTermsApplied,
+    static_cast<uint32_t>(TAIYIN_RESULT_FLAG_HISTORICAL_PILLAR_TERMS_APPLIED)
+        == static_cast<uint32_t>(
+            taiyin::kResultFlagHistoricalPillarTermsApplied),
     "C and C++ HISTORICAL_PILLAR_TERMS_APPLIED flag values diverged");
 
 extern "C" {
