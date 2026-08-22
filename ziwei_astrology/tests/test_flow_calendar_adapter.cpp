@@ -100,6 +100,131 @@ int main() {
     expect(found_late_rat_jie, "find a late-Rat Jie regression fixture",
         &failures);
 
+    // A precise Li-Chun crossing changes the solar year/month immediately at
+    // its physical UTC instant. The solar-day index then advances only at the
+    // selected Ziwei logical-day boundary: 23:00 for unified Rat hours, or
+    // civil midnight for either split-Rat convention.
+    chinese_calendar::SolarTermEvent li_chun_2024;
+    expect(chinese_calendar::getSpecificJieQi(
+            &calendar, 2024, 21u, &li_chun_2024, &late_rat_diagnostic)
+            == TAIYIN_STATUS_OK,
+        "resolve the 2024 Li-Chun instant", &failures);
+    SplitJulianDate li_chun_before_instant;
+    SplitJulianDate li_chun_after_instant;
+    CalendarDateTime li_chun_before_clock;
+    CalendarDateTime li_chun_after_clock;
+    expect(add_seconds_to_split_jd(
+            li_chun_2024.jd_ut, -60.0, &li_chun_before_instant)
+        && add_seconds_to_split_jd(
+            li_chun_2024.jd_ut, 60.0, &li_chun_after_instant)
+        && reverse_julian_day_split(
+            li_chun_before_instant + 8.0 / 24.0,
+            &li_chun_before_clock)
+        && reverse_julian_day_split(
+            li_chun_after_instant + 8.0 / 24.0,
+            &li_chun_after_clock),
+        "decode clocks around the 2024 Li-Chun instant", &failures);
+    const BirthResolutionOptions precise_jie_options =
+        default_birth_resolution_options();
+    ResolvedBirth li_chun_before_birth;
+    ResolvedBirth li_chun_after_birth;
+    expect(resolve_birth_from_calendar(
+            &calendar,
+            li_chun_before_instant,
+            li_chun_before_clock,
+            Gender::Male,
+            precise_jie_options,
+            &li_chun_before_birth,
+            &late_rat_diagnostic) == TAIYIN_STATUS_OK
+        && resolve_birth_from_calendar(
+            &calendar,
+            li_chun_after_instant,
+            li_chun_after_clock,
+            Gender::Male,
+            precise_jie_options,
+            &li_chun_after_birth,
+            &late_rat_diagnostic) == TAIYIN_STATUS_OK
+        && (li_chun_before_birth.facts.solar_term_pillars.year.stem
+                != li_chun_after_birth.facts.solar_term_pillars.year.stem
+            || li_chun_before_birth.facts.solar_term_pillars.year.branch
+                != li_chun_after_birth.facts.solar_term_pillars.year.branch)
+        && (li_chun_before_birth.facts.solar_term_pillars.month.stem
+                != li_chun_after_birth.facts.solar_term_pillars.month.stem
+            || li_chun_before_birth.facts.solar_term_pillars.month.branch
+                != li_chun_after_birth.facts.solar_term_pillars.month.branch)
+        && li_chun_before_birth.facts.solar_day_from_previous_jie > 1u
+        && li_chun_after_birth.facts.solar_day_from_previous_jie == 1u,
+        "physical Li-Chun instant switches the natal solar boundary",
+        &failures);
+
+    CalendarDateTime li_chun_2230 = li_chun_after_clock;
+    li_chun_2230.hour = 22;
+    li_chun_2230.minute = 30;
+    li_chun_2230.second = 0.0;
+    CalendarDateTime li_chun_2330 = li_chun_2230;
+    li_chun_2330.hour = 23;
+    SplitJulianDate li_chun_2230_instant;
+    SplitJulianDate li_chun_2330_instant;
+    ResolvedBirth li_chun_2230_birth;
+    ResolvedBirth li_chun_2330_unified_birth;
+    BirthResolutionOptions split_jie_options = precise_jie_options;
+    split_jie_options.rat_hour_mode =
+        chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TODAY_GAN;
+    ResolvedBirth li_chun_2330_split_birth;
+    expect(li_chun_after_clock.hour < 22
+        && encode_china_standard(li_chun_2230, &li_chun_2230_instant)
+        && encode_china_standard(li_chun_2330, &li_chun_2330_instant)
+        && resolve_birth_from_calendar(
+            &calendar,
+            li_chun_2230_instant,
+            li_chun_2230,
+            Gender::Male,
+            precise_jie_options,
+            &li_chun_2230_birth,
+            &late_rat_diagnostic) == TAIYIN_STATUS_OK
+        && resolve_birth_from_calendar(
+            &calendar,
+            li_chun_2330_instant,
+            li_chun_2330,
+            Gender::Male,
+            precise_jie_options,
+            &li_chun_2330_unified_birth,
+            &late_rat_diagnostic) == TAIYIN_STATUS_OK
+        && resolve_birth_from_calendar(
+            &calendar,
+            li_chun_2330_instant,
+            li_chun_2330,
+            Gender::Male,
+            split_jie_options,
+            &li_chun_2330_split_birth,
+            &late_rat_diagnostic) == TAIYIN_STATUS_OK
+        && li_chun_2230_birth.facts.solar_day_from_previous_jie == 1u
+        && li_chun_2330_unified_birth.facts.solar_day_from_previous_jie == 2u
+        && li_chun_2330_split_birth.facts.solar_day_from_previous_jie == 1u,
+        "natal solar day follows the selected Ziwei day boundary", &failures);
+    CalendarDateTime li_chun_next_0030;
+    SplitJulianDate li_chun_next_0030_local;
+    SplitJulianDate li_chun_next_0030_instant;
+    ResolvedBirth li_chun_next_0030_split_birth;
+    expect(julian_day_split(li_chun_2330, &li_chun_next_0030_local)
+        && add_seconds_to_split_jd(
+            li_chun_next_0030_local, 3600.0, &li_chun_next_0030_local)
+        && reverse_julian_day_split(
+            li_chun_next_0030_local, &li_chun_next_0030)
+        && encode_china_standard(
+            li_chun_next_0030, &li_chun_next_0030_instant)
+        && resolve_birth_from_calendar(
+            &calendar,
+            li_chun_next_0030_instant,
+            li_chun_next_0030,
+            Gender::Male,
+            split_jie_options,
+            &li_chun_next_0030_split_birth,
+            &late_rat_diagnostic) == TAIYIN_STATUS_OK
+        && li_chun_next_0030_split_birth.facts.solar_day_from_previous_jie
+            == 2u,
+        "split-Rat natal solar day advances at civil midnight", &failures);
+
     const LoadedRules rules = load_rules_from_toml(
         std::string(TAIYIN_ZIWEI_TEST_ROOT) + "/rules/default.toml");
     runtime::EphemerisEvalDiagnostic diagnostic;
@@ -354,6 +479,52 @@ int main() {
         && solar.hour.limit.coordinate.branch == Branch::Xu,
         "solar-term mode uses Jie month/day coordinates", &failures);
 
+    ResolvedFlow li_chun_before_flow;
+    ResolvedFlow li_chun_after_flow;
+    ResolvedFlow li_chun_2330_unified_flow;
+    ResolvedFlow li_chun_2330_split_flow;
+    ResolvedFlow li_chun_next_0030_split_flow;
+    FlowResolutionOptions solar_split_options = solar_options;
+    solar_split_options.rat_hour_mode =
+        chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TODAY_GAN;
+    expect(resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            li_chun_before_instant, li_chun_before_clock,
+            solar_options, &li_chun_before_flow, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            li_chun_after_instant, li_chun_after_clock,
+            solar_options, &li_chun_after_flow, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && li_chun_before_flow.effective_target_year == 2023
+        && li_chun_before_flow.target_month == 12u
+        && li_chun_before_flow.target_day > 1u
+        && li_chun_after_flow.effective_target_year == 2024
+        && li_chun_after_flow.target_month == 1u
+        && li_chun_after_flow.target_day == 1u,
+        "physical Li-Chun instant switches the solar flow boundary",
+        &failures);
+    expect(resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            li_chun_2330_instant, li_chun_2330,
+            solar_options, &li_chun_2330_unified_flow, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            li_chun_2330_instant, li_chun_2330,
+            solar_split_options, &li_chun_2330_split_flow, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            li_chun_next_0030_instant, li_chun_next_0030,
+            solar_split_options, &li_chun_next_0030_split_flow, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && li_chun_2330_unified_flow.target_day == 2u
+        && li_chun_2330_split_flow.target_day == 1u
+        && li_chun_next_0030_split_flow.target_day == 2u,
+        "solar flow day follows the selected Ziwei day boundary", &failures);
+
     // All three late-Rat conventions must survive the calendar adapter. In
     // particular TOMORROW_GAN keeps today's day pillar while deriving the
     // hour stem from tomorrow; reconstructing it from the day would collapse
@@ -383,12 +554,57 @@ int main() {
         && rat_flows[1].target_rat_hour_segment == RatHourSegment::Late
         && rat_flows[2].target_rat_hour_segment == RatHourSegment::Late,
         "late-Rat segment identity follows split policy", &failures);
+    expect(rat_flows[0].target_day
+            == static_cast<uint8_t>(rat_flows[1].target_day + 1u)
+        && rat_flows[1].target_day == rat_flows[2].target_day,
+        "unified late Rat advances the lunar flow day", &failures);
     expect(rat_flows[1].day.limit.coordinate.stem
             == rat_flows[2].day.limit.coordinate.stem
         && rat_flows[1].hour.limit.coordinate.stem
             != rat_flows[2].hour.limit.coordinate.stem,
         "TOMORROW_GAN preserves today's day but uses tomorrow's hour stem",
         &failures);
+
+    // The logical-day shift must carry the full lunar identity and metadata
+    // across a month/year boundary, not merely increment target_day in place.
+    const CalendarDateTime new_year_rat_clock = {2024, 2, 9, 23, 30, 0.0};
+    SplitJulianDate new_year_rat_instant;
+    ResolvedFlow unified_new_year;
+    expect(encode_china_standard(
+            new_year_rat_clock, &new_year_rat_instant)
+        && resolve_flow_from_calendar(
+            &calendar,
+            birth,
+            natal,
+            new_year_rat_instant,
+            new_year_rat_clock,
+            lunar_options,
+            &unified_new_year,
+            &diagnostic) == TAIYIN_STATUS_OK
+        && unified_new_year.effective_target_year == 2024
+        && unified_new_year.target_month == 1u
+        && unified_new_year.target_month_sequence == 1u
+        && unified_new_year.target_day == 1u
+        && !unified_new_year.target_month_is_leap
+        && unified_new_year.target_month_building_branch == Branch::Yin,
+        "unified late Rat crosses the lunar new-year boundary", &failures);
+    FlowResolutionOptions split_new_year_options = lunar_options;
+    split_new_year_options.rat_hour_mode =
+        chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TODAY_GAN;
+    ResolvedFlow split_new_year;
+    expect(resolve_flow_from_calendar(
+            &calendar,
+            birth,
+            natal,
+            new_year_rat_instant,
+            new_year_rat_clock,
+            split_new_year_options,
+            &split_new_year,
+            &diagnostic) == TAIYIN_STATUS_OK
+        && split_new_year.effective_target_year == 2023
+        && split_new_year.target_month == 12u
+        && split_new_year.target_day == 30u,
+        "split late Rat retains the physical lunar date", &failures);
 
     // Navigation uses 13 logical slots for split modes. Hai -> Late Zi ->
     // next-day Early Zi -> Chou must never jump backwards like the old Dart

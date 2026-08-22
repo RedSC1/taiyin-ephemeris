@@ -205,6 +205,18 @@ int main() {
     SplitJulianDate rat_instant;
     expect(encode_china_standard(rat_clock, &rat_instant),
         "encode late Rat-hour fixture", &failures);
+    chinese_calendar::LunarDate physical_rat_lunar;
+    SplitJulianDate next_day_instant;
+    chinese_calendar::LunarDate next_day_rat_lunar;
+    expect(chinese_calendar::fromInstant(
+            &calendar, rat_instant, &physical_rat_lunar, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && add_seconds_to_split_jd(
+            rat_instant, 3600.0, &next_day_instant)
+        && chinese_calendar::fromInstant(
+            &calendar, next_day_instant, &next_day_rat_lunar, &diagnostic)
+            == TAIYIN_STATUS_OK,
+        "resolve physical and logical late Rat lunar dates", &failures);
     for (int32_t mode = chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT;
          mode <= chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TOMORROW_GAN;
          ++mode) {
@@ -222,7 +234,120 @@ int main() {
             && is_valid(rat_birth.anchors.solar_term.hour)
             && is_valid(rat_birth.anchors.lunar.hour),
             "all Rat-hour modes cross the calendar adapter", &failures);
+        const chinese_calendar::LunarDate& expected_lunar =
+            mode == chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT
+                ? next_day_rat_lunar : physical_rat_lunar;
+        expect(rat_birth.facts.lunar_date.year == expected_lunar.year
+            && rat_birth.facts.lunar_date.month == expected_lunar.month
+            && rat_birth.facts.lunar_date.day == expected_lunar.day
+            && rat_birth.facts.lunar_date.is_leap
+                == (expected_lunar.is_leap != 0u),
+            "late Rat lunar date follows the selected split policy", &failures);
     }
+
+    // Legacy ziwei_core's default no-split convention treats the unified
+    // 23:00--00:59 Zi hour as the following logical lunar day. This fixture
+    // previously exposed a split state where the pillars advanced but the
+    // lunar day used by day-dependent stars remained on the physical date.
+    const CalendarDateTime oracle_rat_clock = {1984, 2, 4, 23, 30, 0.0};
+    SplitJulianDate oracle_rat_instant;
+    ResolvedBirth oracle_rat_birth;
+    expect(encode_china_standard(oracle_rat_clock, &oracle_rat_instant)
+        && resolve_birth_from_calendar(
+            &calendar,
+            oracle_rat_instant,
+            oracle_rat_clock,
+            Gender::Male,
+            options,
+            &oracle_rat_birth,
+            &diagnostic) == TAIYIN_STATUS_OK
+        && oracle_rat_birth.facts.lunar_date.year == 1984
+        && oracle_rat_birth.facts.lunar_date.month == 1u
+        && oracle_rat_birth.facts.lunar_date.day == 4u
+        && !oracle_rat_birth.facts.lunar_date.is_leap,
+        "1984 legacy oracle advances the unified late Rat lunar day",
+        &failures);
+
+    // The caller-selected virtual clock can differ from the calendar
+    // context's civil clock (for example after a true-solar-time correction).
+    // Resolve the Ziwei logical date from that virtual clock rather than by
+    // adding a fixed hour to the physical instant: at virtual 23:00 below the
+    // context clock is still 22:44, so instant+1h would not cross midnight.
+    const CalendarDateTime offset_context_clock = {
+        2000, 1, 1, 22, 44, 0.0,
+    };
+    const CalendarDateTime offset_virtual_clock = {
+        2000, 1, 1, 23, 0, 0.0,
+    };
+    SplitJulianDate offset_instant;
+    ResolvedBirth offset_context_birth;
+    ResolvedBirth offset_no_split_birth;
+    BirthResolutionOptions offset_split_options = options;
+    offset_split_options.rat_hour_mode =
+        chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TODAY_GAN;
+    ResolvedBirth offset_split_birth;
+    chinese_calendar::SolarDate offset_today;
+    offset_today.year = 2000;
+    offset_today.month = 1u;
+    offset_today.day = 1u;
+    chinese_calendar::SolarDate offset_tomorrow;
+    offset_tomorrow.year = 2000;
+    offset_tomorrow.month = 1u;
+    offset_tomorrow.day = 2u;
+    chinese_calendar::LunarDate offset_today_lunar;
+    chinese_calendar::LunarDate offset_tomorrow_lunar;
+    expect(encode_china_standard(offset_context_clock, &offset_instant)
+        && chinese_calendar::fromSolar(
+            &calendar, &offset_today, &offset_today_lunar, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && chinese_calendar::fromSolar(
+            &calendar, &offset_tomorrow, &offset_tomorrow_lunar, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && resolve_birth_from_calendar(
+            &calendar,
+            offset_instant,
+            offset_context_clock,
+            Gender::Male,
+            options,
+            &offset_context_birth,
+            &diagnostic) == TAIYIN_STATUS_OK
+        && resolve_birth_from_calendar(
+            &calendar,
+            offset_instant,
+            offset_virtual_clock,
+            Gender::Male,
+            options,
+            &offset_no_split_birth,
+            &diagnostic) == TAIYIN_STATUS_OK
+        && resolve_birth_from_calendar(
+            &calendar,
+            offset_instant,
+            offset_virtual_clock,
+            Gender::Male,
+            offset_split_options,
+            &offset_split_birth,
+            &diagnostic) == TAIYIN_STATUS_OK
+        && offset_no_split_birth.facts.lunar_date.year
+            == offset_tomorrow_lunar.year
+        && offset_no_split_birth.facts.lunar_date.month
+            == offset_tomorrow_lunar.month
+        && offset_no_split_birth.facts.lunar_date.day
+            == offset_tomorrow_lunar.day
+        && offset_split_birth.facts.lunar_date.year
+            == offset_today_lunar.year
+        && offset_split_birth.facts.lunar_date.month
+            == offset_today_lunar.month
+        && offset_split_birth.facts.lunar_date.day
+            == offset_today_lunar.day
+        && offset_no_split_birth.facts.solar_term_pillars.year.stem
+            == offset_context_birth.facts.solar_term_pillars.year.stem
+        && offset_no_split_birth.facts.solar_term_pillars.year.branch
+            == offset_context_birth.facts.solar_term_pillars.year.branch
+        && offset_no_split_birth.facts.solar_term_pillars.month.stem
+            == offset_context_birth.facts.solar_term_pillars.month.stem
+        && offset_no_split_birth.facts.solar_term_pillars.month.branch
+            == offset_context_birth.facts.solar_term_pillars.month.branch,
+        "virtual clock controls the Ziwei logical lunar date", &failures);
 
     if (failures != 0) {
         std::cerr << failures << " Ziwei calendar-adapter checks failed\n";

@@ -2,7 +2,7 @@
 
 [中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
-> **Pre-release notice:** The current `1.0.0-preview.6` version identifies an
+> **Pre-release notice:** The current `1.0.0-beta.1` version identifies an
 > in-development pre-release, not a final production release. Public APIs,
 > packaged data boundaries, documentation, and the planned language bindings
 > may still change before the first stable release.

@@ -406,8 +406,9 @@ Status resolve_flow_from_calendar(
         // would reject the birth instant itself as "before birth".
         result.effective_birth_year = birth.facts.lunar_date.year;
         chinese_calendar::LunarDate lunar;
-        status = chinese_calendar::fromInstant(
-            calendar, target_instant_utc, &lunar, diagnostic);
+        status = detail::resolve_logical_lunar_date(
+            calendar, target_virtual_time, options.rat_hour_mode,
+            &lunar, diagnostic);
         if (status != TAIYIN_STATUS_OK) return status;
         result.effective_target_year = lunar.year;
         result.target_month = lunar.month == 13u ? 12u : lunar.month;

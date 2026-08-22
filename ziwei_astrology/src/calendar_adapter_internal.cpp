@@ -10,6 +10,37 @@ namespace taiyin {
 namespace ziwei {
 namespace detail {
 
+Status resolve_logical_lunar_date(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const CalendarDateTime& virtual_time,
+    int32_t rat_hour_mode,
+    chinese_calendar::LunarDate* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    if (calendar == NULL || out == NULL) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    SplitJulianDate logical_virtual_jd;
+    if (!julian_day_split(virtual_time, &logical_virtual_jd)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    if (rat_hour_mode == chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT
+        && virtual_time.hour >= 23
+        && !add_seconds_to_split_jd(
+            logical_virtual_jd, 3600.0, &logical_virtual_jd)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    CalendarDateTime logical_virtual_time;
+    if (!reverse_julian_day_split(
+            logical_virtual_jd, &logical_virtual_time)) {
+        return TAIYIN_ERROR_INTERNAL;
+    }
+    chinese_calendar::SolarDate logical_solar_date;
+    logical_solar_date.year = logical_virtual_time.year;
+    logical_solar_date.month = static_cast<uint8_t>(logical_virtual_time.month);
+    logical_solar_date.day = static_cast<uint8_t>(logical_virtual_time.day);
+    return chinese_calendar::fromSolar(
+        calendar, &logical_solar_date, out, diagnostic);
+}
+
 Status calculate_solar_day_from_previous_jie(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const SplitJulianDate& instant_utc,

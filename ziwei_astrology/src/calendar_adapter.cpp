@@ -115,9 +115,12 @@ Status resolve_birth_from_calendar(
     result.facts.birth.virtual_time = virtual_time;
     result.facts.birth.gender = gender;
 
+    // Only the Ziwei lunar date label follows the caller-selected virtual
+    // clock. Solar-term boundaries and four-pillar astronomy below continue
+    // to use the physical UTC instant.
     chinese_calendar::LunarDate lunar;
-    Status status = chinese_calendar::fromInstant(
-        calendar, instant_utc, &lunar, diagnostic);
+    Status status = detail::resolve_logical_lunar_date(
+        calendar, virtual_time, options.rat_hour_mode, &lunar, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
     result.facts.lunar_date.year = lunar.year;
     result.facts.lunar_date.month = lunar.month;
