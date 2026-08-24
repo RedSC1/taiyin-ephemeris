@@ -1837,7 +1837,7 @@ bool Runtime::reset_default_route_rules() noexcept {
                 internal::OPM2_SOURCE_ID,
                 static_cast<int>(internal::OPM2_METHOD_ID),
                 300,
-                "Taiyin prerelease OPM2")
+                "Taiyin DE441-derived OPM2")
             || !automatic.upsert_source_method(
                 0,
                 static_cast<int>(internal::OPM2_METHOD_ID),

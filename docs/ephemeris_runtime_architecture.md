@@ -63,7 +63,7 @@ After catalog initialization or descriptor insertion, the runtime first marks di
 419..398  recognized historical JPL DE SPKs, from DE438 through DE102
 397..390  recognized JPL satellite SPK fallbacks
 389  other SPK
-300  Taiyin prerelease OPM2 (source id 1)
+300  Taiyin DE441-derived OPM2 (source id 1)
 290  other OPM2
 250  built-in semi-analytical model
 200  TKC1
@@ -105,8 +105,8 @@ OPM2 does not infer provenance from its filename. Its little-endian container
 header stores a `uint32 source_id` at bytes 24–27:
 
 ```text
-0  undefined; old version-1 files map to prerelease for compatibility
-1  TAIYIN_PRERELEASE
+0  undefined; old version-1 files map to the DE441-derived identity for compatibility
+1  TAIYIN_DE441_DERIVED (legacy name: TAIYIN_PRERELEASE)
 2  TAIYIN_DE442_REBUILT
 ```
 

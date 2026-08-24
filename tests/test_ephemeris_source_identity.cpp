@@ -67,8 +67,12 @@ int main() {
 
     expect_source(
         normalize_opm2_source_id(OPM2_SOURCE_UNDEFINED),
-        OPM2_SOURCE_TAIYIN_PRERELEASE,
+        OPM2_SOURCE_TAIYIN_DE441_DERIVED,
         "old zero-valued OPM2 headers remain compatible");
+    expect_source(
+        OPM2_SOURCE_TAIYIN_PRERELEASE,
+        OPM2_SOURCE_TAIYIN_DE441_DERIVED,
+        "pre-release OPM2 source name remains a compatibility alias");
     expect_source(
         normalize_opm2_source_id(OPM2_SOURCE_TAIYIN_DE442_REBUILT),
         OPM2_SOURCE_TAIYIN_DE442_REBUILT,

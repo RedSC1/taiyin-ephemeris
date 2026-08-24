@@ -14,12 +14,15 @@ namespace internal {
 //
 // OPM2 stores its product id as a little-endian uint32 in header bytes 24..27.
 // Zero means unspecified in the file format. Version-1 files created before the
-// field was assigned used zero there and are treated as Taiyin prerelease data
-// by the runtime for backward compatibility.
+// field was assigned used zero there and are treated as the original Taiyin
+// DE441-derived product by the runtime for backward compatibility.
 const uint32_t OPM2_SOURCE_UNDEFINED = 0;
-const uint32_t OPM2_SOURCE_TAIYIN_PRERELEASE = 1;
+const uint32_t OPM2_SOURCE_TAIYIN_DE441_DERIVED = 1;
+// Compatibility name retained for source code that used the pre-release id.
+const uint32_t OPM2_SOURCE_TAIYIN_PRERELEASE =
+    OPM2_SOURCE_TAIYIN_DE441_DERIVED;
 const uint32_t OPM2_SOURCE_TAIYIN_DE442_REBUILT = 2;
-const uint64_t OPM2_SOURCE_LEGACY = OPM2_SOURCE_TAIYIN_PRERELEASE;
+const uint64_t OPM2_SOURCE_LEGACY = OPM2_SOURCE_TAIYIN_DE441_DERIVED;
 const uint64_t SPK_SOURCE_EXTERNAL = 2;
 
 const uint64_t SPK_SOURCE_JPL_DE431 = 0x53504b00000001afULL;

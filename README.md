@@ -2,7 +2,7 @@
 
 [中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
-> **Pre-release notice:** The current `1.0.0-beta.2` version identifies an
+> **Pre-release notice:** The current `1.0.0-beta.3` version identifies an
 > in-development pre-release, not a final production release. Public APIs,
 > packaged data boundaries, documentation, and the planned language bindings
 > may still change before the first stable release.
@@ -11,8 +11,9 @@ Taiyin Ephemeris is an embeddable astronomy library for computing Solar System
 positions, observer coordinates, visibility, astronomical events, eclipses,
 occultations, fixed-star positions, calendars, and local solar time. It is
 written in C++ and also provides a versioned C99 ABI for applications and FFI
-bindings. Python, Dart, and JavaScript wrappers are under active development;
-their public APIs and distribution packages are not yet released.
+bindings. Pre-release [Python](https://github.com/RedSC1/py-ephemeris) and
+[Dart](https://github.com/RedSC1/dart-ephemeris) packages are available;
+the JavaScript wrapper remains under development.
 
 > **Civil-time limitation:** Taiyin's native calendar and Ziwei layers use a
 > fixed UTC offset (or an explicit mean-solar meridian), not a named time-zone
@@ -34,6 +35,21 @@ Mercury, Venus, EMB, Mars, Jupiter, Saturn, Uranus, Neptune, and Pluto:
 - a DE441-derived 600-year product for **1800-01-01 through 2400-01-01**;
 - a DE442-derived full-coverage product over DE442's common source interval,
   approximately **1550 through 2650**.
+
+The optional **full-range DE441 OPM2 package** is distributed separately as a
+single GitHub Release asset instead of being committed to the source tree or
+embedded in language wheels. It contains 51 approximately 600-year shards,
+561 final OPM2 files, and a portable `index.opc`; its common product interval is
+JD `-3096455.499990447` through `7996074.500009106`, about **30,369.69 Julian
+years**. The ZIP is about **85.3 MiB**.
+
+Dense validation sampled every fitted segment at 512 nodes in all 51 shards,
+for **343,522,304 geocentric angular samples** against DE441. The largest
+per-body worst-shard p99 was **0.001755 arcsec** and the largest observed sample
+error was **0.003545 arcsec**, both for Venus. The extracted package also passed
+1,122 runtime evaluations around every shard boundary. Download, checksum,
+loading, and per-body results are documented in
+[`docs/ephemeris_data_packages.md`](docs/ephemeris_data_packages.md).
 
 The runtime recognizes their product identities and, where coverage overlaps,
 AUTO selects the DE442-derived OPM2 product by default. Applications can still
@@ -107,7 +123,11 @@ binary.
 
 The repository includes the DE441 600-year and full DE442 major-body OPM2
 products, selected asteroid OPM2 data, and compact center-of-body corrections.
-Other external datasets remain separately selectable; see
+The full-range DE441 OPM2 product is an optional Release download rather than a
+repository or wheel payload. Other external datasets remain separately
+selectable; see
+[`docs/ephemeris_data_packages.md`](docs/ephemeris_data_packages.md) for data
+package installation and validation, and
 [`docs/current_limitations.md`](docs/current_limitations.md) for coverage and
 data-package boundaries.
 

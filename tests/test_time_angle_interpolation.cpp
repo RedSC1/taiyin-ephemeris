@@ -495,6 +495,11 @@ int main() {
         };
         const DeltaTYearOracle delta_t_year_oracles[] = {
             { -1000.0, 25427.68 },
+            { -821.0, 22299.619200000001 },
+            { -820.0, 22282.719999999998 },
+            { -800.0, 21919.331278451613 },
+            { -770.0, 21317.688556451612 },
+            { -720.0001, 20371.849612837268 },
             { -720.0, 20371.848 },
             { -719.5, 20363.7843227998 },
             { -100.0, 11557.668 },
@@ -528,6 +533,32 @@ int main() {
                 delta_t_year_oracles[i].delta_t_seconds,
                 1e-10,
                 "delta t year oracle",
+                &failures);
+        }
+        const double delta_t_join_step = 1.0e-4;
+        const double delta_t_join_boundaries[] = {-820.0, -720.0};
+        for (int i = 0; i < 2; ++i) {
+            const double boundary = delta_t_join_boundaries[i];
+            expect_near(
+                taiyin::estimated_delta_t_seconds_for_decimal_year(boundary - 1.0e-9),
+                taiyin::estimated_delta_t_seconds_for_decimal_year(boundary + 1.0e-9),
+                1.0e-6,
+                "delta t early join value continuity",
+                &failures);
+            const double left_rate = (
+                taiyin::estimated_delta_t_seconds_for_decimal_year(boundary)
+                - taiyin::estimated_delta_t_seconds_for_decimal_year(
+                    boundary - delta_t_join_step)) / delta_t_join_step;
+            const double right_rate = (
+                taiyin::estimated_delta_t_seconds_for_decimal_year(
+                    boundary + delta_t_join_step)
+                - taiyin::estimated_delta_t_seconds_for_decimal_year(boundary))
+                / delta_t_join_step;
+            expect_near(
+                left_rate,
+                right_rate,
+                2.0e-5,
+                "delta t early join slope continuity",
                 &failures);
         }
         expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(taiyin::JD_J2000), 63.83042335736016, 1e-12, "delta t j2000", &failures);

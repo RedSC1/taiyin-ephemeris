@@ -13,6 +13,7 @@ These documents describe the implementation on `main`.
 | --- | --- | --- |
 | Third-party software and data | [`third_party.md`](third_party.md) | `NOTICE`, `src/third_party/`, packaged-data README and manifest files |
 | Runtime architecture | [`ephemeris_runtime_architecture.md`](ephemeris_runtime_architecture.md) | `include/taiyin/runtime/runtime.h`, `include/taiyin/runtime/ephemeris_engine.h`, `src/runtime/` |
+| Ephemeris data packages | [`ephemeris_data_packages.md`](ephemeris_data_packages.md) | GitHub Release assets, `data/`, `index.opc`, runtime data roots |
 | Built-in semi-analytical ephemeris | [`semi_analytic_ephemeris.md`](semi_analytic_ephemeris.md) | `include/taiyin/internal/semi_analytic.h`, `src/semi_analytic.cpp` |
 | C ABI and FFI entry points | [`c_api.md`](c_api.md) | `include/taiyin/c/taiyin.h`, `src/c_api/` |
 | Catalog and segment cache | [`catalog_cache_model.md`](catalog_cache_model.md) | `include/taiyin/internal/ephemeris_catalog.h`, `include/taiyin/internal/ephemeris_segment_cache.h` |

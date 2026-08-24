@@ -13,6 +13,7 @@
 | --- | --- | --- |
 | 第三方软件与数据 | [`third_party.md`](third_party.md) | `NOTICE`、`src/third_party/`、随包数据旁的 README 与 manifest |
 | 运行时架构 | [`ephemeris_runtime_architecture.md`](ephemeris_runtime_architecture.md) | `include/taiyin/runtime/runtime.h`, `include/taiyin/runtime/ephemeris_engine.h`, `src/runtime/` |
+| 星历数据包 | [`ephemeris_data_packages.md`](ephemeris_data_packages.md) | GitHub Release 资产、`data/`、`index.opc`、runtime data root |
 | 内置半解析星历 | [`semi_analytic_ephemeris.md`](semi_analytic_ephemeris.md) | `include/taiyin/internal/semi_analytic.h`, `src/semi_analytic.cpp` |
 | C ABI 与 FFI 入口 | [`c_api.md`](c_api.md) | `include/taiyin/c/taiyin.h`, `src/c_api/` |
 | Catalog 和 segment cache | [`catalog_cache_model.md`](catalog_cache_model.md) | `include/taiyin/internal/ephemeris_catalog.h`, `include/taiyin/internal/ephemeris_segment_cache.h` |

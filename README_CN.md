@@ -2,13 +2,15 @@
 
 [English README](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
-> **预发布说明：** 当前的 `1.0.0-preview.4` 是开发中的预发布版本，并非最终稳定发布。
+> **预发布说明：** 当前的 `1.0.0-beta.3` 是开发中的预发布版本，并非最终稳定发布。
 > 公开 API、随包数据边界、文档和计划中的语言绑定在首个稳定版发布前仍可能调整。
 
 Taiyin Ephemeris 是一个可嵌入的天文库，用于计算太阳系天体位置、观测坐标、
 可见性、天文事件、日月食、掩星、固定星、历法和真太阳时。它使用 C++ 编写，
 并为应用程序和 FFI 绑定提供带版本号的 C99 ABI。
-Python、Dart 与 JavaScript wrapper 正在积极开发中，公开 API 和分发包尚未发布。
+预发布的 [Python](https://github.com/RedSC1/py-ephemeris) 与
+[Dart](https://github.com/RedSC1/dart-ephemeris) 包已经可用；JavaScript wrapper
+仍在开发中。
 
 > **民用时间限制：** Taiyin 的 native 历法和紫微层只使用固定 UTC offset（或显式
 > 地方平太阳时经线），不内置命名时区数据库。对于实行夏令时/冬令时切换的国家和地区，
@@ -26,6 +28,19 @@ OPM2 状态压缩误差，而不是最终 apparent 或站心结果；后者还�
 - DE441 来源的 600 年产品，覆盖 **1800-01-01 至 2400-01-01**；
 - DE442 来源的全覆盖产品，覆盖 DE442 的公共源区间，约为
   **1550 至 2650**。
+
+可选的 **全量 DE441 OPM2 数据包**不提交进源码仓库，也不塞入各语言 wheel，
+而是作为一个独立的 GitHub Release 资产发布。它包含 51 个约 600 年分片、
+561 个最终 OPM2 文件和可迁移的 `index.opc`；公共产品区间为
+JD `-3096455.499990447` 至 `7996074.500009106`，约 **30,369.69 儒略年**。
+ZIP 大约 **85.3 MiB**。
+
+全量精度验证对 51 个分片的每个拟合段各采样 512 点，共使用
+**343,522,304 个地心角误差样本**与 DE441 对比。各天体中最大的“最差分片
+p99”为 **0.001755 角秒**，全部采样点中观测到的最大误差为
+**0.003545 角秒**，两者均出现在金星。解压后的发布包还通过了覆盖全部分片
+接缝附近的 1,122 次 runtime 求值。下载、校验、加载方式和逐天体结果见
+[`doc_cn/ephemeris_data_packages.md`](doc_cn/ephemeris_data_packages.md)。
 
 runtime 会识别两套产品的 source identity；在覆盖重叠区间，AUTO 默认选择
 DE442 来源 OPM2。需要复现旧数据结果时，应用仍可显式选择 DE441 产品，
@@ -84,7 +99,10 @@ Taiyin 将 runtime 与大型星历文件分离。你可以使用打包数据、�
 选择可用数据源，而不要求把源数据嵌入应用程序二进制文件。
 
 仓库包含 DE441 600 年和 DE442 全覆盖主星 OPM2 产品、选定的小行星
-OPM2 数据，以及紧凑的行星形心修正数据。其他外部数据集仍可单独选用；
+OPM2 数据，以及紧凑的行星形心修正数据。全量 DE441 OPM2 是可选的 Release
+下载，不属于源码仓库或语言 wheel 的默认载荷。其他外部数据集仍可单独选用；
+数据包安装与验证见
+[`doc_cn/ephemeris_data_packages.md`](doc_cn/ephemeris_data_packages.md)，
 覆盖范围、数据包边界和已知限制见
 [`doc_cn/current_limitations.md`](doc_cn/current_limitations.md)。
 

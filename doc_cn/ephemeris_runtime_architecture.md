@@ -59,7 +59,7 @@ Catalog 初始化或新增 descriptor 后，会先在 `BodyRegistry` 里标记 d
 419..398  已识别的历史 JPL DE SPK（DE438 至 DE102）
 397..390  已识别的 JPL 卫星 SPK fallback
 389  其他 SPK
-300  Taiyin prerelease OPM2（source id 1）
+300  Taiyin DE441-derived OPM2（source id 1）
 290  其他 OPM2
 250  内置半解析模型
 200  TKC1
@@ -95,8 +95,8 @@ NEP098。这是文件名约定，不是文件认证；调用者重命名数据�
 OPM2 不从文件名推断来源；little-endian header 的 bytes 24–27 存 `uint32 source_id`：
 
 ```text
-0  未定义；为兼容旧 version-1 文件，运行时映射到 prerelease
-1  TAIYIN_PRERELEASE
+0  未定义；为兼容旧 version-1 文件，运行时映射到 DE441-derived identity
+1  TAIYIN_DE441_DERIVED（旧名称：TAIYIN_PRERELEASE）
 2  TAIYIN_DE442_REBUILT
 ```
 

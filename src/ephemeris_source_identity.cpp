@@ -158,7 +158,7 @@ int default_spk_source_priority(uint64_t source_id) noexcept {
 
 uint64_t normalize_opm2_source_id(uint32_t header_source_id) noexcept {
     return header_source_id == OPM2_SOURCE_UNDEFINED
-        ? static_cast<uint64_t>(OPM2_SOURCE_TAIYIN_PRERELEASE)
+        ? static_cast<uint64_t>(OPM2_SOURCE_TAIYIN_DE441_DERIVED)
         : static_cast<uint64_t>(header_source_id);
 }
 

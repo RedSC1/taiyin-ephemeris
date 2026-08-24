@@ -945,9 +945,51 @@ double eval_s15_delta_t_seconds(double year_decimal) noexcept {
     return cubic_polynomial_interpolate(last.a0, last.a1, last.a2, last.a3, 1.0);
 }
 
+double eval_s15_delta_t_rate_seconds_per_year(double year_decimal) noexcept {
+    for (int i = 0; i < internal::kDeltaTS15SplineCount; ++i) {
+        const internal::DeltaTSplineSegment& segment = internal::kDeltaTS15Spline[i];
+        if (year_decimal >= segment.x0 && year_decimal < segment.x1) {
+            const double span = segment.x1 - segment.x0;
+            const double t = (year_decimal - segment.x0) / span;
+            return (3.0 * segment.a3 * t * t
+                + 2.0 * segment.a2 * t
+                + segment.a1) / span;
+        }
+    }
+
+    const internal::DeltaTSplineSegment& last =
+        internal::kDeltaTS15Spline[internal::kDeltaTS15SplineCount - 1];
+    return (3.0 * last.a3 + 2.0 * last.a2 + last.a1)
+        / (last.x1 - last.x0);
+}
+
 double extrapolate_delta_t_seconds(double year_decimal) noexcept {
     const double u = (year_decimal - 1820.0) / 100.0;
     return -20.0 + 32.0 * u * u;
+}
+
+double extrapolate_delta_t_rate_seconds_per_year(double year_decimal) noexcept {
+    return 64.0 * (year_decimal - 1820.0) / 10000.0;
+}
+
+double early_join_delta_t_seconds(double year_decimal) noexcept {
+    // The long-term parabola and the first S15 segment differ by 253.272 s at
+    // -720.  Confine the continuity repair to the preceding century and match
+    // both source models in value and first derivative at the endpoints.
+    const double x0 = -820.0;
+    const double x1 = -720.0;
+    const double span = x1 - x0;
+    const double t = (year_decimal - x0) / span;
+    const double t2 = t * t;
+    const double t3 = t2 * t;
+    const double p0 = extrapolate_delta_t_seconds(x0);
+    const double p1 = eval_s15_delta_t_seconds(x1);
+    const double m0 = extrapolate_delta_t_rate_seconds_per_year(x0) * span;
+    const double m1 = eval_s15_delta_t_rate_seconds_per_year(x1) * span;
+    return (2.0 * t3 - 3.0 * t2 + 1.0) * p0
+        + (t3 - 2.0 * t2 + t) * m0
+        + (-2.0 * t3 + 3.0 * t2) * p1
+        + (t3 - t2) * m1;
 }
 
 double full_tdb_minus_tt_seconds_from_millennia(
@@ -1523,8 +1565,11 @@ double estimated_delta_t_seconds_for_decimal_year(double year_decimal) noexcept 
         return out;
     }
 
-    if (year_decimal < -720.0) {
+    if (year_decimal < -820.0) {
         return extrapolate_delta_t_seconds(year_decimal);
+    }
+    if (year_decimal < -720.0) {
+        return early_join_delta_t_seconds(year_decimal);
     }
 
     const double t0 = last_year;
