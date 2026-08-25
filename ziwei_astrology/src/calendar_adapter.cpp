@@ -110,26 +110,36 @@ Status resolve_birth_from_calendar(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
+    CalendarDateTime normalized_virtual_time;
+    Status status = chinese_calendar::normalize_chart_virtual_time(
+        virtual_time, &normalized_virtual_time);
+    if (status != TAIYIN_STATUS_OK) return status;
+
     ResolvedBirth result = {};
+    result.leap_month_strategy = options.leap_month_strategy;
     result.facts.birth.instant_utc = instant_utc;
-    result.facts.birth.virtual_time = virtual_time;
+    result.facts.birth.virtual_time = normalized_virtual_time;
     result.facts.birth.gender = gender;
 
     // Only the Ziwei lunar date label follows the caller-selected virtual
     // clock. Solar-term boundaries and four-pillar astronomy below continue
     // to use the physical UTC instant.
     chinese_calendar::LunarDate lunar;
-    Status status = detail::resolve_logical_lunar_date(
-        calendar, virtual_time, options.rat_hour_mode, &lunar, diagnostic);
+    status = detail::resolve_logical_lunar_date(
+        calendar, normalized_virtual_time,
+        options.rat_hour_mode, &lunar, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
     result.facts.lunar_date.year = lunar.year;
+    result.facts.lunar_date.historical_year = lunar.historical_year;
     result.facts.lunar_date.month = lunar.month;
     result.facts.lunar_date.day = lunar.day;
     result.facts.lunar_date.is_leap = lunar.is_leap;
     result.facts.lunar_date.month_name = lunar.month_name;
 
+    LunarDateFacts effective_lunar_date = result.facts.lunar_date;
+    effective_lunar_date.year = result.facts.lunar_date.historical_year;
     status = resolve_effective_lunar_month(
-        result.facts.lunar_date,
+        effective_lunar_date,
         options.leap_month_strategy,
         &result.facts.effective_lunar_year,
         &result.facts.effective_lunar_month);
@@ -139,7 +149,7 @@ Status resolve_birth_from_calendar(
     status = chinese_calendar::calculate_four_pillars(
         calendar,
         instant_utc,
-        virtual_time,
+        normalized_virtual_time,
         options.rat_hour_mode,
         &packed,
         diagnostic);
@@ -156,7 +166,7 @@ Status resolve_birth_from_calendar(
     status = detail::calculate_solar_day_from_previous_jie(
         calendar,
         instant_utc,
-        virtual_time,
+        normalized_virtual_time,
         options.rat_hour_mode,
         &result.facts.solar_day_from_previous_jie,
         diagnostic);

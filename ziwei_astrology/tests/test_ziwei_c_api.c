@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
     {
         taiyin_calendar_datetime birth_clock;
         taiyin_split_julian_date birth_instant;
-        taiyin_ziwei_birth_options birth_options;
+    taiyin_ziwei_birth_options birth_options;
         taiyin_ephemeris_diagnostic diagnostic;
         uint8_t anchors[TAIYIN_ZIWEI_ANCHOR_COUNT];
         uint8_t gender = 0xffu;
@@ -152,6 +152,11 @@ int main(int argc, char** argv) {
         size_t palace_star_count = 0u;
 
         taiyin_ziwei_birth_options_init(&birth_options);
+        if (birth_options.leap_month_strategy
+                != TAIYIN_ZIWEI_LEAP_SPLIT_AFTER_FIFTEENTH) {
+            return fail(
+                "birth options preserve the default split leap-month policy");
+        }
         taiyin_ephemeris_diagnostic_init(&diagnostic);
         taiyin_ziwei_transform_set_init(&transforms);
         if (!encode_china_standard(
@@ -276,8 +281,8 @@ int main(int argc, char** argv) {
             taiyin_ziwei_flow_summary_init(&flow_summary);
             taiyin_ziwei_transform_set_init(&flow_transforms);
             taiyin_calendar_datetime_init(&next_clock);
-            if (sizeof(taiyin_ziwei_flow_summary) != 36u) {
-                return fail("flow summary retains its original C ABI size");
+            if (sizeof(taiyin_ziwei_flow_summary) != 44u) {
+                return fail("flow summary exposes effective month metadata");
             }
             if (!encode_china_standard(
                     2023, 3u, 25u, 10u, 30u,
@@ -294,6 +299,15 @@ int main(int argc, char** argv) {
                         != TAIYIN_ERROR_INVALID_ARGUMENT) {
                     return fail("reject out-of-range C flow options before enum narrowing");
                 }
+                invalid_flow_options = flow_options;
+                invalid_flow_options.flow_month_palace_strategy = 256;
+                if (taiyin_call_result_status(taiyin_ziwei_chart_set_flow(
+                        context, calendar, &target_instant, &target_clock,
+                        &invalid_flow_options, TAIYIN_ZIWEI_FLOW_HOUR,
+                        chart, &flow_summary, &diagnostic))
+                        != TAIYIN_ERROR_INVALID_ARGUMENT) {
+                    return fail("reject out-of-range flow-month palace strategy");
+                }
             }
             if (taiyin_ziwei_chart_set_flow(
                     context, calendar, &target_instant, &target_clock,
@@ -309,6 +323,11 @@ int main(int argc, char** argv) {
                 || flow_summary.target_month != 2u
                 || flow_summary.target_month_sequence != 3u
                 || flow_summary.target_month_building_branch != 3u
+                || flow_summary.target_effective_month != 2u
+                || flow_summary.target_month_name
+                    != TAIYIN_C_CHINESE_MONTH_NAME_NORMAL
+                || flow_summary.target_palace_month_index != 3u
+                || flow_summary.target_lunar_year != 2023
                 || !flow_summary.target_month_is_leap
                 || taiyin_ziwei_chart_get_flow_star_position(
                     chart, TAIYIN_ZIWEI_FLOW_YEAR, ziwei, &flow_position)

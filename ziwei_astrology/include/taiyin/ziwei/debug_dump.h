@@ -10,7 +10,7 @@
 namespace taiyin {
 namespace ziwei {
 
-constexpr uint32_t kNumericDumpFormatVersion = 4u;
+constexpr uint32_t kNumericDumpFormatVersion = 5u;
 
 enum class NumericDumpKind : uint8_t {
     Chart = 1,
@@ -20,7 +20,8 @@ enum class NumericDumpKind : uint8_t {
 // Produces a deterministic, label-free sequence for differential tests and
 // bindings. The first two values are kNumericDumpFormatVersion and kind.
 // Star positions use -1 for a star absent from that layer. The exact field
-// order is documented in README.md and is versioned independently of C++ ABI.
+// order is documented in docs/numeric-dump.md and is versioned independently
+// of the C++ ABI.
 Status dump_chart_numeric(
     const Chart& chart,
     std::vector<int64_t>* out

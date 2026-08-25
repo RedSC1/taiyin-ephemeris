@@ -92,6 +92,9 @@ struct SolarDate {
 
 struct LunarDate {
     int32_t year;
+    // Calendar/ganzhi year containing this physical month. Historical
+    // reforms can retain a written lunar-year label from the preceding year.
+    int32_t historical_year;
     uint8_t month;
     uint8_t day;
     uint8_t is_leap;
@@ -124,6 +127,9 @@ struct NewMoonEvent {
 
 struct ChineseCalendarMonth {
     int32_t lunar_year;
+    // Actual historical calendar/ganzhi year used for annual Ziwei limits.
+    // This normally equals lunar_year, but differs at reform boundaries.
+    int32_t historical_year;
     uint8_t month;
     uint8_t is_leap;
     uint8_t day_count;

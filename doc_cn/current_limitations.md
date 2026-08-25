@@ -155,7 +155,7 @@ search_planet_transit_ut
 ### C ABI 已冻结，C++ ABI 未冻结
 
 从库版本 `1.0.0` 开始，带版本号的 C99 ABI 是绑定层和应用程序的兼容边界。
-ABI major 7 内已有 C symbol 和 struct contract 必须保持源码与二进制兼容；
+ABI major 10 内已有 C symbol 和 struct contract 必须保持源码与二进制兼容；
 新增字段使用文档约定的 `struct_size` 机制。
 
 C++ 头文件仍属于实现层接口，minor 版本之间可以演进，不承诺稳定二进制 ABI。

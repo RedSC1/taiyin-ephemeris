@@ -561,6 +561,7 @@ int main(int argc, char** argv) {
                 calendar_context, &solar, &lunar, NULL)
                 < 0
             || lunar.year != 2025 || lunar.month != 1
+            || lunar.historical_year != lunar.year
             || lunar.day != 1 || lunar.is_leap != 0
             || taiyin_chinese_calendar_from_lunar(
                 calendar_context, &lunar, &roundtrip, NULL)
@@ -630,7 +631,9 @@ int main(int argc, char** argv) {
             || calendar_year.months[1].month != 11
             || calendar_year.months[1].is_leap == 0
             || calendar_year.months[0].month_building_branch != 0u
-            || calendar_year.months[1].month_building_branch != 0u) {
+            || calendar_year.months[1].month_building_branch != 0u
+            || calendar_year.months[0].historical_year
+                != calendar_year.months[0].lunar_year) {
             taiyin_chinese_calendar_context_destroy(calendar_context);
             taiyin_context_destroy(context);
             return fail("Chinese calendar C API failed");

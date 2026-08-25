@@ -278,6 +278,98 @@ void test_four_pillars() {
         &wei_pillars, &diagnostic), "calculate exact 13:00 pillars");
     expect((wei_pillars.hour & 0x0fu) == 7u, "exact 13:00 enters Wei hour");
 
+    const uint8_t expected_boundary_branches[] = {
+        1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 0u,
+    };
+    for (int hour = 0; hour < 24; ++hour) {
+        const taiyin::CalendarDateTime source = {
+            2026, 4, 8, hour, 0, 0.0};
+        taiyin::SplitJulianDate split_jd;
+        taiyin::CalendarDateTime split_spelling;
+        taiyin::CalendarDateTime split_normalized;
+        expect(taiyin::julian_day_split(source, &split_jd)
+            && taiyin::reverse_julian_day_split(
+                split_jd, &split_spelling),
+            "spell an exact civil-hour boundary through Split-JD");
+        expect_status(taiyin::chinese_calendar::normalize_chart_virtual_time(
+            split_spelling, &split_normalized),
+            "normalize a Split-JD civil-hour spelling");
+        expect(split_normalized.year == source.year
+            && split_normalized.month == source.month
+            && split_normalized.day == source.day
+            && split_normalized.hour == source.hour
+            && split_normalized.minute == 0
+            && split_normalized.second == 0.0,
+            "all Split-JD civil-hour spellings canonicalize exactly");
+
+        const taiyin::CalendarDateTime scalar_spelling =
+            taiyin::reverse_julian_day(taiyin::julian_day(source));
+        taiyin::CalendarDateTime scalar_normalized;
+        expect_status(taiyin::chinese_calendar::normalize_chart_virtual_time(
+            scalar_spelling, &scalar_normalized),
+            "normalize a scalar-JD civil-hour spelling");
+        expect(scalar_normalized.year == source.year
+            && scalar_normalized.month == source.month
+            && scalar_normalized.day == source.day
+            && scalar_normalized.hour == source.hour
+            && scalar_normalized.minute == 0
+            && scalar_normalized.second == 0.0,
+            "all scalar-JD civil-hour spellings canonicalize exactly");
+    }
+    for (int hour = 1; hour <= 23; hour += 2) {
+        const taiyin::CalendarDateTime source = {
+            2026, 4, 8, hour, 0, 0.0};
+        taiyin::SplitJulianDate local_jd;
+        taiyin::CalendarDateTime roundtrip;
+        expect(
+            taiyin::julian_day_split(source, &local_jd)
+                && taiyin::reverse_julian_day_split(local_jd, &roundtrip),
+            "round-trip exact Shi-Chen boundary");
+        taiyin::SplitJulianDate instant = local_jd;
+        expect(taiyin::add_seconds_to_split_jd(
+            instant, -8.0 * 3600.0, &instant),
+            "convert Shi-Chen boundary to UTC");
+        taiyin::chinese_calendar::GanzhiFourPillars pillars;
+        expect_status(taiyin::chinese_calendar::calculate_four_pillars(
+            &calendar, instant, roundtrip,
+            taiyin::chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT,
+            &pillars, &diagnostic),
+            "calculate round-tripped Shi-Chen boundary");
+        expect(
+            (pillars.hour & 0x0fu)
+                == expected_boundary_branches[(hour - 1) / 2],
+            "exact Shi-Chen boundary enters the new branch");
+    }
+
+    const taiyin::CalendarDateTime before_wu_source = {
+        2026, 4, 8, 10, 59, 59.999};
+    taiyin::CalendarDateTime before_wu_normalized;
+    taiyin::SplitJulianDate before_wu_local;
+    expect_status(taiyin::chinese_calendar::normalize_chart_virtual_time(
+        before_wu_source, &before_wu_normalized),
+        "normalize a real pre-Wu virtual time");
+    expect(before_wu_normalized.hour == 10
+        && before_wu_normalized.minute == 59
+        && before_wu_normalized.second == before_wu_source.second,
+        "normalization does not swallow a real pre-boundary millisecond");
+    expect(taiyin::julian_day_split(before_wu_source, &before_wu_local),
+        "encode a real pre-Wu virtual time");
+    taiyin::SplitJulianDate before_wu_instant = before_wu_local;
+    expect(taiyin::add_seconds_to_split_jd(
+        before_wu_instant, -8.0 * 3600.0, &before_wu_instant),
+        "convert a real pre-Wu virtual time to UTC");
+    taiyin::chinese_calendar::GanzhiFourPillars before_wu_pillars;
+    expect_status(taiyin::chinese_calendar::calculate_four_pillars(
+        &calendar,
+        before_wu_instant,
+        before_wu_source,
+        taiyin::chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT,
+        &before_wu_pillars,
+        &diagnostic),
+        "calculate a real pre-Wu four-pillar boundary");
+    expect((before_wu_pillars.hour & 0x0fu) == 5u,
+        "a real pre-boundary millisecond remains in Si hour");
+
     struct DayPillarOracle {
         taiyin::CalendarDateTime clock;
         uint8_t day;

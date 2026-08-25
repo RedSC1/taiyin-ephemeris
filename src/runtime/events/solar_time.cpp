@@ -12,7 +12,13 @@ namespace taiyin {
 namespace runtime {
 namespace {
 
-constexpr double kConversionToleranceDays = 1.0e-13;
+// The equation-of-time evaluation may use a semi-analytic fallback whose
+// last few bits are not stable at nanosecond scale.  Requiring an 8.6 ns
+// fixed-point residual made otherwise valid apparent-to-mean conversions
+// route-dependent.  A sub-microsecond tolerance remains far below the civil
+// clock precision exposed by this API while converging consistently across
+// ephemeris providers.
+constexpr double kConversionToleranceDays = 1.0e-11;
 constexpr int kConversionIterations = 12;
 
 SplitJulianDate invalid_jd() noexcept {

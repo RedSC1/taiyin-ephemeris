@@ -755,10 +755,12 @@ void assign_lunar_years(ChineseCalendarYear* out) noexcept {
             if (boundary == 0) first_year = year;
             for (int i = first_month_index; i < next_month_index; ++i) {
                 out->months[i].lunar_year = year;
+                out->months[i].historical_year = year;
             }
         }
         for (int i = 0; i < year_starts[0]; ++i) {
             out->months[i].lunar_year = first_year - 1;
+            out->months[i].historical_year = first_year - 1;
         }
         return;
     }
@@ -768,6 +770,7 @@ void assign_lunar_years(ChineseCalendarYear* out) noexcept {
             out->months[i].first_civil_day_number);
         out->months[i].lunar_year =
             out->months[i].month >= 11 ? date.year - 1 : date.year;
+        out->months[i].historical_year = out->months[i].lunar_year;
     }
 }
 
@@ -838,6 +841,7 @@ Status assign_early_historical_months(
         // midpoint heuristic change it between adjacent winter-solstice
         // windows.
         const int winter_year_shift = base_months[era_index] == 11 ? 1 : 0;
+        month.historical_year = year_hint + era_index - 1;
         month.lunar_year = year_hint + era_index - 1 - winter_year_shift;
         month.month_building_branch = static_cast<uint8_t>(
             normalized_index(physical_sequences[i], 12));
@@ -968,6 +972,22 @@ Status assign_months(
         }
     }
     assign_lunar_years(out);
+    if (uses_historical_china_profile(context)) {
+        // Under the Zhuanxu/Qin-Han year beginning in month ten, the written
+        // lunar-year label remains one behind the historical ganzhi year.
+        const int64_t qin_han_first_year_start_day = INT64_C(1640641);
+        const int64_t taichu_first_year_start_day = INT64_C(1683490);
+        for (std::size_t i = 0u;
+             i < TAIYIN_CHINESE_CALENDAR_MONTH_COUNT;
+             ++i) {
+            ChineseCalendarMonth& month = out->months[i];
+            if (month.first_civil_day_number >= qin_han_first_year_start_day
+                && month.first_civil_day_number
+                    < taichu_first_year_start_day) {
+                month.historical_year = month.lunar_year + 1;
+            }
+        }
+    }
     out->month_count =
         static_cast<uint8_t>(TAIYIN_CHINESE_CALENDAR_MONTH_COUNT);
     return TAIYIN_STATUS_OK;
@@ -1059,6 +1079,7 @@ SolarDate::SolarDate() noexcept
 
 LunarDate::LunarDate() noexcept
     : year(0),
+      historical_year(0),
       month(0),
       day(0),
       is_leap(0),
@@ -1078,6 +1099,7 @@ NewMoonEvent::NewMoonEvent() noexcept
 
 ChineseCalendarMonth::ChineseCalendarMonth() noexcept
     : lunar_year(0),
+      historical_year(0),
       month(0),
       is_leap(0),
       day_count(0),
@@ -1298,6 +1320,7 @@ Status fromSolar(
         const int64_t end = start + year.months[i].day_count;
         if (target_day < start || target_day >= end) continue;
         out->year = year.months[i].lunar_year;
+        out->historical_year = year.months[i].historical_year;
         out->month = year.months[i].month;
         out->day = static_cast<uint8_t>(target_day - start + 1);
         out->is_leap = year.months[i].is_leap;

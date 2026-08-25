@@ -30,6 +30,11 @@ enum class LeapMonthStrategy : uint8_t {
     SplitAfterFifteenth = 2,
 };
 
+constexpr bool is_valid(LeapMonthStrategy value) noexcept {
+    return static_cast<uint8_t>(value)
+        <= static_cast<uint8_t>(LeapMonthStrategy::SplitAfterFifteenth);
+}
+
 struct NatalRuleOptions {
     // Selects the year stem used by 五虎遁 when assigning palace stems.
     PillarBoundary wu_hu_dun_year_boundary;

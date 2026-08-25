@@ -61,6 +61,10 @@ test already owns normalized `CalendarFacts`.
 `instant_utc` is the authoritative continuous time coordinate. The paired
 `virtual_time` is interpreted using one fixed civil offset (or a selected
 mean-solar meridian); the native module has no named time-zone or DST rules.
+The adapter canonicalizes only this final charting clock at exact civil-hour
+JD boundaries before deriving lunar labels, Ganzhi, natal facts, or flow
+facts. It stores the canonical value in the natal result; `instant_utc` and
+astronomical Jie boundaries remain untouched.
 For a daylight-saving transition, it cannot independently derive the legal
 wall-clock time of an earlier Jie or new moon. Applications must supply a
 consistent fixed-offset interpretation and must not treat lunar-day labels near
@@ -138,6 +142,15 @@ small limit, year, month, day, and hour coordinates together.
 five-layer stack. Small limit remains parallel annual metadata rather than a
 sixth layer.
 
+Lunar flow preserves four distinct month facts: the written month,
+`sequence` among physical months in the historical calendar year,
+`effective_month` used by Wu-Hu-Dun/Si-Hua/flow stars, and the calendar's
+`month_building_branch`. The default `FlowMonthPalaceStrategy::PhysicalSequence`
+advances the flow palace for every physical month; `EffectiveMonth` makes a
+leap-month segment follow its selected previous/next effective month instead.
+Historical reform years are represented directly and may have sequences up to
+15; they are not collapsed into a fabricated leap month twelve.
+
 `set_flow_stack_through_from_calendar()` performs the same resolution but
 installs only through a requested deepest level. It never creates a stack with
 a missing parent layer.
@@ -148,6 +161,12 @@ Rat-hour modes an hour carries `RatHourSegment::Early` or `Late`, producing 13
 logical hour entries. `TOMORROW_GAN` preserves today's day pillar while using
 tomorrow's stem for the late-Zi hour; the adapter passes that resolved stem
 through instead of reconstructing it.
+
+Hour stepping preserves the minute/second phase of the resolved virtual clock.
+It moves one hour for forward targets in `[22:00, 01:00)` and backward targets
+in `[23:00, 02:00)`, and two hours elsewhere. Consequently civil, local mean
+solar, and local apparent solar configurations each use their actual charting
+clock rather than an unrelated civil input.
 
 ## Numeric differential output
 

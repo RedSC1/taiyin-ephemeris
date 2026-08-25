@@ -18,6 +18,18 @@ enum class ChildhoodStrategy : uint8_t {
     Sequential = 1,
 };
 
+enum class FlowMonthPalaceStrategy : uint8_t {
+    // Every physical calendar month advances Liu-Nian Dou-Jun once.
+    PhysicalSequence = 0,
+    // A leap-month segment follows the selected effective month instead.
+    EffectiveMonth = 1,
+};
+
+constexpr bool is_valid(FlowMonthPalaceStrategy value) noexcept {
+    return static_cast<uint8_t>(value)
+        <= static_cast<uint8_t>(FlowMonthPalaceStrategy::EffectiveMonth);
+}
+
 constexpr bool is_valid(ChildhoodStrategy value) noexcept {
     return static_cast<uint8_t>(value)
         <= static_cast<uint8_t>(ChildhoodStrategy::Sequential);
@@ -55,10 +67,16 @@ struct FlowYearLimit {
 
 struct FlowMonthLimit {
     LimitCoordinate limit;
+    // Written/source lunar year and month.
     int32_t year;
     uint8_t month;
     uint8_t sequence;
+    // Year/month used by annual layers, Wu-Hu-Dun, Si-Hua and flow stars.
+    int32_t effective_year;
+    uint8_t effective_month;
     bool is_leap;
+    Branch month_building_branch;
+    uint8_t palace_month_index;
     Branch doujun;
 };
 
@@ -127,11 +145,14 @@ Status make_flow_month(
 // branch remains the independently derived Liu-Nian Dou-Jun position.
 Status make_flow_month_from_lunar_month_branch(
     const NatalChart& natal,
-    int32_t physical_year,
+    int32_t lunar_year,
+    int32_t effective_year,
     uint8_t logical_month,
+    uint8_t effective_month,
     uint8_t sequence,
     bool is_leap,
     Branch lunar_month_branch,
+    FlowMonthPalaceStrategy palace_strategy,
     uint8_t birth_effective_month,
     Branch birth_hour,
     FlowMonthLimit* out

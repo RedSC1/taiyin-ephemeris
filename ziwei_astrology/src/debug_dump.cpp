@@ -178,7 +178,9 @@ Status dump_resolved_flow_numeric(
     if (out == NULL
         || flow.target_month < 1u || flow.target_month > 12u
         || flow.target_month_sequence < 1u
-        || flow.target_month_sequence > 13u
+        || flow.target_month_sequence > 15u
+        || flow.target_month_name
+            > chinese_calendar::TAIYIN_CHINESE_MONTH_NAME_LATER_SAME_NAME
         || !is_valid(flow.target_month_building_branch)
         || flow.target_day < 1u || flow.target_day > kMaxFlowDayIndex
         || flow.target_hour_index >= kBranchCount
@@ -192,8 +194,13 @@ Status dump_resolved_flow_numeric(
         || !valid_limit(flow.day.limit, FlowLevel::Day)
         || !valid_limit(flow.hour.limit, FlowLevel::Hour)
         || !is_valid(flow.month.doujun)
+        || !is_valid(flow.month.month_building_branch)
+        || flow.month.effective_month < 1u
+        || flow.month.effective_month > 12u
+        || flow.month.palace_month_index < 1u
+        || flow.month.palace_month_index > 15u
         || flow.year.year != flow.effective_target_year
-        || flow.month.year != flow.effective_target_year
+        || flow.month.effective_year != flow.effective_target_year
         || flow.month.month != flow.target_month
         || flow.month.sequence != flow.target_month_sequence
         || flow.month.is_leap != flow.target_month_is_leap
@@ -205,7 +212,7 @@ Status dump_resolved_flow_numeric(
     }
     try {
         std::vector<int64_t> result;
-        result.reserve(50u);
+        result.reserve(54u);
         result.push_back(kNumericDumpFormatVersion);
         result.push_back(static_cast<uint8_t>(NumericDumpKind::ResolvedFlow));
         result.push_back(flow.effective_birth_year);
@@ -217,6 +224,10 @@ Status dump_resolved_flow_numeric(
         result.push_back(flow.target_hour_index);
         result.push_back(to_index(flow.target_rat_hour_segment));
         result.push_back(flow.target_month_is_leap ? 1 : 0);
+        result.push_back(flow.target_month_name);
+        result.push_back(flow.month.year);
+        result.push_back(flow.month.effective_month);
+        result.push_back(flow.month.palace_month_index);
 
         append_limit(flow.decade.limit, &result);
         result.push_back(flow.decade.index);

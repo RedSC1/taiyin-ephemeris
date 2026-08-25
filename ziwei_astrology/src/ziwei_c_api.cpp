@@ -94,7 +94,11 @@ bool valid_flow_option_values(
         && value.rat_hour_mode
             <= taiyin::chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TOMORROW_GAN
         && value.childhood_strategy >= TAIYIN_ZIWEI_CHILDHOOD_SKIP
-        && value.childhood_strategy <= TAIYIN_ZIWEI_CHILDHOOD_SEQUENTIAL;
+        && value.childhood_strategy <= TAIYIN_ZIWEI_CHILDHOOD_SEQUENTIAL
+        && value.flow_month_palace_strategy
+            >= TAIYIN_ZIWEI_FLOW_MONTH_PALACE_PHYSICAL_SEQUENCE
+        && value.flow_month_palace_strategy
+            <= TAIYIN_ZIWEI_FLOW_MONTH_PALACE_EFFECTIVE_MONTH;
 }
 
 taiyin::ziwei::BirthResolutionOptions to_cpp_birth_options(
@@ -126,6 +130,9 @@ taiyin::ziwei::FlowResolutionOptions to_cpp_flow_options(
     out.childhood_strategy =
         static_cast<taiyin::ziwei::ChildhoodStrategy>(
             value.childhood_strategy);
+    out.flow_month_palace_strategy =
+        static_cast<taiyin::ziwei::FlowMonthPalaceStrategy>(
+            value.flow_month_palace_strategy);
     return out;
 }
 
@@ -188,6 +195,10 @@ void copy_flow_summary(
     out->target_rat_hour_segment =
         taiyin::ziwei::to_index(source.target_rat_hour_segment);
     out->target_month_is_leap = source.target_month_is_leap ? 1u : 0u;
+    out->target_effective_month = source.month.effective_month;
+    out->target_month_name = source.target_month_name;
+    out->target_palace_month_index = source.month.palace_month_index;
+    out->target_lunar_year = source.month.year;
     out->decade_index = source.decade.index;
     out->decade_start_age = source.decade.start_age;
     out->decade_end_age = source.decade.end_age;
@@ -300,6 +311,8 @@ void TAIYIN_C_CALL taiyin_ziwei_flow_options_init(
     value->rat_hour_mode = defaults.rat_hour_mode;
     value->childhood_strategy =
         static_cast<int32_t>(defaults.childhood_strategy);
+    value->flow_month_palace_strategy =
+        static_cast<int32_t>(defaults.flow_month_palace_strategy);
 }
 
 void TAIYIN_C_CALL taiyin_ziwei_transform_set_init(
@@ -321,6 +334,9 @@ void TAIYIN_C_CALL taiyin_ziwei_flow_summary_init(
     value->target_month = 0xffu;
     value->target_month_sequence = 0xffu;
     value->target_month_building_branch = 0xffu;
+    value->target_effective_month = 0xffu;
+    value->target_month_name = 0xffu;
+    value->target_palace_month_index = 0xffu;
     value->target_day = 0xffu;
     value->target_hour_index = 0xffu;
     value->target_rat_hour_segment = 0xffu;

@@ -128,12 +128,14 @@ astronomical event results. The precise event instant remains available through
 the event API's `jd_ut` field even when the historical profile supplies its
 `civil_day_number`.
 
-Within the early historical profile, `LunarDate::year` follows the profile's
-calendar-year starts. In the Zhuanxu/Qin-Han winter-year branch, the year label
-is anchored to the civil year in which that winter year starts. It is not
-derived from the midpoint of whichever winter-solstice window happened to be
-used by `calcY()`. This keeps `fromSolar()` and `fromLunar()` bijective across
-the modeled Taichu reform, where the old and new year-start conventions meet.
+Within the early historical profile, `LunarDate::year` is the written/source
+lunar-year label, while `historical_year` identifies the actual calendar year
+that contains the physical month. They normally agree. In the Zhuanxu/Qin-Han
+winter-year branch, the written label remains one year behind the calendar
+year used by Ganzhi and Ziwei annual limits. Neither value is derived from the
+midpoint of whichever winter-solstice window happened to be used by `calcY()`.
+This keeps `fromSolar()` and `fromLunar()` bijective across the modeled Taichu
+reform while preserving the year needed by downstream historical calculations.
 
 The C ABI exposes the same distinction through
 `taiyin_chinese_calendar_config_init()`,
@@ -309,8 +311,8 @@ fromLunar(context, lunar, solar, diagnostic);
 getLunarMonthNum(context, year, month, is_leap, days, diagnostic);
 ```
 
-`LunarDate` is deliberately structured: `year`, numeric `month`, `day`,
-`is_leap`, and the exceptional `month_name` ID. A normal `month_name` lets the
+`LunarDate` is deliberately structured: written `year`, `historical_year`,
+numeric `month`, `day`, `is_leap`, and the exceptional `month_name` ID. A normal `month_name` lets the
 calendar profile resolve the ordinary name; `thirteen`, `later nine`,
 `alternate twelve`, and `alternate one` can select the historical names
 explicitly. `fromLunar()` validates that the selected month exists in that
@@ -360,6 +362,15 @@ sexagenary-date applications. It does not create another context:
 `calculate_four_pillars()` consumes the existing `ChineseCalendarContext`, an
 absolute split-JD UTC instant, the caller-resolved civil/solar `virtual_time`,
 and an explicit Rat-hour rule.
+
+Immediately before interpreting civil day/hour fields, the Ganzhi layer
+canonicalizes the final charting `virtual_time` at exact whole-hour JD
+boundaries. It recognizes only the concrete scalar/split-JD spellings produced
+by those boundaries; it does not use a general tolerance window. The physical
+UTC instant and the general astronomy time-conversion functions are never
+modified. Consequently a round-tripped exact 11:00 enters Wu hour, while a
+real 10:59:59.999 remains in Si hour. Ziwei birth and flow adapters reuse this
+same canonical virtual clock.
 
 The five-tiger month rule, five-rat hour rule, sexagenary construction,
 cycle advancement, and NaYin ID/five-element lookup are implemented in the

@@ -1,13 +1,16 @@
+#include "taiyin/angle.h"
 #include "taiyin/body_id.h"
 #include "taiyin/chinese_calendar/calendar.h"
 #include "taiyin/runtime/ephemeris_route.h"
 #include "taiyin/runtime/native_context.h"
 #include "taiyin/runtime/runtime.h"
+#include "taiyin/runtime/solar_time.h"
 #include "taiyin/time.h"
 #include "taiyin/ziwei/flow_calendar_adapter.h"
 #include "taiyin/ziwei/debug_dump.h"
 #include "taiyin/ziwei/rules_loader.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -31,6 +34,45 @@ bool encode_china_standard(
     return taiyin::julian_day_split(local, out)
         && taiyin::add_seconds_to_split_jd(
             *out, -8.0 * 3600.0, out);
+}
+
+bool make_solar_clock_target(
+    const taiyin::runtime::NativeCalcContext& astronomy,
+    const taiyin::CalendarDateTime& desired_virtual_time,
+    double longitude_rad,
+    bool apparent,
+    taiyin::SplitJulianDate* out_instant_ut,
+    taiyin::CalendarDateTime* out_virtual_time,
+    taiyin::runtime::EphemerisEvalDiagnostic* diagnostic
+) {
+    taiyin::SplitJulianDate virtual_jd;
+    taiyin::SplitJulianDate local_mean_jd;
+    if (!out_instant_ut || !out_virtual_time
+        || !taiyin::julian_day_split(desired_virtual_time, &virtual_jd)) {
+        return false;
+    }
+    if (apparent) {
+        const taiyin::Status status =
+            taiyin::runtime::local_apparent_to_mean_solar_time(
+                &astronomy,
+                virtual_jd,
+                longitude_rad,
+                &local_mean_jd,
+                diagnostic);
+        if (status != taiyin::TAIYIN_STATUS_OK) {
+            std::cerr << "local apparent to mean failed: " << status << '\n';
+            return false;
+        }
+    } else {
+        local_mean_jd = virtual_jd;
+    }
+    if (!taiyin::add_days_to_split_jd(
+            local_mean_jd,
+            -longitude_rad / taiyin::TAIYIN_TWO_PI,
+            out_instant_ut)) {
+        return false;
+    }
+    return taiyin::reverse_julian_day_split(virtual_jd, out_virtual_time);
 }
 
 }  // namespace
@@ -255,6 +297,141 @@ int main() {
         &natal) == TAIYIN_STATUS_OK,
         "build natal chart", &failures);
 
+    // Mean/apparent solar clocks are the virtual clocks used by Ganzhi and
+    // Ziwei. A JD round trip at an exact Shi-Chen boundary must enter the new
+    // branch, while a real millisecond before it must remain in the old one.
+    const double solar_clock_longitude = deg_to_rad(118.5);
+    for (int apparent_index = 0; apparent_index < 2; ++apparent_index) {
+        const bool apparent = apparent_index != 0;
+        const CalendarDateTime exact_birth_clock = {
+            2003, 3, 13, 11, 0, 0.0};
+        SplitJulianDate exact_birth_virtual_jd;
+        expect(julian_day_split(
+            exact_birth_clock, &exact_birth_virtual_jd),
+            "encode exact solar-clock birth boundary", &failures);
+        SplitJulianDate before_birth_virtual_jd;
+        expect(add_seconds_to_split_jd(
+            exact_birth_virtual_jd, -0.001, &before_birth_virtual_jd),
+            "encode pre-boundary solar-clock birth", &failures);
+        CalendarDateTime before_birth_clock;
+        expect(reverse_julian_day_split(
+            before_birth_virtual_jd, &before_birth_clock),
+            "decode pre-boundary solar clock", &failures);
+
+        const CalendarDateTime solar_birth_clocks[] = {
+            before_birth_clock,
+            exact_birth_clock,
+        };
+        const uint8_t expected_birth_hour_branches[] = {5u, 6u};
+        for (std::size_t boundary = 0u; boundary < 2u; ++boundary) {
+            SplitJulianDate solar_birth_instant;
+            CalendarDateTime solar_birth_virtual;
+            expect(make_solar_clock_target(
+                    astronomy,
+                    solar_birth_clocks[boundary],
+                    solar_clock_longitude,
+                    apparent,
+                    &solar_birth_instant,
+                    &solar_birth_virtual,
+                    &diagnostic),
+                "construct mean/apparent solar birth target", &failures);
+            ResolvedBirth solar_birth;
+            NatalChart solar_natal;
+            expect(resolve_birth_from_calendar(
+                    &calendar,
+                    solar_birth_instant,
+                    solar_birth_virtual,
+                    Gender::Female,
+                    birth_options,
+                    &solar_birth,
+                    &diagnostic) == TAIYIN_STATUS_OK
+                && make_natal_chart(
+                    solar_birth.facts,
+                    solar_birth.anchors,
+                    solar_birth.body_palace,
+                    birth_options.anchor_options.rules,
+                    rules.compiled,
+                    &solar_natal) == TAIYIN_STATUS_OK
+                && to_index(solar_birth.facts.solar_term_pillars.hour.branch)
+                    == expected_birth_hour_branches[boundary]
+                && to_index(solar_birth.facts.lunar_pillars.hour.branch)
+                    == expected_birth_hour_branches[boundary]
+                && to_index(
+                    solar_natal.birth_facts.solar_term_pillars.hour.branch)
+                    == expected_birth_hour_branches[boundary],
+                "solar-clock Ziwei natal uses the corrected virtual hour",
+                &failures);
+        }
+
+        const CalendarDateTime exact_flow_clock = {
+            2003, 4, 8, 11, 0, 0.0};
+        SplitJulianDate exact_flow_virtual_jd;
+        SplitJulianDate before_flow_virtual_jd;
+        CalendarDateTime before_flow_clock;
+        expect(julian_day_split(exact_flow_clock, &exact_flow_virtual_jd)
+            && add_seconds_to_split_jd(
+                exact_flow_virtual_jd, -0.001, &before_flow_virtual_jd)
+            && reverse_julian_day_split(
+                before_flow_virtual_jd, &before_flow_clock),
+            "construct solar-clock flow boundaries", &failures);
+        const CalendarDateTime solar_flow_clocks[] = {
+            before_flow_clock,
+            exact_flow_clock,
+        };
+        const uint8_t expected_flow_hour_branches[] = {5u, 6u};
+        for (std::size_t boundary = 0u; boundary < 2u; ++boundary) {
+            SplitJulianDate solar_flow_instant;
+            CalendarDateTime solar_flow_virtual;
+            ResolvedFlow solar_flow;
+            const bool made_target = make_solar_clock_target(
+                    astronomy,
+                    solar_flow_clocks[boundary],
+                    solar_clock_longitude,
+                    apparent,
+                    &solar_flow_instant,
+                    &solar_flow_virtual,
+                    &diagnostic);
+            const Status flow_status = made_target
+                ? resolve_flow_from_calendar(
+                    &calendar,
+                    birth,
+                    natal,
+                    solar_flow_instant,
+                    solar_flow_virtual,
+                    default_flow_resolution_options(),
+                    &solar_flow,
+                    &diagnostic)
+                : TAIYIN_ERROR_INVALID_ARGUMENT;
+            if (flow_status == TAIYIN_STATUS_OK
+                && solar_flow.target_hour_index
+                    != expected_flow_hour_branches[boundary]) {
+                std::cerr << "solar flow hour mismatch apparent="
+                          << apparent << " boundary=" << boundary
+                          << " clock=" << solar_flow_virtual.hour << ':'
+                          << solar_flow_virtual.minute << ':'
+                          << solar_flow_virtual.second
+                          << " actual="
+                          << static_cast<int>(solar_flow.target_hour_index)
+                          << " expected="
+                          << static_cast<int>(
+                              expected_flow_hour_branches[boundary])
+                          << '\n';
+            }
+            if (!made_target || flow_status != TAIYIN_STATUS_OK) {
+                std::cerr << "solar flow resolution failed apparent="
+                          << apparent << " boundary=" << boundary
+                          << " made=" << made_target
+                          << " status=" << flow_status << '\n';
+            }
+            expect(made_target
+                && flow_status == TAIYIN_STATUS_OK
+                && solar_flow.target_hour_index
+                    == expected_flow_hour_branches[boundary],
+                "solar-clock Ziwei flow uses the corrected virtual hour",
+                &failures);
+        }
+    }
+
     // A same-lunar-year target before the physical birth instant is never a
     // valid flow stack, even though its inclusive virtual age would be one.
     const CalendarDateTime pre_birth_same_year_clock = {
@@ -431,7 +608,7 @@ int main() {
         "chart dump carries a versioned self-describing prefix", &failures);
     expect(dump_resolved_flow_numeric(installed, &flow_dump)
             == TAIYIN_STATUS_OK
-        && flow_dump.size() == 50u
+        && flow_dump.size() == 54u
         && flow_dump[0] == kNumericDumpFormatVersion
         && flow_dump[1]
             == static_cast<uint8_t>(NumericDumpKind::ResolvedFlow)
@@ -440,7 +617,7 @@ int main() {
                 installed.target_month_building_branch)),
         "resolved-flow dump has stable fixed-width layout", &failures);
     ResolvedFlow malformed_dump = installed;
-    malformed_dump.target_month_sequence = 14u;
+    malformed_dump.target_month_sequence = 16u;
     const std::vector<int64_t> preserved_dump = flow_dump;
     expect(dump_resolved_flow_numeric(malformed_dump, &flow_dump)
             == TAIYIN_ERROR_INVALID_ARGUMENT
@@ -607,8 +784,39 @@ int main() {
         "split late Rat retains the physical lunar date", &failures);
 
     // Navigation uses 13 logical slots for split modes. Hai -> Late Zi ->
-    // next-day Early Zi -> Chou must never jump backwards like the old Dart
-    // center-snapping implementation did.
+    // next-day Early Zi -> Chou uses one-hour steps while preserving the
+    // position inside the hour; all other transitions use two hours.
+    const CalendarDateTime exact_hai_clock = {2024, 5, 20, 22, 0, 0.0};
+    SplitJulianDate exact_hai_instant;
+    expect(encode_china_standard(exact_hai_clock, &exact_hai_instant),
+        "encode exact Hai navigation target", &failures);
+    SplitJulianDate exact_late_instant;
+    CalendarDateTime exact_late_clock;
+    RatHourSegment exact_late_segment = RatHourSegment::None;
+    for (int32_t split_mode =
+             chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TODAY_GAN;
+         split_mode <= chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_TOMORROW_GAN;
+         ++split_mode) {
+        expect(step_flow_hour_target(
+            exact_hai_instant,
+            exact_hai_clock,
+            split_mode,
+            1,
+            &exact_late_instant,
+            &exact_late_clock,
+            &exact_late_segment) == TAIYIN_STATUS_OK
+            && exact_late_clock.year == 2024
+            && exact_late_clock.month == 5
+            && exact_late_clock.day == 20
+            && exact_late_clock.hour == 23
+            && exact_late_clock.minute == 0
+            && exact_late_clock.second == 0.0
+            && std::fabs(seconds_between_split_jd(
+                exact_hai_instant, exact_late_instant) - 3600.0) < 1.0e-9
+            && exact_late_segment == RatHourSegment::Late,
+            "both split modes step exact 22:00 to 23:00", &failures);
+    }
+
     const CalendarDateTime hai_clock = {2024, 5, 20, 22, 30, 0.0};
     SplitJulianDate hai_instant;
     expect(encode_china_standard(hai_clock, &hai_instant),
@@ -652,8 +860,8 @@ int main() {
         &stepped_instant,
         &stepped_clock,
         &stepped_segment) == TAIYIN_STATUS_OK
-        && stepped_clock.day == 21 && stepped_clock.hour == 2
-        && stepped_clock.minute == 0
+        && stepped_clock.day == 21 && stepped_clock.hour == 1
+        && stepped_clock.minute == 30
         && stepped_segment == RatHourSegment::None,
         "split nextHour advances Early Zi to Chou", &failures);
     expect(step_flow_hour_target(
@@ -680,7 +888,8 @@ int main() {
             &stepped_instant,
             &stepped_clock,
             &stepped_segment) == TAIYIN_STATUS_OK
-        && stepped_clock.day == 21 && stepped_clock.hour == 2
+        && stepped_clock.day == 21 && stepped_clock.hour == 1
+        && stepped_clock.minute == 30
         && stepped_segment == RatHourSegment::None,
         "unified late Zi advances to next-day Chou", &failures);
     expect(step_flow_day_target(
@@ -721,6 +930,64 @@ int main() {
         && leap_eleven.target_month_building_branch == Branch::Zi
         && leap_eleven.target_day == 1u,
         "resolve late-year leap-month sequence", &failures);
+
+    const CalendarDateTime late_leap_eleven_clock = {
+        2034, 1, 6, 12, 0, 0.0,
+    };
+    SplitJulianDate late_leap_eleven_instant;
+    ResolvedFlow late_leap_eleven;
+    expect(encode_china_standard(
+            late_leap_eleven_clock, &late_leap_eleven_instant)
+        && resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            late_leap_eleven_instant, late_leap_eleven_clock,
+            lunar_options, &late_leap_eleven, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && late_leap_eleven.target_month == 11u
+        && late_leap_eleven.target_month_sequence == 12u
+        && late_leap_eleven.target_month_is_leap
+        && late_leap_eleven.target_day == 16u
+        && late_leap_eleven.month.effective_year == 2033
+        && late_leap_eleven.month.effective_month == 12u
+        && late_leap_eleven.month.palace_month_index == 12u
+        && late_leap_eleven.month.limit.coordinate.branch
+            == leap_eleven.month.limit.coordinate.branch
+        && late_leap_eleven.month.limit.coordinate.stem
+            != leap_eleven.month.limit.coordinate.stem,
+        "split leap-eleven changes effective month without moving its palace",
+        &failures);
+
+    FlowResolutionOptions effective_palace_options = lunar_options;
+    effective_palace_options.flow_month_palace_strategy =
+        FlowMonthPalaceStrategy::EffectiveMonth;
+    ResolvedFlow effective_palace_leap_eleven;
+    expect(resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            leap_eleven_instant, leap_eleven_clock,
+            effective_palace_options,
+            &effective_palace_leap_eleven, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && effective_palace_leap_eleven.month.palace_month_index == 11u
+        && effective_palace_leap_eleven.month.limit.coordinate.branch
+            != leap_eleven.month.limit.coordinate.branch,
+        "flow-month palace strategy can follow the effective month",
+        &failures);
+
+    const CalendarDateTime normal_twelve_clock = {2034, 1, 20, 12, 0, 0.0};
+    SplitJulianDate normal_twelve_instant;
+    ResolvedFlow normal_twelve;
+    expect(encode_china_standard(normal_twelve_clock, &normal_twelve_instant)
+        && resolve_flow_from_calendar(
+            &calendar, birth, natal,
+            normal_twelve_instant, normal_twelve_clock,
+            lunar_options, &normal_twelve, &diagnostic)
+            == TAIYIN_STATUS_OK
+        && normal_twelve.target_month == 12u
+        && normal_twelve.target_month_sequence == 13u
+        && !normal_twelve.target_month_is_leap
+        && normal_twelve.month.effective_month == 12u,
+        "normal month after leap-eleven retains sequence thirteen without a leap flag",
+        &failures);
 
     // calcY owns the continuous month-building sequence.  This must not be
     // reconstructed by selecting a Zhong-Qi in the Ziwei adapter: a lunar
@@ -782,8 +1049,8 @@ int main() {
         &failures);
 
     // Historical reform red zones can contain more than thirteen structural
-    // month labels. Ziwei keeps those physical dates chartable by collapsing
-    // an overflow occurrence onto slot thirteen as leap month twelve.
+    // months in one actual calendar year. Preserve that physical sequence;
+    // do not invent a synthetic leap-twelve label merely to cap it at 13.
     const CalendarDateTime ancient_birth_clock = {181, 8, 20, 8, 0, 0.0};
     SplitJulianDate ancient_birth_instant;
     expect(encode_china_standard(
@@ -826,10 +1093,10 @@ int main() {
     expect(ancient_status == TAIYIN_STATUS_OK
         && ancient_flow.effective_target_year == 700
         && ancient_flow.target_month == 12u
-        && ancient_flow.target_month_sequence == 13u
-        && ancient_flow.target_month_is_leap
+        && ancient_flow.target_month_sequence == 15u
+        && !ancient_flow.target_month_is_leap
         && ancient_flow.target_day == 2u,
-        "historical reform overflow collapses to leap month twelve",
+        "historical reform preserves the fifteenth physical month",
         &failures);
 
     const CalendarDateTime reform_birth_clock = {-456, 4, 4, 8, 0, 0.0};
@@ -889,12 +1156,12 @@ int main() {
             {0u, 4u, 2u, 10u, 0u, 10u, 1u, 11u}},
         {"pre-Taichu", {-104, 1, 3, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
-            -105, 11u, 2u, false, 27u, 6u,
-            {1u, 11u, 4u, 0u, 3u, 2u, 2u, 8u}},
+            -104, 11u, 2u, false, 27u, 6u,
+            {2u, 0u, 6u, 1u, 3u, 3u, 2u, 9u}},
         {"Taichu", {-103, 1, 20, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
-            -104, 11u, 2u, false, 27u, 6u,
-            {2u, 0u, 6u, 1u, 6u, 3u, 8u, 9u}},
+            -103, 11u, 2u, false, 27u, 6u,
+            {3u, 1u, 8u, 2u, 6u, 4u, 8u, 10u}},
         {"Xin alternate twelve", {23, 12, 2, 12, 0, 0.0},
             PillarBoundary::Lunar, &reform_birth, &reform_natal,
             23, 12u, 12u, false, 1u, 6u,
@@ -1052,9 +1319,9 @@ int main() {
     };
     const HistoricalMonthBuildingProbe historical_month_building_probes[] = {
         {"pre-Taichu Jian-Zi", {-104, 1, 3, 12, 0, 0.0},
-            &reform_birth, &reform_natal, -105, Branch::Zi, Stem::Wu},
-        {"Taichu Jian-Zi", {-103, 1, 20, 12, 0, 0.0},
             &reform_birth, &reform_natal, -104, Branch::Zi, Stem::Geng},
+        {"Taichu Jian-Zi", {-103, 1, 20, 12, 0, 0.0},
+            &reform_birth, &reform_natal, -103, Branch::Zi, Stem::Ren},
         {"Xin alternate twelve is Jian-Zi", {23, 12, 2, 12, 0, 0.0},
             &reform_birth, &reform_natal, 23, Branch::Zi, Stem::Jia},
         {"Xin ordinary twelve is Jian-Chou", {24, 1, 12, 12, 0, 0.0},

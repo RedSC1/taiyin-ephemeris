@@ -4,6 +4,7 @@
 #include "chinese_calendar/solar_term_internal.h"
 
 #include <cmath>
+#include <limits>
 
 namespace taiyin {
 namespace chinese_calendar {
@@ -199,6 +200,84 @@ GanzhiFourPillars::GanzhiFourPillars() noexcept
       day(kInvalidGanzhi),
       hour(kInvalidGanzhi) {}
 
+Status normalize_chart_virtual_time(
+    const CalendarDateTime& virtual_time,
+    CalendarDateTime* out
+) noexcept {
+    if (!out || !valid_datetime(virtual_time)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    if (virtual_time.minute != 0 && virtual_time.minute != 59) {
+        *out = virtual_time;
+        return TAIYIN_STATUS_OK;
+    }
+
+    CalendarDateTime midnight = virtual_time;
+    midnight.hour = 0;
+    midnight.minute = 0;
+    midnight.second = 0.0;
+    SplitJulianDate source;
+    SplitJulianDate midnight_jd;
+    if (!julian_day_split(virtual_time, &source)
+        || !julian_day_split(midnight, &midnight_jd)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    // Include the following midnight so 23:59:59.999... produced from an
+    // exact next-day boundary is normalized into the next civil date.  Do not
+    // use a broad tolerance: recognize only the exact binary spellings that
+    // the split and scalar JD decoders produce for each civil-hour boundary.
+    for (int hour = 0; hour <= 24; ++hour) {
+        SplitJulianDate boundary;
+        if (!add_days_to_split_jd(
+                midnight_jd, static_cast<double>(hour) / 24.0,
+                &boundary)) {
+            return TAIYIN_ERROR_INVALID_ARGUMENT;
+        }
+        CalendarDateTime canonical = midnight;
+        if (hour < 24) {
+            canonical.hour = hour;
+        } else if (!reverse_julian_day_split(boundary, &canonical)) {
+            return TAIYIN_ERROR_INVALID_ARGUMENT;
+        }
+        canonical.minute = 0;
+        canonical.second = 0.0;
+
+        CalendarDateTime split_spelling;
+        SplitJulianDate split_spelling_jd;
+        if (!reverse_julian_day_split(boundary, &split_spelling)
+            || !julian_day_split(split_spelling, &split_spelling_jd)) {
+            return TAIYIN_ERROR_INVALID_ARGUMENT;
+        }
+
+        bool scalar_matches = false;
+        const double scalar_boundary = split_julian_date_to_double(boundary);
+        if (std::isfinite(scalar_boundary)
+            && scalar_boundary + 0.5
+                >= static_cast<double>(std::numeric_limits<int>::min())
+            && scalar_boundary + 0.5
+                <= static_cast<double>(std::numeric_limits<int>::max())) {
+            const CalendarDateTime scalar_spelling =
+                reverse_julian_day(scalar_boundary);
+            SplitJulianDate scalar_spelling_jd;
+            if (!julian_day_split(scalar_spelling, &scalar_spelling_jd)) {
+                return TAIYIN_ERROR_INVALID_ARGUMENT;
+            }
+            scalar_matches = source == scalar_spelling_jd;
+        }
+
+        if (source == boundary
+            || source == split_spelling_jd
+            || scalar_matches) {
+            *out = canonical;
+            return TAIYIN_STATUS_OK;
+        }
+    }
+
+    *out = virtual_time;
+    return TAIYIN_STATUS_OK;
+}
+
 Status make_ganzhi(uint8_t stem_id, uint8_t branch_id, uint8_t* out) noexcept {
     return status_from_rule_result(rules::make(stem_id, branch_id, out));
 }
@@ -275,15 +354,20 @@ Status calculate_four_pillars(
         || !valid_datetime(virtual_time) || !valid_rat_hour_mode(rat_hour_mode)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    CalendarDateTime normalized_virtual_time;
+    Status status = normalize_chart_virtual_time(
+        virtual_time, &normalized_virtual_time);
+    if (status != TAIYIN_STATUS_OK) return status;
     *out = GanzhiFourPillars();
-    Status status = calculate_year_pillar(
-        *context, instant_utc, virtual_time, &out->year, diagnostic);
+    status = calculate_year_pillar(
+        *context, instant_utc, normalized_virtual_time,
+        &out->year, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
     status = calculate_month_pillar(
         *context, instant_utc, out->year, &out->month, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
     return calculate_day_and_hour_pillars(
-        virtual_time, rat_hour_mode, &out->day, &out->hour);
+        normalized_virtual_time, rat_hour_mode, &out->day, &out->hour);
 }
 
 }  // namespace chinese_calendar

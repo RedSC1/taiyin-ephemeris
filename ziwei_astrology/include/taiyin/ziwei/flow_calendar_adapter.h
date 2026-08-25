@@ -17,6 +17,7 @@ struct FlowResolutionOptions {
     PillarBoundary boundary;
     int32_t rat_hour_mode;
     ChildhoodStrategy childhood_strategy;
+    FlowMonthPalaceStrategy flow_month_palace_strategy;
 };
 
 struct ResolvedFlow {
@@ -24,6 +25,7 @@ struct ResolvedFlow {
     int32_t effective_target_year;
     uint8_t target_month;
     uint8_t target_month_sequence;
+    uint8_t target_month_name;
     // Physical month-building branch resolved from the calendar's Zhong-Qi
     // civil-day assignment.  This is distinct from month.limit.coordinate
     // .branch, which is the Liu-Nian Dou-Jun palace branch.
@@ -86,9 +88,11 @@ Status set_flow_stack_through_from_calendar(
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept;
 
-// Moves a physical/virtual target to the canonical center of the adjacent
-// logical hour. Split Rat-hour modes use 13 slots: Early Zi, Chou..Hai, Late
-// Zi. Both output clocks describe the same shifted instant.
+// Moves a physical/virtual target to the adjacent logical hour while
+// preserving its minute/second phase. Split Rat-hour modes use one-hour steps
+// through Hai -> Late Zi -> next-day Early Zi -> Chou and two-hour steps
+// elsewhere. The supplied virtual clock (civil, mean solar, or apparent solar)
+// owns these boundary decisions. Both output clocks describe the same shift.
 Status step_flow_hour_target(
     const SplitJulianDate& current_instant_utc,
     const CalendarDateTime& current_virtual_time,

@@ -77,6 +77,8 @@ typedef struct taiyin_lunar_date {
     uint8_t month_days;
     uint8_t month_name;
     uint8_t reserved[3];
+    /* Actual calendar/ganzhi year; may differ from year at reforms. */
+    int32_t historical_year;
 } taiyin_lunar_date;
 
 typedef struct taiyin_chinese_solar_term_event {
@@ -108,6 +110,9 @@ typedef struct taiyin_chinese_calendar_month {
     uint8_t reserved[3];
     int64_t first_civil_day_number;
     taiyin_split_julian_date astronomical_new_moon_jd_ut;
+    /* Actual calendar/ganzhi year; may differ from lunar_year at reforms. */
+    int32_t historical_year;
+    uint8_t reserved_tail[4];
 } taiyin_chinese_calendar_month;
 
 typedef struct taiyin_chinese_calendar_year {

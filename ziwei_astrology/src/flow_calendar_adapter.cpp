@@ -53,6 +53,7 @@ bool same_calendar_facts(
         && same_virtual_time(lhs.birth.virtual_time, rhs.birth.virtual_time)
         && lhs.birth.gender == rhs.birth.gender
         && lhs.lunar_date.year == rhs.lunar_date.year
+        && lhs.lunar_date.historical_year == rhs.lunar_date.historical_year
         && lhs.lunar_date.month == rhs.lunar_date.month
         && lhs.lunar_date.day == rhs.lunar_date.day
         && lhs.lunar_date.is_leap == rhs.lunar_date.is_leap
@@ -69,6 +70,7 @@ bool same_birth_chart(
     const NatalChart& natal
 ) noexcept {
     return same_calendar_facts(birth.facts, natal.birth_facts)
+        && is_valid(birth.leap_month_strategy)
         && birth.facts.birth.gender == natal.gender
         && birth.body_palace == natal.body_palace
         && flatten_anchors(birth.anchors) == flatten_anchors(natal.anchors);
@@ -76,6 +78,7 @@ bool same_birth_chart(
 
 bool valid_options(const FlowResolutionOptions& options) noexcept {
     return is_valid(options.childhood_strategy)
+        && is_valid(options.flow_month_palace_strategy)
         && (options.boundary == PillarBoundary::SolarTerm
             || options.boundary == PillarBoundary::Lunar)
         && options.rat_hour_mode
@@ -140,14 +143,6 @@ Status shift_target_by_local_days(
     return TAIYIN_STATUS_OK;
 }
 
-double hour_center(uint8_t slot, bool split_rat) noexcept {
-    if (split_rat) {
-        if (slot == 0u) return 0.5;
-        if (slot == 12u) return 23.5;
-    }
-    return slot == 0u ? 0.5 : static_cast<double>(slot) * 2.0;
-}
-
 Status effective_solar_year(
     int32_t civil_year,
     const Ganzhi& solar_year,
@@ -176,6 +171,7 @@ uint8_t solar_month_from_branch(Branch branch) noexcept {
 
 struct MonthIdentity {
     int32_t lunar_year;
+    int32_t historical_year;
     uint8_t month;
     uint8_t is_leap;
     uint8_t month_name;
@@ -195,6 +191,7 @@ bool matches_lunar_month(
     const chinese_calendar::LunarDate& lunar
 ) noexcept {
     return month.lunar_year == lunar.year
+        && month.historical_year == lunar.historical_year
         && month.month == lunar.month
         && month.is_leap == lunar.is_leap
         && month.month_name == lunar.month_name;
@@ -202,8 +199,8 @@ bool matches_lunar_month(
 
 // Resolves two deliberately separate facts about a physical lunation:
 //
-// * sequence: its chronological slot in the labelled lunar year, used by the
-//   Liu-Nian Dou-Jun palace progression; and
+// * sequence: its chronological slot in the historical calendar year, used by
+//   the Liu-Nian Dou-Jun palace progression; and
 // * month-building branch: the continuous calendar branch assigned by calcY:
 //   winter-solstice month is Zi, ordinary months advance, and the selected
 //   intercalary month repeats its predecessor.  calcY has already applied the
@@ -219,17 +216,18 @@ Status resolve_lunar_month_metadata(
     const SplitJulianDate& target_instant_utc,
     const chinese_calendar::LunarDate& lunar,
     uint8_t* out_sequence,
-    bool* out_collapsed_to_leap_twelve,
+    int32_t* out_effective_base_year,
+    uint8_t* out_month_name,
     Branch* out_month_building_branch,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     if (calendar == NULL
         || out_sequence == NULL
-        || out_collapsed_to_leap_twelve == NULL
+        || out_effective_base_year == NULL
+        || out_month_name == NULL
         || out_month_building_branch == NULL) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    *out_collapsed_to_leap_twelve = false;
     try {
         chinese_calendar::LunarDate first_lunar = lunar;
         first_lunar.day = 1u;
@@ -268,6 +266,7 @@ Status resolve_lunar_month_metadata(
                     year.months[i];
                 MonthIdentity identity = {
                     month.lunar_year,
+                    month.historical_year,
                     month.month,
                     month.is_leap,
                     month.month_name,
@@ -294,29 +293,27 @@ Status resolve_lunar_month_metadata(
         }
         std::sort(months.begin(), months.end(), earlier_month);
         std::size_t target_index = months.size();
-        uint8_t sequence = 0u;
+        uint8_t sequence = 1u;
         for (std::size_t i = 0u; i < months.size(); ++i) {
-            if (months[i].first_day == target_first_day) {
+            if (months[i].first_day == target_first_day
+                && matches_lunar_month(months[i], lunar)) {
                 target_index = i;
                 break;
             }
-            if (months[i].lunar_year == lunar.year) ++sequence;
         }
-        if (target_index == months.size() || target_index + 1u >= months.size()
-            || months[target_index].lunar_year != lunar.year) {
+        if (target_index == months.size()) {
             return TAIYIN_ERROR_INTERNAL;
         }
-        ++sequence;
-
-        // Ziwei's flow-month model is bounded to one optional leap month.
-        // Historical reform windows can expose a fourteenth (or later)
-        // physical month in one labelled lunar year.  Preserve its physical
-        // Zhong-Qi-derived branch, but normalize only its Ziwei sequence.
-        if (sequence > 13u) {
-            sequence = 13u;
-            *out_collapsed_to_leap_twelve = true;
+        for (std::size_t i = 0u; i < target_index; ++i) {
+            if (months[i].historical_year
+                == months[target_index].historical_year) {
+                ++sequence;
+            }
         }
+        if (sequence > 15u) return TAIYIN_ERROR_INTERNAL;
         *out_sequence = sequence;
+        *out_effective_base_year = months[target_index].historical_year;
+        *out_month_name = months[target_index].month_name;
         if (months[target_index].month_building_branch >= 12u) {
             return TAIYIN_ERROR_INTERNAL;
         }
@@ -362,6 +359,8 @@ FlowResolutionOptions default_flow_resolution_options() noexcept {
     result.rat_hour_mode =
         chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT;
     result.childhood_strategy = ChildhoodStrategy::Skip;
+    result.flow_month_palace_strategy =
+        FlowMonthPalaceStrategy::PhysicalSequence;
     return result;
 }
 
@@ -384,11 +383,16 @@ Status resolve_flow_from_calendar(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
+    CalendarDateTime normalized_target_virtual_time;
+    Status status = chinese_calendar::normalize_chart_virtual_time(
+        target_virtual_time, &normalized_target_virtual_time);
+    if (status != TAIYIN_STATUS_OK) return status;
+
     chinese_calendar::GanzhiFourPillars packed;
-    Status status = chinese_calendar::calculate_four_pillars(
+    status = chinese_calendar::calculate_four_pillars(
         calendar,
         target_instant_utc,
-        target_virtual_time,
+        normalized_target_virtual_time,
         options.rat_hour_mode,
         &packed,
         diagnostic);
@@ -399,36 +403,37 @@ Status resolve_flow_from_calendar(
 
     ResolvedFlow result = {};
     Branch lunar_month_building_branch = Branch::Yin;
+    int32_t target_effective_base_year = 0;
+    int32_t target_lunar_year = 0;
     if (options.boundary == PillarBoundary::Lunar) {
         // Flow years retain the physical lunar-year label on both sides of
         // the comparison. Natal leap-month policy may map a birth leap month
         // into the following logical year; mixing that with a raw target year
         // would reject the birth instant itself as "before birth".
-        result.effective_birth_year = birth.facts.lunar_date.year;
+        result.effective_birth_year = birth.facts.effective_lunar_year;
         chinese_calendar::LunarDate lunar;
         status = detail::resolve_logical_lunar_date(
-            calendar, target_virtual_time, options.rat_hour_mode,
+            calendar, normalized_target_virtual_time,
+            options.rat_hour_mode,
             &lunar, diagnostic);
         if (status != TAIYIN_STATUS_OK) return status;
-        result.effective_target_year = lunar.year;
+        target_lunar_year = lunar.year;
+        result.effective_target_year = lunar.historical_year;
         result.target_month = lunar.month == 13u ? 12u : lunar.month;
+        result.target_month_name = lunar.month_name;
         result.target_day = lunar.day;
         result.target_month_is_leap = lunar.is_leap != 0u;
-        bool collapsed_to_leap_twelve = false;
         status = resolve_lunar_month_metadata(
             calendar,
             target_instant_utc,
             lunar,
             &result.target_month_sequence,
-            &collapsed_to_leap_twelve,
+            &target_effective_base_year,
+            &result.target_month_name,
             &lunar_month_building_branch,
             diagnostic);
         if (status != TAIYIN_STATUS_OK) return status;
         result.target_month_building_branch = lunar_month_building_branch;
-        if (collapsed_to_leap_twelve) {
-            result.target_month = 12u;
-            result.target_month_is_leap = true;
-        }
     } else {
         status = effective_solar_year(
             birth.facts.birth.virtual_time.year,
@@ -436,7 +441,7 @@ Status resolve_flow_from_calendar(
             &result.effective_birth_year);
         if (status != TAIYIN_STATUS_OK) return status;
         status = effective_solar_year(
-            target_virtual_time.year,
+            normalized_target_virtual_time.year,
             target_pillars.year,
             &result.effective_target_year);
         if (status != TAIYIN_STATUS_OK) return status;
@@ -444,12 +449,14 @@ Status resolve_flow_from_calendar(
             target_pillars.month.branch);
         result.target_month_sequence = result.target_month;
         result.target_month_is_leap = false;
+        result.target_month_name =
+            chinese_calendar::TAIYIN_CHINESE_MONTH_NAME_NORMAL;
         result.target_month_building_branch = target_pillars.month.branch;
         uint16_t solar_day = 0u;
         status = detail::calculate_solar_day_from_previous_jie(
             calendar,
             target_instant_utc,
-            target_virtual_time,
+            normalized_target_virtual_time,
             options.rat_hour_mode,
             &solar_day,
             diagnostic);
@@ -459,7 +466,50 @@ Status resolve_flow_from_calendar(
     }
     result.target_hour_index = to_index(target_pillars.hour.branch);
     result.target_rat_hour_segment = rat_hour_segment(
-        target_virtual_time, options.rat_hour_mode, target_pillars.hour.branch);
+        normalized_target_virtual_time,
+        options.rat_hour_mode,
+        target_pillars.hour.branch);
+
+    if (options.boundary == PillarBoundary::Lunar) {
+        LunarDateFacts effective_target = {};
+        effective_target.year = target_effective_base_year;
+        effective_target.historical_year = target_effective_base_year;
+        effective_target.month = result.target_month;
+        effective_target.day = result.target_day;
+        effective_target.is_leap = result.target_month_is_leap ? 1u : 0u;
+        effective_target.month_name = result.target_month_name;
+        uint8_t effective_month = 0u;
+        status = resolve_effective_lunar_month(
+            effective_target,
+            birth.leap_month_strategy,
+            &result.effective_target_year,
+            &effective_month);
+        if (status != TAIYIN_STATUS_OK) return status;
+        status = make_flow_month_from_lunar_month_branch(
+            natal,
+            target_lunar_year,
+            result.effective_target_year,
+            result.target_month,
+            effective_month,
+            result.target_month_sequence,
+            result.target_month_is_leap,
+            lunar_month_building_branch,
+            options.flow_month_palace_strategy,
+            birth.facts.effective_lunar_month,
+            birth.facts.solar_term_pillars.hour.branch,
+            &result.month);
+    } else {
+        status = make_flow_month(
+            natal,
+            result.effective_target_year,
+            result.target_month,
+            result.target_month_sequence,
+            false,
+            birth.facts.effective_lunar_month,
+            birth.facts.solar_term_pillars.hour.branch,
+            &result.month);
+    }
+    if (status != TAIYIN_STATUS_OK) return status;
 
     const int64_t virtual_age64 =
         static_cast<int64_t>(result.effective_target_year)
@@ -483,29 +533,6 @@ Status resolve_flow_from_calendar(
     if (status != TAIYIN_STATUS_OK) return status;
     status = make_flow_year(
         natal, result.effective_target_year, &result.year);
-    if (status != TAIYIN_STATUS_OK) return status;
-    if (options.boundary == PillarBoundary::Lunar) {
-        status = make_flow_month_from_lunar_month_branch(
-            natal,
-            result.effective_target_year,
-            result.target_month,
-            result.target_month_sequence,
-            result.target_month_is_leap,
-            lunar_month_building_branch,
-            birth.facts.effective_lunar_month,
-            birth.facts.solar_term_pillars.hour.branch,
-            &result.month);
-    } else {
-        status = make_flow_month(
-            natal,
-            result.effective_target_year,
-            result.target_month,
-            result.target_month_sequence,
-            result.target_month_is_leap,
-            birth.facts.effective_lunar_month,
-            birth.facts.solar_term_pillars.hour.branch,
-            &result.month);
-    }
     if (status != TAIYIN_STATUS_OK) return status;
     status = make_flow_day(
         natal,
@@ -614,70 +641,54 @@ Status step_flow_hour_target(
         || out_rat_hour_segment == NULL) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    CalendarDateTime normalized_current_virtual_time;
+    Status status = chinese_calendar::normalize_chart_virtual_time(
+        current_virtual_time, &normalized_current_virtual_time);
+    if (status != TAIYIN_STATUS_OK) return status;
     SplitJulianDate current_local;
-    if (!encode_virtual_time(current_virtual_time, &current_local)) {
+    if (!encode_virtual_time(
+            normalized_current_virtual_time, &current_local)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
 
     const bool split_rat = rat_hour_mode
         != chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT;
-    const uint8_t slot_count = split_rat ? 13u : 12u;
-    uint8_t slot = 0u;
-    int logical_day_shift = 0;
-    if (split_rat) {
-        slot = current_virtual_time.hour >= 23
-            ? 12u
-            : static_cast<uint8_t>(((current_virtual_time.hour + 1) / 2) % 12);
-    } else {
-        slot = static_cast<uint8_t>(((current_virtual_time.hour + 1) / 2) % 12);
-        if (current_virtual_time.hour >= 23) logical_day_shift = 1;
-    }
-
-    int next_slot = static_cast<int>(slot) + direction;
-    if (next_slot < 0) {
-        next_slot += slot_count;
-        --logical_day_shift;
-    } else if (next_slot >= slot_count) {
-        next_slot -= slot_count;
-        ++logical_day_shift;
-    }
-
-    CalendarDateTime day_start = current_virtual_time;
-    day_start.hour = 0;
-    day_start.minute = 0;
-    day_start.second = 0.0;
-    SplitJulianDate day_start_jd;
-    SplitJulianDate target_day_jd;
+    const bool one_hour_step = split_rat
+        && (direction > 0
+            ? normalized_current_virtual_time.hour >= 22
+                || normalized_current_virtual_time.hour < 1
+            : normalized_current_virtual_time.hour >= 23
+                || normalized_current_virtual_time.hour < 2);
+    const double step_seconds = static_cast<double>(direction)
+        * (one_hour_step ? 3600.0 : 7200.0);
     SplitJulianDate target_local;
     CalendarDateTime target_clock;
-    if (!julian_day_split(day_start, &day_start_jd)
-        || !add_days_to_split_jd(day_start_jd,
-            static_cast<double>(logical_day_shift), &target_day_jd)
-        || !reverse_julian_day_split(target_day_jd, &target_clock)) {
+    if (!add_seconds_to_split_jd(
+            current_local, step_seconds, &target_local)
+        || !reverse_julian_day_split(target_local, &target_clock)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    const double center = hour_center(
-        static_cast<uint8_t>(next_slot), split_rat);
-    target_clock.hour = static_cast<int32_t>(center);
-    target_clock.minute = center - target_clock.hour >= 0.5 ? 30 : 0;
-    target_clock.second = 0.0;
-    if (!julian_day_split(target_clock, &target_local)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
-    }
-    const double delta_days = days_between_split_jd(current_local, target_local);
+    // Navigation preserves the position inside the current hour. The reverse
+    // conversion is used only for the carried calendar date; retain the exact
+    // virtual-clock fields so mean/apparent solar time drives the transition
+    // without binary-JD decomposition noise.
+    target_clock.hour = normalized(
+        static_cast<int64_t>(normalized_current_virtual_time.hour)
+            + (one_hour_step ? direction : 2 * direction),
+        24);
+    target_clock.minute = normalized_current_virtual_time.minute;
+    target_clock.second = normalized_current_virtual_time.second;
     SplitJulianDate target_instant;
-    if (!add_days_to_split_jd(
-            current_instant_utc, delta_days, &target_instant)) {
+    if (!add_seconds_to_split_jd(
+            current_instant_utc, step_seconds, &target_instant)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    const Branch target_hour_branch = static_cast<Branch>(
+        ((target_clock.hour + 1) / 2) % 12);
     *out_instant_utc = target_instant;
     *out_virtual_time = target_clock;
-    *out_rat_hour_segment = split_rat
-        ? (next_slot == 0 ? RatHourSegment::Early
-            : next_slot == 12 ? RatHourSegment::Late
-            : RatHourSegment::None)
-        : (next_slot == 0 ? RatHourSegment::Unified
-            : RatHourSegment::None);
+    *out_rat_hour_segment = rat_hour_segment(
+        target_clock, rat_hour_mode, target_hour_branch);
     return TAIYIN_STATUS_OK;
 }
 
@@ -691,9 +702,13 @@ Status step_flow_day_target(
     if (direction != -1 && direction != 1) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
+    CalendarDateTime normalized_current_virtual_time;
+    const Status status = chinese_calendar::normalize_chart_virtual_time(
+        current_virtual_time, &normalized_current_virtual_time);
+    if (status != TAIYIN_STATUS_OK) return status;
     return shift_target_by_local_days(
         current_instant_utc,
-        current_virtual_time,
+        normalized_current_virtual_time,
         static_cast<double>(direction),
         out_instant_utc,
         out_virtual_time);

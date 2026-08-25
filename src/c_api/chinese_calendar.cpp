@@ -52,6 +52,7 @@ taiyin::chinese_calendar::LunarDate to_cpp_lunar(
     out.is_leap = source.is_leap;
     out.month_days = source.month_days;
     out.month_name = source.month_name;
+    out.historical_year = source.historical_year;
     return out;
 }
 
@@ -76,6 +77,7 @@ void copy_lunar(
     out->is_leap = source.is_leap;
     out->month_days = source.month_days;
     out->month_name = source.month_name;
+    out->historical_year = source.historical_year;
 }
 
 void copy_solar_term(
@@ -119,6 +121,7 @@ void copy_year(
         target.day_count = source.months[i].day_count;
         target.month_name = source.months[i].month_name;
         target.month_building_branch = source.months[i].month_building_branch;
+        target.historical_year = source.months[i].historical_year;
         target.first_civil_day_number =
             source.months[i].first_civil_day_number;
         taiyin_c_internal::from_cpp_split_jd(

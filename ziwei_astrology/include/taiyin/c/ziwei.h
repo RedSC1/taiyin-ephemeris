@@ -46,6 +46,11 @@ enum taiyin_ziwei_leap_month_strategy {
     TAIYIN_ZIWEI_LEAP_SPLIT_AFTER_FIFTEENTH = 2
 };
 
+enum taiyin_ziwei_flow_month_palace_strategy {
+    TAIYIN_ZIWEI_FLOW_MONTH_PALACE_PHYSICAL_SEQUENCE = 0,
+    TAIYIN_ZIWEI_FLOW_MONTH_PALACE_EFFECTIVE_MONTH = 1
+};
+
 enum taiyin_ziwei_flow_level {
     TAIYIN_ZIWEI_FLOW_DECADE = 0,
     TAIYIN_ZIWEI_FLOW_YEAR = 1,
@@ -118,6 +123,7 @@ typedef struct taiyin_ziwei_flow_options {
     int32_t boundary;
     int32_t rat_hour_mode;
     int32_t childhood_strategy;
+    int32_t flow_month_palace_strategy;
 } taiyin_ziwei_flow_options;
 
 typedef struct taiyin_ziwei_transform_set {
@@ -145,9 +151,12 @@ typedef struct taiyin_ziwei_flow_summary {
     uint8_t small_limit_stem;
     uint8_t small_limit_branch;
     // 0=Zi through 11=Hai; independently resolved calendar month building.
-    // Occupies an existing trailing reserved byte to preserve this C ABI.
     uint8_t target_month_building_branch;
-    uint8_t reserved[1];
+    uint8_t target_effective_month;
+    uint8_t target_month_name;
+    uint8_t target_palace_month_index;
+    uint8_t reserved[2];
+    int32_t target_lunar_year;
 } taiyin_ziwei_flow_summary;
 
 /* Physical-branch filters for direct birth-time reverse lookup.  Set a field

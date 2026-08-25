@@ -52,6 +52,16 @@ struct TAIYIN_GANZHI_SHARED_API GanzhiFourPillars {
     GanzhiFourPillars() noexcept;
 };
 
+// Normalizes the resolved virtual clock used by Chinese metaphysics.  This
+// recognizes only the exact scalar/split-JD spellings of a civil-hour
+// boundary and canonicalizes its calendar fields, preventing a JD round trip
+// from spelling 11:00 as 10:59:59.999... . It never changes the physical UTC
+// instant and must not be used by general astronomical time conversion.
+TAIYIN_GANZHI_SHARED_API Status normalize_chart_virtual_time(
+    const CalendarDateTime& virtual_time,
+    CalendarDateTime* out
+) noexcept;
+
 // These are deliberately exported for the native BaZi extension to consume.
 TAIYIN_GANZHI_SHARED_API Status make_ganzhi(
     uint8_t stem_id,

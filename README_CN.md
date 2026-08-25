@@ -2,7 +2,7 @@
 
 [English README](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
-> **预发布说明：** 当前的 `1.0.0-beta.3` 是开发中的预发布版本，并非最终稳定发布。
+> **预发布说明：** 当前的 `1.0.0-beta.4` 是开发中的预发布版本，并非最终稳定发布。
 > 公开 API、随包数据边界、文档和计划中的语言绑定在首个稳定版发布前仍可能调整。
 
 Taiyin Ephemeris 是一个可嵌入的天文库，用于计算太阳系天体位置、观测坐标、
@@ -82,7 +82,7 @@ SPK 数据。这里的“当前”是指采用与 DE441 时代数据相配套的
 - **历法和占星扩展：** 中国历法 primitive、恒星黄道、ayanamsha、宫位、
   月球交点/远地点，以及可选的 BaZi/Ganzhi 支持。
 - **应用集成：** 带 opaque context、diagnostic、capability 查询和 FFI 友好
-  ownership 规则的版本化 C99 API。C ABI version 8 是应用和绑定的兼容边界；
+  ownership 规则的版本化 C99 API。C ABI version 10 是应用和绑定的兼容边界；
   C++ API 不承诺稳定二进制 ABI。
 
 ### 1.0 观测者范围

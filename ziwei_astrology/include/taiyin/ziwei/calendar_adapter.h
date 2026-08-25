@@ -19,6 +19,7 @@ struct BirthResolutionOptions {
 
 struct ResolvedBirth {
     CalendarFacts facts;
+    LeapMonthStrategy leap_month_strategy;
     Anchors anchors;
     Branch body_palace;
 };

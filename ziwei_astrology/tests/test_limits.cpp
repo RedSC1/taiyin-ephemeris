@@ -161,6 +161,55 @@ int main() {
         "legacy thirteenth month preserves its sequence-based Wu-Hu-Dun stem",
         &failures);
 
+    FlowMonthLimit early_leap;
+    FlowMonthLimit late_leap;
+    expect(make_flow_month_from_lunar_month_branch(
+            natal, 2033, 2033, 11u, 11u, 12u, true, Branch::Zi,
+            FlowMonthPalaceStrategy::PhysicalSequence,
+            4u, Branch::Chou, &early_leap) == TAIYIN_STATUS_OK
+        && make_flow_month_from_lunar_month_branch(
+            natal, 2033, 2033, 11u, 12u, 12u, true, Branch::Zi,
+            FlowMonthPalaceStrategy::PhysicalSequence,
+            4u, Branch::Chou, &late_leap) == TAIYIN_STATUS_OK
+        && early_leap.limit.coordinate.branch
+            == late_leap.limit.coordinate.branch
+        && early_leap.limit.coordinate.stem
+            != late_leap.limit.coordinate.stem
+        && early_leap.palace_month_index == 12u
+        && late_leap.palace_month_index == 12u,
+        "split leap month changes effective stem without moving its physical palace",
+        &failures);
+
+    FlowMonthLimit effective_palace;
+    expect(make_flow_month_from_lunar_month_branch(
+            natal, 2033, 2033, 11u, 11u, 12u, true, Branch::Zi,
+            FlowMonthPalaceStrategy::EffectiveMonth,
+            4u, Branch::Chou, &effective_palace) == TAIYIN_STATUS_OK
+        && effective_palace.palace_month_index == 11u
+        && effective_palace.limit.coordinate.branch
+            != early_leap.limit.coordinate.branch,
+        "effective-month palace strategy remains independently selectable",
+        &failures);
+
+    FlowMonthLimit carried_leap_twelve;
+    FlowMonthLimit following_first;
+    expect(make_flow_month_from_lunar_month_branch(
+            natal, 2033, 2034, 12u, 1u, 13u, true, Branch::Chou,
+            FlowMonthPalaceStrategy::PhysicalSequence,
+            4u, Branch::Chou, &carried_leap_twelve) == TAIYIN_STATUS_OK
+        && make_flow_month_from_lunar_month_branch(
+            natal, 2034, 2034, 1u, 1u, 1u, false, Branch::Yin,
+            FlowMonthPalaceStrategy::PhysicalSequence,
+            4u, Branch::Chou, &following_first) == TAIYIN_STATUS_OK
+        && carried_leap_twelve.effective_year == 2034
+        && carried_leap_twelve.effective_month == 1u
+        && carried_leap_twelve.limit.coordinate.stem
+            == following_first.limit.coordinate.stem
+        && carried_leap_twelve.limit.coordinate.branch
+            == following_first.limit.coordinate.branch,
+        "leap-twelve carry rebuilds the following annual month coordinate",
+        &failures);
+
     FlowDayLimit day;
     expect(make_flow_day(natal, month, 2u, Stem::Yi, &day)
         == TAIYIN_STATUS_OK

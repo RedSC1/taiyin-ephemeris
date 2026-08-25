@@ -165,7 +165,7 @@ Solar and lunar searches support limb selection, refraction, fixed disc size, an
 
 The versioned C99 ABI is the binding and application compatibility boundary
 from library version `1.0.0` onward. Existing C symbols and structure contracts
-must remain source- and binary-compatible within ABI major 9. New fields use
+must remain source- and binary-compatible within ABI major 10. New fields use
 the documented `struct_size` convention.
 
 The C++ headers remain implementation-facing. They may evolve between minor

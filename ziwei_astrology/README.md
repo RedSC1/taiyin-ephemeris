@@ -132,11 +132,17 @@ status = set_flow_stack_from_calendar(
 The resulting stack is always Decade, Year, Month, Day, Hour. Small limit is
 returned as parallel annual metadata in `ResolvedFlow`. The default uses lunar
 boundaries; `FlowResolutionOptions::boundary = PillarBoundary::SolarTerm`
-selects the Jie-based year/month/day policy. When a historical reform interval
-contains a fourteenth or later structural month, the Ziwei compatibility layer
-keeps the date chartable by collapsing the overflow occurrence to sequence 13
-as leap month twelve. The Chinese-calendar layer still retains its exact
-historical month identity for reversible conversion.
+selects the Jie-based year/month/day policy. Lunar flow keeps the written month,
+its physical sequence, its effective year/month, and its winter-solstice-based
+month-building branch separate. Historical reform years may therefore expose
+sequences through 15 without inventing a synthetic leap-twelve label.
+
+By default, every physical month advances the Liu-Nian Dou-Jun palace once.
+Set `FlowResolutionOptions::flow_month_palace_strategy` to
+`FlowMonthPalaceStrategy::EffectiveMonth` when a leap-month segment should
+instead follow its previous/next effective month. The birth chart's
+`leap_month_strategy` also controls the target flow month's stem, Si-Hua, flow
+stars, and—when month twelve advances—its effective annual layer.
 
 `set_flow_stack_through_from_calendar()` installs only through a requested
 deepest level while preserving the contiguous dependency chain. For example,
@@ -150,6 +156,10 @@ slots—Early Zi, Chou through Hai, and Late Zi—so the hour sequence is:
 ```text
 Hai -> Late Zi -> next-day Early Zi -> Chou
 ```
+
+Hour navigation preserves the current minute and second. It advances one hour
+through the three slots around midnight and two hours elsewhere, using the
+chart's resolved virtual clock (civil, mean solar, or apparent solar time).
 
 The resolved `RatHourSegment` remains available on `ResolvedFlow` and
 `FlowHourLimit`; a Zi branch is no longer ambiguous in bindings.

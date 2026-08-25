@@ -108,10 +108,12 @@ UT 儒略日；`calcY()` 及其 C ABI 入口也接收 split-JD UT。它们不随
 天文定气、定朔结果。即使历史 profile 提供 `civil_day_number`，事件 API 的
 `jd_ut` 字段仍给出精确的天文事件时刻。
 
-在早期历史 profile 内，`LunarDate::year` 跟随 profile 的历法年首。颛顼历及
-秦汉冬月建正分支按该冬年开始所在的民用年标记，不再根据当前 `calcY()` 冬至岁
-窗口的中点临时推导。这样在新旧年首相接的太初改历窗口，`fromSolar()` 与
-`fromLunar()` 仍保持一一对应。
+在早期历史 profile 内，`LunarDate::year` 是书面/来源农历年标签，
+`historical_year` 则表示该物理月份实际归属的历法年；通常二者相同。颛顼历及
+秦汉冬月建正分支中，书面标签会比干支和紫微流年使用的实际历法年落后一年。
+两者都不再根据当前 `calcY()` 冬至岁窗口的中点临时推导。这样在新旧年首相接的
+太初改历窗口，`fromSolar()` 与 `fromLunar()` 仍保持一一对应，同时保留下游
+历史推算所需的真实归属年。
 
 C ABI 使用 `taiyin_chinese_calendar_config_init()`、
 `*_china_standard_astronomical()` 以及两个 `*_local_astronomical_*()`
@@ -270,7 +272,7 @@ fromLunar(context, lunar, solar, diagnostic);
 getLunarMonthNum(context, year, month, is_leap, days, diagnostic);
 ```
 
-`LunarDate` 有意采用结构化字段：`year`、数值 `month`、`day`、`is_leap`
+`LunarDate` 有意采用结构化字段：书面 `year`、`historical_year`、数值 `month`、`day`、`is_leap`
 以及特殊 `month_name` ID。普通 `month_name` 由历法 profile 解析常规月名；
 `十三月`、`后九月`、特殊十二月和特殊一月则可用对应枚举精确指定。
 `fromLunar()` 会验证该农历年是否真的存在所选月份，并按该月实际 29/30 日
@@ -311,6 +313,12 @@ ABI 入口及其逐字段转换层。
 干支上的历法数据，即使没有编译八字也可通过 `taiyin_ganzhi_*` 查询。C++ 同时负责
 split-JD 节令边界和历法编排。C ABI 对应 `taiyin_ganzhi_*` 与
 `taiyin_chinese_calendar_calc_four_pillars_ut()`。
+
+在解释民用日和时辰之前，干支层只对最终用于排盘的 `virtual_time` 做整点边界
+规范化。它只识别整点经过 scalar/split-JD 反解后实际可能出现的精确浮点表示，
+不使用一个宽泛的容差窗口；物理 UTC 时刻和通用天文时间转换完全不变。因此整点
+11:00 经 JD 往返后仍进入午时，真实的 10:59:59.999 仍属于巳时。紫微本命与
+流运适配器复用同一份规范化虚拟时间。
 
 八字是独立的可选中国术数解释层。构建它时必须同时设置
 `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 与

@@ -89,11 +89,15 @@ FlowCoordinate palace_coordinate(
 
 Status make_flow_month_with_month_stem_offset(
     const NatalChart& natal,
-    int32_t physical_year,
+    int32_t lunar_year,
+    int32_t effective_year,
     uint8_t logical_month,
+    uint8_t effective_month,
     uint8_t sequence,
     bool is_leap,
     int month_stem_offset,
+    Branch month_building_branch,
+    uint8_t palace_month_index,
     uint8_t birth_effective_month,
     Branch birth_hour,
     FlowMonthLimit* out
@@ -101,28 +105,35 @@ Status make_flow_month_with_month_stem_offset(
     if (out == NULL
         || !natal_is_valid(natal)
         || logical_month < 1u || logical_month > 12u
-        || sequence < 1u || sequence > 13u
+        || effective_month < 1u || effective_month > 12u
+        || sequence < 1u || sequence > 15u
+        || palace_month_index < 1u || palace_month_index > 15u
         || month_stem_offset < 0 || month_stem_offset > 12
+        || !is_valid(month_building_branch)
         || birth_effective_month < 1u || birth_effective_month > 12u
         || !is_valid(birth_hour)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    const Stem year_stem = stem_for_year(physical_year);
-    const Branch year_life = branch_for_year(physical_year);
+    const Stem year_stem = stem_for_year(effective_year);
+    const Branch year_life = branch_for_year(effective_year);
     const Branch doujun = advance_branch(
         year_life,
         -static_cast<int>(birth_effective_month - 1u)
             + static_cast<int>(to_index(birth_hour)));
-    const Branch target = advance_branch(doujun, sequence - 1u);
+    const Branch target = advance_branch(doujun, palace_month_index - 1u);
     const int start_tiger = (to_index(year_stem) % 5u) * 2u + 2u;
     const Stem month_stem = static_cast<Stem>(
         normalized(start_tiger + month_stem_offset, 10));
 
     FlowMonthLimit result;
-    result.year = physical_year;
+    result.year = lunar_year;
     result.month = logical_month;
     result.sequence = sequence;
+    result.effective_year = effective_year;
+    result.effective_month = effective_month;
     result.is_leap = is_leap;
+    result.month_building_branch = month_building_branch;
+    result.palace_month_index = palace_month_index;
     result.doujun = doujun;
     const FlowCoordinate coordinate = {month_stem, target};
     if (!make_limit_coordinate(
@@ -324,10 +335,14 @@ Status make_flow_month(
     return make_flow_month_with_month_stem_offset(
         natal,
         physical_year,
+        physical_year,
+        logical_month,
         logical_month,
         sequence,
         is_leap,
         static_cast<int>(sequence) - 1,
+        advance_branch(Branch::Yin, sequence - 1u),
+        sequence,
         birth_effective_month,
         birth_hour,
         out);
@@ -335,33 +350,47 @@ Status make_flow_month(
 
 Status make_flow_month_from_lunar_month_branch(
     const NatalChart& natal,
-    int32_t physical_year,
+    int32_t lunar_year,
+    int32_t effective_year,
     uint8_t logical_month,
+    uint8_t effective_month,
     uint8_t sequence,
     bool is_leap,
     Branch lunar_month_branch,
+    FlowMonthPalaceStrategy palace_strategy,
     uint8_t birth_effective_month,
     Branch birth_hour,
     FlowMonthLimit* out
 ) noexcept {
-    if (!is_valid(lunar_month_branch)) {
+    if (!is_valid(lunar_month_branch) || !is_valid(palace_strategy)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     // Normalize in the twelve-branch cycle *before* applying the ten-stem
     // cycle.  Chou is one branch before Yin numerically, but is the twelfth
     // month-building position and therefore advances the Wu-Hu-Dun stem by
     // eleven steps rather than subtracting one.
-    const int month_offset = normalized(
+    const int physical_month_offset = normalized(
         static_cast<int>(to_index(lunar_month_branch))
             - static_cast<int>(to_index(Branch::Yin)),
         12);
+    const int month_stem_offset = is_leap
+        ? static_cast<int>(effective_month) - 1
+        : physical_month_offset;
+    const uint8_t palace_month_index =
+        palace_strategy == FlowMonthPalaceStrategy::EffectiveMonth
+        ? effective_month
+        : sequence;
     return make_flow_month_with_month_stem_offset(
         natal,
-        physical_year,
+        lunar_year,
+        effective_year,
         logical_month,
+        effective_month,
         sequence,
         is_leap,
-        month_offset,
+        month_stem_offset,
+        lunar_month_branch,
+        palace_month_index,
         birth_effective_month,
         birth_hour,
         out);

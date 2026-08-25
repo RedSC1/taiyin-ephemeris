@@ -198,6 +198,7 @@ struct BirthInput {
 
 struct LunarDateFacts {
     int32_t year;
+    int32_t historical_year;
     uint8_t month;
     uint8_t day;
     uint8_t is_leap;

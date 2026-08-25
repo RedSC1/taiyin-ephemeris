@@ -856,6 +856,20 @@ void test_historical_calendar_fixtures() {
         -103, 1, 20,
         -104, 11, 27, false, 30,
         "Taichu transition winter-year identity");
+    solar.year = -104;
+    solar.month = 1;
+    solar.day = 3;
+    expect_status(fromSolar(&context, &solar, &lunar, &diagnostic),
+        "pre-Taichu historical-year metadata");
+    expect(lunar.year == -105 && lunar.historical_year == -104,
+        "pre-Taichu written and historical years remain distinct");
+    solar.year = -103;
+    solar.month = 1;
+    solar.day = 20;
+    expect_status(fromSolar(&context, &solar, &lunar, &diagnostic),
+        "Taichu historical-year metadata");
+    expect(lunar.year == -104 && lunar.historical_year == -103,
+        "Taichu written and historical years remain distinct");
     expect_roundtrip(
         context, -104, 1, 3, "pre-Taichu BCE roundtrip");
     expect_roundtrip(
