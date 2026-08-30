@@ -319,6 +319,53 @@ void test_default_apparent_jupiter_matches_swiss(int* failures) {
         failures);
 }
 
+void test_solar_target_shapiro_skips_self_deflector(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    NativeCalcContext context = make_geocentric_context();
+    expect_status(
+        native_context_enable_shapiro_delay(&context, 0),
+        TAIYIN_STATUS_OK,
+        "enable Shapiro delay for solar target",
+        failures);
+
+    double solar_position[6] = {};
+    CartesianState solar_state;
+    EphemerisEvalDiagnostic diagnostic;
+    expect_status(
+        calc_position_ut(
+            &context,
+            TAIYIN_BODY_SUN,
+            JD_UT,
+            TAIYIN_NATIVE_POSITION_RADIANS | TAIYIN_NATIVE_POSITION_SPEED,
+            solar_position,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "solar apparent position with Shapiro self-deflector exclusion",
+        failures);
+    expect_position_vector(
+        solar_position,
+        true,
+        "solar apparent position with Shapiro",
+        failures);
+    expect_status(
+        calc_state_ut(
+            &context,
+            TAIYIN_BODY_SUN,
+            JD_UT,
+            0,
+            &solar_state,
+            &diagnostic),
+        TAIYIN_STATUS_OK,
+        "solar apparent state with Shapiro self-deflector exclusion",
+        failures);
+    expect_state_vector(
+        solar_state,
+        "solar apparent state with Shapiro",
+        failures);
+}
+
 void test_native_position_batch(int* failures) {
     using namespace taiyin;
     using namespace taiyin::runtime;
@@ -1661,6 +1708,7 @@ int main() {
     int failures = 0;
     if (initialize_packaged_runtime(&failures)) {
         test_default_apparent_jupiter_matches_swiss(&failures);
+        test_solar_target_shapiro_skips_self_deflector(&failures);
         test_native_position_batch(&failures);
         test_native_context_apparent_matrix_cache(&failures);
         test_context_epoch_cache_invalidated_by_runtime_clear(&failures);

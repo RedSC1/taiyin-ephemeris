@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#if defined(__GNUC__) || defined(__clang__)
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32)
 #define TAIYIN_BAZI_RULES_INTERNAL_API __attribute__((visibility("hidden")))
 #else
 #define TAIYIN_BAZI_RULES_INTERNAL_API

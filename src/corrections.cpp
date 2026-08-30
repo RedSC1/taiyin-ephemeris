@@ -515,11 +515,23 @@ bool accumulate_multi_shapiro_delay(
     }
     double delay = 0.0;
     for (int i = 0; i < deflector_count; ++i) {
+        const double schwarzschild_radius_au =
+            deflector_schwarzschild_radius_au[i];
+        if (!std::isfinite(schwarzschild_radius_au)
+            || schwarzschild_radius_au < 0.0) {
+            return false;
+        }
+        // A zero radius is the public representation of an excluded
+        // deflector.  In particular, the apparent-position layer zeros the
+        // target body's own entry to avoid applying self-Shapiro delay.  Do
+        // not evaluate that entry's geometry: it is singular when the target
+        // and deflector are the same body.
+        if (schwarzschild_radius_au == 0.0) {
+            continue;
+        }
         Vector3 deflector_position;
         if (!deflector_primary_relative_position(jd_tdb, deflector_data, i, &deflector_position)
-            || !finite_vector(deflector_position)
-            || !std::isfinite(deflector_schwarzschild_radius_au[i])
-            || deflector_schwarzschild_radius_au[i] < 0.0) {
+            || !finite_vector(deflector_position)) {
             return false;
         }
         double delay_i = 0.0;
@@ -527,7 +539,7 @@ bool accumulate_multi_shapiro_delay(
                 vector3_subtract(observer_primary_relative_position_au, deflector_position),
                 vector3_subtract(target_primary_relative_position_au, deflector_position),
                 target_observer_position_au,
-                deflector_schwarzschild_radius_au[i] * light_time_days_per_au,
+                schwarzschild_radius_au * light_time_days_per_au,
                 &delay_i,
                 0,
                 0)) {
@@ -672,6 +684,15 @@ bool accumulate_multi_shapiro_velocity_terms(
     terms.target_radius_rate_term = 0.0;
     terms.distance_derivative_sum = 0.0;
     for (int i = 0; i < deflector_count; ++i) {
+        const double schwarzschild_radius_au =
+            deflector_schwarzschild_radius_au[i];
+        if (!std::isfinite(schwarzschild_radius_au)
+            || schwarzschild_radius_au < 0.0) {
+            return false;
+        }
+        if (schwarzschild_radius_au == 0.0) {
+            continue;
+        }
         Vector3 deflector_position;
         Vector3 deflector_velocity;
         if (!deflector_primary_relative_position(jd_tdb, deflector_data, i, &deflector_position)
@@ -696,7 +717,7 @@ bool accumulate_multi_shapiro_velocity_terms(
                 observer_position,
                 target_position,
                 target_observer_position_au,
-                deflector_schwarzschild_radius_au[i] * light_time_days_per_au,
+                schwarzschild_radius_au * light_time_days_per_au,
                 0,
                 &delay_radius_sum_derivative,
                 &delay_distance_derivative)) {
@@ -890,6 +911,15 @@ bool accumulate_multi_shapiro_acceleration_terms(
     terms.radius_acceleration_term = 0.0;
     terms.curvature_term = 0.0;
     for (int i = 0; i < deflector_count; ++i) {
+        const double schwarzschild_radius_au =
+            deflector_schwarzschild_radius_au[i];
+        if (!std::isfinite(schwarzschild_radius_au)
+            || schwarzschild_radius_au < 0.0) {
+            return false;
+        }
+        if (schwarzschild_radius_au == 0.0) {
+            continue;
+        }
         Vector3 deflector_position;
         Vector3 deflector_velocity;
         Vector3 deflector_acceleration;
@@ -925,7 +955,7 @@ bool accumulate_multi_shapiro_acceleration_terms(
         if (!shapiro_delay_partials(
                 radius_sum,
                 vector3_norm(target_observer_position_au),
-                deflector_schwarzschild_radius_au[i] * light_time_days_per_au,
+                schwarzschild_radius_au * light_time_days_per_au,
                 &partials)) {
             return false;
         }

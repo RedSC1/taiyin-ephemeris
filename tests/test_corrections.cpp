@@ -387,6 +387,33 @@ bool multi_shapiro_deflector_acceleration(const taiyin::SplitJulianDate& jd_tdb,
     return polynomial_target_acceleration(jd_tdb, &deflectors->deflectors[index], out_acceleration_au_per_day2);
 }
 
+bool rejected_zero_mass_deflector_position(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    int,
+    taiyin::Vector3*
+) {
+    return false;
+}
+
+bool rejected_zero_mass_deflector_velocity(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    int,
+    taiyin::Vector3*
+) {
+    return false;
+}
+
+bool rejected_zero_mass_deflector_acceleration(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    int,
+    taiyin::Vector3*
+) {
+    return false;
+}
+
 }  // namespace
 
 int main() {
@@ -922,6 +949,92 @@ int main() {
             &failures);
         expect_true(two_body_light_time > single_light_time, "multi Shapiro second deflector increases tau", &failures);
         expect_true(std::isfinite(two_body_light_time_rate), "multi Shapiro two-deflector tau dot finite", &failures);
+
+        // A zero Schwarzschild radius disables a deflector.  Its evaluator
+        // must not be called because a target's own deflector geometry is
+        // singular even though its Shapiro contribution is exactly zero.
+        const double zero_radius[] = { 0.0 };
+        taiyin::Vector3 zero_position;
+        taiyin::Vector3 zero_velocity;
+        taiyin::Vector3 zero_acceleration;
+        double zero_light_time = 0.0;
+        double zero_light_time_rate = 0.0;
+        double zero_light_time_acceleration = 0.0;
+        expect_true(
+            taiyin::solve_light_time_position_with_multi_shapiro(
+                split_jd(jd_tdb),
+                observer_position,
+                polynomial_target_position,
+                &target,
+                1,
+                zero_radius,
+                rejected_zero_mass_deflector_position,
+                0,
+                taiyin::TAIYIN_LIGHT_TIME_DAYS_PER_AU,
+                12,
+                1e-15,
+                &zero_position,
+                &zero_light_time,
+                0),
+            "zero-mass multi Shapiro position skips deflector evaluator",
+            &failures);
+        expect_true(
+            taiyin::solve_light_time_velocity_with_multi_shapiro(
+                split_jd(jd_tdb),
+                observer_position,
+                observer_velocity,
+                polynomial_target_position,
+                polynomial_target_velocity,
+                &target,
+                1,
+                zero_radius,
+                rejected_zero_mass_deflector_position,
+                rejected_zero_mass_deflector_velocity,
+                0,
+                taiyin::TAIYIN_LIGHT_TIME_DAYS_PER_AU,
+                12,
+                1e-15,
+                &zero_position,
+                &zero_velocity,
+                &zero_light_time,
+                &zero_light_time_rate,
+                0,
+                0),
+            "zero-mass multi Shapiro velocity skips deflector evaluator",
+            &failures);
+        expect_true(
+            taiyin::solve_light_time_acceleration_with_multi_shapiro(
+                split_jd(jd_tdb),
+                observer_position,
+                observer_velocity,
+                observer_acceleration,
+                polynomial_target_position,
+                polynomial_target_velocity,
+                polynomial_target_acceleration,
+                &target,
+                1,
+                zero_radius,
+                rejected_zero_mass_deflector_position,
+                rejected_zero_mass_deflector_velocity,
+                rejected_zero_mass_deflector_acceleration,
+                0,
+                taiyin::TAIYIN_LIGHT_TIME_DAYS_PER_AU,
+                12,
+                1e-15,
+                &zero_position,
+                &zero_velocity,
+                &zero_acceleration,
+                &zero_light_time,
+                &zero_light_time_rate,
+                &zero_light_time_acceleration,
+                0,
+                0,
+                0),
+            "zero-mass multi Shapiro acceleration skips deflector evaluator",
+            &failures);
+        expect_true(std::isfinite(zero_light_time), "zero-mass multi Shapiro tau finite", &failures);
+        expect_true(std::isfinite(zero_light_time_rate), "zero-mass multi Shapiro tau dot finite", &failures);
+        expect_true(std::isfinite(zero_light_time_acceleration), "zero-mass multi Shapiro tau ddot finite", &failures);
     }
 
     {
