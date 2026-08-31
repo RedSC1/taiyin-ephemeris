@@ -49,7 +49,7 @@ BSP 的再生成与验证工具会选用 NumPy、jplephem、PyERFA 等 Python �
 | --- | --- | --- |
 | 主天体、卫星系统质心和小天体 OPM2 数据 | NASA/JPL 行星、卫星和小天体 SPK/Horizons 数据；部分小天体远期区间使用文档注明的自行积分扩展 | [`data/ephemerides/opm2/`](../data/ephemerides/opm2/) 下的 README 与 `MANIFEST.json` |
 | Kepler/TKC1 小天体包 | NASA/JPL Small-Body Database Query API | [`data/kepler/sbdb/manifest.json`](../data/kepler/sbdb/manifest.json) |
-| TSC1 恒星表 | Gaia DR3、ESA Hipparcos、Yale Bright Star Catalogue/BSC5，以及项目维护的传统恒星记录 | [`tsc1_v1_known_limitations.md`](tsc1_v1_known_limitations.md) 说明来源优先级和记录数量；TSC1 记录保留 source id。 |
+| TSC1 恒星表 | Gaia DR3、ESA Hipparcos、Yale Bright Star Catalogue/BSC5、项目维护的特殊方向，以及 Stellarium sky-cultures 的中国星官/西方星座连线选星和名称（CC BY-SA） | [`tsc1_v1_known_limitations.md`](tsc1_v1_known_limitations.md) 说明来源优先级和记录数量；[`data/stars/catalogs/lite/required_stars.json`](../data/stars/catalogs/lite/required_stars.json) 固定 Stellarium 来源 revision。 |
 | TLL1 月缘表 | ISAS/JAXA SELENE Data Archive 发布的 SELENE（Kaguya）LALT 全球地形 | [`data/lunar-limb/README.md`](../data/lunar-limb/README.md) 记录源产品、致谢要求、生成方法和校验和。 |
 
 OPM2、TKC1、TSC1 和 TLL1 是 Taiyin 的运行时格式。把外部数据转换为这些

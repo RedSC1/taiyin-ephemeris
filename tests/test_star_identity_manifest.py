@@ -99,6 +99,24 @@ def test_source_parsers(failures: list[str]) -> None:
         expect_equal(hip.pm_dec_mas_yr, -31.73, "HIP pmDE", failures)
         expect_equal(hip.hp_mag, 1.10, "HIP Hpmag", failures)
 
+    no_solution = parse_hipparcos_line(
+        "H|      115125| |23 19 06.37|-13 27 17.0| 5.19| |H|"
+        + " " * 360)
+    expect_true(no_solution is not None, "Hipparcos sexagesimal fallback parses", failures)
+    if no_solution:
+        expect_equal(
+            round(no_solution.ra_deg or 0.0, 10),
+            round(15.0 * (23 + 19 / 60.0 + 6.37 / 3600.0), 10),
+            "Hipparcos sexagesimal fallback RA",
+            failures,
+        )
+        expect_equal(
+            round(no_solution.dec_deg or 0.0, 10),
+            round(-(13 + 27 / 60.0 + 17.0 / 3600.0), 10),
+            "Hipparcos sexagesimal fallback Dec",
+            failures,
+        )
+
 
 def test_fixed_seed(failures: list[str]) -> None:
     rows = load_fixed_seed(TOOLS / "star_identity_fixed_seed.csv")

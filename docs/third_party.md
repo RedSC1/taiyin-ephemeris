@@ -57,7 +57,7 @@ PyERFA; none is a runtime dependency or part of the public source snapshot.
 | --- | --- | --- |
 | Major-body, satellite-center-of-body, and asteroid OPM2 products | NASA/JPL planetary, satellite, asteroid SPK/Horizons data, with documented self-integrated extensions for some long-range asteroid intervals | [`data/ephemerides/opm2/`](../data/ephemerides/opm2/) README and `MANIFEST.json` files |
 | Kepler/TKC1 small-body packs | NASA/JPL Small-Body Database Query API | [`data/kepler/sbdb/manifest.json`](../data/kepler/sbdb/manifest.json) |
-| TSC1 star catalogs | Gaia DR3, ESA Hipparcos, Yale Bright Star Catalogue/BSC5, and project-maintained traditional-star records | [`tsc1_v1_known_limitations.md`](tsc1_v1_known_limitations.md) describes the source priority and record counts; source identifiers are preserved in TSC1 records. |
+| TSC1 star catalogs | Gaia DR3, ESA Hipparcos, Yale Bright Star Catalogue/BSC5, project-maintained special directions, and the Stellarium sky-cultures Chinese/western line-star selection and names (CC BY-SA) | [`tsc1_v1_known_limitations.md`](tsc1_v1_known_limitations.md) describes the source priority and record counts; [`data/stars/catalogs/lite/required_stars.json`](../data/stars/catalogs/lite/required_stars.json) pins the Stellarium source revision. |
 | TLL1 lunar-limb table | SELENE (Kaguya) LALT global topography from the SELENE Data Archive at ISAS/JAXA | [`data/lunar-limb/README.md`](../data/lunar-limb/README.md) contains the source product, requested acknowledgment, generation method, and checksum. |
 
 OPM2, TKC1, TSC1, and TLL1 are Taiyin runtime formats. Converting source data

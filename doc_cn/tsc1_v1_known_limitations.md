@@ -179,9 +179,9 @@ Gaia DR3 source_id / HIP best-neighbour
 ```text
 total identity rows: 118,332
 Gaia DR3:             99,525
-Hipparcos:            18,430
+Hipparcos:            18,431
 BSC5:                    101
-missing:                 276
+missing:                 275
 ```
 
 Missing rows 会被 compiler 跳过，除非它们是已知 manual/special records。
@@ -190,7 +190,7 @@ Missing rows 会被 compiler 跳过，除非它们是已知 manual/special recor
 
 ```text
 identity rows: 118,332
-compiled stars: 118,058
+compiled stars: 118,059
 ```
 
 ## Manual/Special Records
@@ -300,20 +300,22 @@ data/stars/catalogs/
 data/stars/catalogs/lite/stars-bright-v5.tsc1
 ```
 
-它从 `stars-bright-gaia-bsc.tsc1` 机械生成：保留 `V <= 5.0` 的 catalog
-records、两个 manual special-direction records，以及 `lite/required_stars.json` 中的
-明确覆盖要求。该要求保证二十八宿全部 28 颗距星（含中文与拼音 alias），并保证西方
-十二黄道星座各有一颗代表亮星。它保持为适合语言绑定默认随包表的体积；父目录中的完整
-亮星表仍然保留 9,098 颗星（约 1.9 MB），Hipparcos/Gaia 表保留 118,058 颗星（约 21 MB），
+它从 `stars-hipparcos-gaia.tsc1` 机械生成：保留所有可用的 `V <= 5.0` records、
+两个 manual special-direction records，以及 Stellarium 中国星官连线和西方十二黄道
+星座连线引用的全部 HIP 恒星。固定版本的数据包含 1,385 颗中国星官连线星、141 颗
+十二黄道星座连线星，去重后共 1,399 个 HIP id；没有歧义的英文和简体中文传统星名
+同时写入 alias。最终 lite 表共有 2,057 条记录，仍适合语言绑定默认随包；父目录中的
+亮星表保留 9,098 颗星（约 1.9 MB），Hipparcos/Gaia 表保留 118,059 颗星（约 21 MB），
 供需要更广覆盖的应用显式选用。
 
-这 28 颗距星是具名的 Taiyin v1 reference profile；它不宣称宋代、陈卓、清代及其他
-历史重建一定采用相同成员星。完整历史星官图需要另行版本化的 sky-culture overlay，
-其中包含星官成员、连线、时代、来源和 provenance；TSC1 仍只承担天体测量恒星层。
+Stellarium 衍生的筛选集合和 alias 属于固定版本的 sky-culture 数据层，采用
+CC BY-SA。TSC1 保存天体测量记录与名称；需要真正绘制星官连线的 UI 应读取另行版本化
+的连线几何，不应从星表成员关系反推连线。
 
 runtime 不强制一种打包方法：分发包可以默认携带 lite 表、把大表做成可选数据，也可以
 加载用户提供的 TSC1/TSF1 catalog。当前 lite 文件按上文规则从亮星表机械生成；该
-维护者专用生成工具有意不包含在公开源码快照中。
+维护者生成工具与上游原始输入不进入过滤后的公开源码快照；生成后的 requirements
+manifest 会固定来源 revision、筛选数量和署名，使发布的星表仍可审计。
 
 ## v1 意图总结
 

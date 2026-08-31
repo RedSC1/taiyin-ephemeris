@@ -22,13 +22,14 @@ from compile_star_catalog import (  # noqa: E402
     fnv1a_64,
     inspect_tsc1,
 )
+from filter_tsc1_catalog import normalize_alias  # noqa: E402
 
 
 CATALOG = ROOT / "data/stars/catalogs/lite/stars-bright-v5.tsc1"
 REQUIREMENTS = ROOT / "data/stars/catalogs/lite/required_stars.json"
 MAX_MAGNITUDE = 5.0
-EXPECTED_STAR_COUNT = 2114
-EXPECTED_ALIAS_COUNT = 9621
+EXPECTED_STAR_COUNT = 2057
+EXPECTED_ALIAS_COUNT = 12242
 
 
 def fail(message: str) -> None:
@@ -91,17 +92,25 @@ def main() -> None:
         aliases[alias] = star_index
 
     required_stars = requirements["required_stars"]
-    if len({record["id"] for record in required_stars if record["coverage"] == "twenty_eight_mansions"}) != 28:
-        fail("lite requirements must enumerate all 28 mansion determinative stars")
-    if len({record["id"] for record in required_stars if record["coverage"] == "western_zodiac"}) != 12:
-        fail("lite requirements must enumerate all 12 western zodiac representatives")
+    selection = requirements.get("selection", {})
+    if selection.get("chinese_line_stars") != 1385:
+        fail("lite requirements must enumerate all Stellarium Chinese line stars")
+    if selection.get("western_zodiac_line_stars") != 141:
+        fail("lite requirements must enumerate all western zodiac line stars")
+    if selection.get("unique_required_hips") != 1399 or len(required_stars) != 1399:
+        fail("lite requirements have an unexpected cultural-star union size")
     for required in required_stars:
         star_index = hip_to_index.get(required["hip_id"])
         if star_index is None:
             fail(f"required HIP {required['hip_id']} is absent from lite catalog")
         for alias in required["aliases"]:
-            if aliases.get(alias) != star_index:
+            normalized = normalize_alias(alias)
+            if aliases.get(normalized) != star_index:
                 fail(f"required alias {alias!r} is missing or points to the wrong star")
+
+    for alias in ("织女一", "角宿一", "毕宿一"):
+        if normalize_alias(alias) not in aliases:
+            fail(f"expected traditional Chinese alias is absent: {alias}")
 
     print("test_tsc1_lite_catalog: ALL TESTS PASSED")
 

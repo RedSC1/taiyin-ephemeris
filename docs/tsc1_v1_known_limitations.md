@@ -179,9 +179,9 @@ Known counts after strict fallback validation:
 ```text
 total identity rows: 118,332
 Gaia DR3:             99,525
-Hipparcos:            18,430
+Hipparcos:            18,431
 BSC5:                    101
-missing:                 276
+missing:                 275
 ```
 
 Missing rows are skipped by the compiler unless they are known manual/special records.
@@ -190,7 +190,7 @@ This means the generated Hipparcos-level TSC1 catalog currently has fewer stars 
 
 ```text
 identity rows: 118,332
-compiled stars: 118,058
+compiled stars: 118,059
 ```
 
 ## Manual/Special Records
@@ -299,29 +299,30 @@ The magnitude-limited distribution option is kept separately at:
 data/stars/catalogs/lite/stars-bright-v5.tsc1
 ```
 
-It is mechanically derived from `stars-bright-gaia-bsc.tsc1`: it retains
-catalogue records with `V <= 5.0`, the two manual special-direction records,
-and the explicit requirements in `lite/required_stars.json`. The requirements
-guarantee all 28 Chinese mansion determinative stars (距星), with Chinese and
-pinyin aliases, as well as one representative bright star in every western
-zodiac constellation. Its current size is intended to remain appropriate as a
-default for language bindings. The parent directory
-still contains the 9,098-star bright catalog (about 1.9 MB) and the
-118,058-star Hipparcos/Gaia catalog (about 21 MB), for applications that want
-broader coverage.
+It is mechanically derived from `stars-hipparcos-gaia.tsc1`: it retains all
+available records with catalogue `V <= 5.0`, the two manual special-direction
+records, and every HIP star referenced by the Stellarium Chinese line figures
+or the twelve western-zodiac line figures. The pinned cultural selection has
+1,385 Chinese line stars and 141 zodiac line stars, or 1,399 unique HIP stars
+after overlap. Unambiguous English and Simplified Chinese traditional names
+are retained as aliases. Its 2,057 records remain small enough to be a default
+for language bindings. The parent directory still contains the 9,098-star
+bright catalog (about 1.9 MB) and the 118,059-star Hipparcos/Gaia catalog
+(about 21 MB), for applications that want broader coverage.
 
-The 28-star list is a named Taiyin v1 reference profile. It deliberately does
-not claim that Song, Chen Zhuo, Qing, and other historical reconstructions use
-identical member stars. A full historical star-official map needs a separately
-versioned sky-culture overlay containing asterism membership, line geometry,
-epoch, sources, and provenance; TSC1 remains the astrometric star layer.
+The Stellarium-derived selection and aliases are a pinned sky-culture data
+layer under CC BY-SA. TSC1 stores the astrometric records and aliases; a UI
+that wants to draw the actual asterism lines should consume the separately
+versioned line geometry rather than infer it from catalog membership.
 
 The runtime does not require one fixed packaging choice. A distribution can
 ship the lite table by default, offer larger catalog files as optional data, or
 load a user-provided TSC1/TSF1 catalog. The checked-in lite file is
 mechanically produced from the bright catalog using the requirements described
-above; that maintainer-only generation tool is intentionally not in the public
-source snapshot.
+above. Maintainer tooling and raw upstream inputs are not part of the filtered
+public source snapshot; the generated requirements manifest pins their source
+revision, selection counts, and attribution so the distributed catalog remains
+auditable.
 
 ## v1 Intent Summary
 
