@@ -67,6 +67,25 @@ void decorate_star_transforms(
     }
 }
 
+Branch master_lookup_branch(
+    MasterLookupSource source,
+    const Anchors& anchors,
+    const NatalRuleOptions& options
+) noexcept {
+    switch (source) {
+        case MasterLookupSource::LifePalace:
+            return anchors.palace_positions[to_index(PalaceId::Life)];
+        case MasterLookupSource::SelectedYearBranch:
+            return options.body_master_year_boundary == PillarBoundary::SolarTerm
+                ? anchors.solar_term.year.branch : anchors.lunar.year.branch;
+        case MasterLookupSource::LunarYearBranch:
+            return anchors.lunar.year.branch;
+        case MasterLookupSource::SolarYearBranch:
+            return anchors.solar_term.year.branch;
+    }
+    return Branch::Zi;
+}
+
 }  // namespace
 
 Status make_natal_chart(
@@ -127,14 +146,12 @@ Status make_natal_chart(
         result.transformations.birth_year = rules.sihua.by_stem[to_index(sihua_stem)];
         decorate_star_transforms(&result, rules);
         if (rules.masters.enabled) {
-            const Branch life =
-                anchors.palace_positions[to_index(PalaceId::Life)];
-            const Branch body_master_branch = options.body_master_year_boundary
-                    == PillarBoundary::SolarTerm
-                ? anchors.solar_term.year.branch
-                : anchors.lunar.year.branch;
+            const Branch life = master_lookup_branch(
+                rules.masters.life_input, anchors, options);
+            const Branch body = master_lookup_branch(
+                rules.masters.body_input, anchors, options);
             result.life_master = rules.masters.life[to_index(life)];
-            result.body_master = rules.masters.body[to_index(body_master_branch)];
+            result.body_master = rules.masters.body[to_index(body)];
         }
         *out = std::move(result);
         return TAIYIN_STATUS_OK;

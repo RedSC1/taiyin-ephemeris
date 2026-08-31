@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,10 @@ struct taiyin_ziwei_context {
 
     explicit taiyin_ziwei_context(taiyin::ziwei::ZiweiContext context)
         : value(std::move(context)) {}
+};
+
+struct taiyin_ziwei_ruleset {
+    taiyin::ziwei::ZiweiRuleset value;
 };
 
 struct taiyin_ziwei_chart {
@@ -48,6 +53,8 @@ taiyin_status exception_status() noexcept {
         return TAIYIN_FILE_ERROR_NOT_FOUND;
     } catch (const taiyin::ziwei::RuleLoadError&) {
         return TAIYIN_FILE_ERROR_BAD_FORMAT;
+    } catch (const std::invalid_argument&) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
     } catch (...) {
         return TAIYIN_ERROR_INTERNAL;
     }
@@ -280,6 +287,12 @@ void TAIYIN_C_CALL taiyin_ziwei_option_override_init(
     init_struct(value);
 }
 
+void TAIYIN_C_CALL taiyin_ziwei_json_rule_module_init(
+    taiyin_ziwei_json_rule_module* value
+) {
+    init_struct(value);
+}
+
 void TAIYIN_C_CALL taiyin_ziwei_birth_options_init(
     taiyin_ziwei_birth_options* value
 ) {
@@ -423,10 +436,68 @@ uint64_t TAIYIN_C_CALL taiyin_ziwei_data_catalog_generation(
     return catalog ? catalog->value.generation() : 0u;
 }
 
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_ruleset_create(
+    taiyin_ziwei_ruleset** out_ruleset
+) {
+    if (out_ruleset) *out_ruleset = NULL;
+    if (!out_ruleset) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    try {
+        *out_ruleset = new taiyin_ziwei_ruleset();
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+    } catch (...) {
+        return taiyin_c_internal::pack_call_result(exception_status());
+    }
+}
+
+void TAIYIN_C_CALL taiyin_ziwei_ruleset_destroy(
+    taiyin_ziwei_ruleset* ruleset
+) {
+    delete ruleset;
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_ruleset_add_json_module(
+    taiyin_ziwei_ruleset* ruleset,
+    const taiyin_ziwei_json_rule_module* module
+) {
+    if (!ruleset || !taiyin_c_internal::valid_struct(module)
+        || !module->label || module->label[0] == '\0') {
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    }
+    try {
+        const char* empty = "";
+        taiyin::ziwei::ZiweiJsonRuleModuleInput input;
+        input.label = module->label;
+        input.stars_json = module->stars_json ? module->stars_json : empty;
+        input.brightness_json = module->brightness_json
+            ? module->brightness_json : empty;
+        input.sihua_json = module->sihua_json ? module->sihua_json : empty;
+        input.flow_json = module->flow_json ? module->flow_json : empty;
+        input.masters_json = module->masters_json ? module->masters_json : empty;
+        const taiyin::ziwei::ZiweiRuleset replacement =
+            taiyin::ziwei::ZiweiConfigLoader::override_with(
+                ruleset->value, input);
+        ruleset->value = replacement;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+    } catch (...) {
+        return taiyin_c_internal::pack_call_result(exception_status());
+    }
+}
+
 taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create(
     const taiyin_ziwei_data_catalog* catalog,
     const taiyin_ziwei_option_override* overrides,
     size_t override_count,
+    taiyin_ziwei_context** out_context
+) {
+    return taiyin_ziwei_context_create_with_ruleset(
+        catalog, overrides, override_count, NULL, out_context);
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create_with_ruleset(
+    const taiyin_ziwei_data_catalog* catalog,
+    const taiyin_ziwei_option_override* overrides,
+    size_t override_count,
+    const taiyin_ziwei_ruleset* ruleset,
     taiyin_ziwei_context** out_context
 ) {
     if (out_context) *out_context = NULL;
@@ -441,7 +512,9 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create(
             }
         }
         taiyin_ziwei_context* created = new taiyin_ziwei_context(
-            catalog->value.create_context(selection));
+            ruleset
+                ? catalog->value.create_context(selection, ruleset->value)
+                : catalog->value.create_context(selection));
         *out_context = created;
         return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
@@ -504,6 +577,24 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_get_star_metadata(
         if (!buffer) return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
         if (capacity < *out_required_size) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY);
         std::memcpy(buffer, metadata.key.c_str(), *out_required_size);
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+    } catch (...) {
+        return taiyin_c_internal::pack_call_result(exception_status());
+    }
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_star_is_natal(
+    const taiyin_ziwei_context* context,
+    uint16_t star_id,
+    uint8_t* out_is_natal
+) {
+    if (out_is_natal) *out_is_natal = 0u;
+    if (!context || !out_is_natal
+        || star_id >= context->value.star_registry().size()) {
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    }
+    try {
+        *out_is_natal = context->value.star_registry().at(star_id).natal ? 1u : 0u;
         return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
         return taiyin_c_internal::pack_call_result(exception_status());

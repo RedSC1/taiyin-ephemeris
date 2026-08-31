@@ -1,10 +1,61 @@
 #include "taiyin/ziwei/rules.h"
 
+#include <limits>
 #include <vector>
 
 namespace taiyin {
 namespace ziwei {
 namespace {
+
+const uint64_t kFnvOffsetBasis = UINT64_C(14695981039346656037);
+const uint64_t kFnvPrime = UINT64_C(1099511628211);
+
+void hash_byte(uint8_t value, uint64_t* hash) noexcept {
+    *hash ^= value;
+    *hash *= kFnvPrime;
+}
+
+void hash_uint64(uint64_t value, uint64_t* hash) noexcept {
+    // Use a fixed byte order so the identity is stable across architectures.
+    for (unsigned int byte = 0u; byte < 8u; ++byte) {
+        hash_byte(static_cast<uint8_t>(value & UINT64_C(0xff)), hash);
+        value >>= 8u;
+    }
+}
+
+void hash_placement_rule(
+    const PlacementRule& rule,
+    uint64_t* hash
+) noexcept {
+    hash_uint64(rule.star_id, hash);
+    hash_uint64(rule.inputs.size(), hash);
+    for (std::size_t i = 0u; i < rule.inputs.size(); ++i) {
+        hash_byte(static_cast<uint8_t>(rule.inputs[i]), hash);
+    }
+    hash_uint64(rule.strides.size(), hash);
+    for (std::size_t i = 0u; i < rule.strides.size(); ++i) {
+        hash_uint64(rule.strides[i], hash);
+    }
+    hash_uint64(rule.table.size(), hash);
+    for (std::size_t i = 0u; i < rule.table.size(); ++i) {
+        hash_byte(rule.table[i], hash);
+    }
+}
+
+bool accumulate_rule_index(
+    uint8_t value,
+    std::size_t stride,
+    std::size_t* index
+) noexcept {
+    if (index == NULL) return false;
+    const std::size_t maximum =
+        (std::numeric_limits<std::size_t>::max)();
+    if (value != 0u && stride > maximum / value) return false;
+    const std::size_t term = static_cast<std::size_t>(value) * stride;
+    if (*index > maximum - term) return false;
+    *index += term;
+    return true;
+}
 
 uint8_t normalized_branch_index(int value) noexcept {
     return static_cast<uint8_t>(((value % 12) + 12) % 12);
@@ -49,6 +100,8 @@ bool read_flow_rule_input(
     RuleInputSource source,
     const FlowCoordinate& coordinate,
     Gender natal_gender,
+    const Anchors* natal_anchors,
+    Branch body_palace,
     uint8_t* out
 ) noexcept {
     if (out == NULL || !is_valid(coordinate) || !is_valid(natal_gender)) {
@@ -66,6 +119,29 @@ bool read_flow_rule_input(
     case RuleInputSource::BirthGender:
         *out = to_index(natal_gender);
         return true;
+    case RuleInputSource::Bureau:
+        if (natal_anchors == NULL || !is_valid(natal_anchors->bureau)) return false;
+        *out = to_index(natal_anchors->bureau);
+        return true;
+    case RuleInputSource::Ziwei:
+        if (natal_anchors == NULL || !is_valid(natal_anchors->ziwei)) return false;
+        *out = to_index(natal_anchors->ziwei);
+        return true;
+    case RuleInputSource::Tianfu:
+        if (natal_anchors == NULL || !is_valid(natal_anchors->tianfu)) return false;
+        *out = to_index(natal_anchors->tianfu);
+        return true;
+    case RuleInputSource::Life:
+        if (natal_anchors == NULL
+            || !is_valid(natal_anchors->palace_positions[to_index(PalaceId::Life)])) {
+            return false;
+        }
+        *out = to_index(natal_anchors->palace_positions[to_index(PalaceId::Life)]);
+        return true;
+    case RuleInputSource::Body:
+        if (!is_valid(body_palace)) return false;
+        *out = to_index(body_palace);
+        return true;
     default:
         return false;
     }
@@ -76,7 +152,12 @@ bool is_flow_rule_input(RuleInputSource source) noexcept {
         || source == RuleInputSource::SolarYearBranch
         || source == RuleInputSource::LunarYearStem
         || source == RuleInputSource::LunarYearBranch
-        || source == RuleInputSource::BirthGender;
+        || source == RuleInputSource::BirthGender
+        || source == RuleInputSource::Bureau
+        || source == RuleInputSource::Ziwei
+        || source == RuleInputSource::Tianfu
+        || source == RuleInputSource::Life
+        || source == RuleInputSource::Body;
 }
 
 }  // namespace
@@ -97,7 +178,7 @@ std::size_t rule_input_domain_size(RuleInputSource source) noexcept {
     case RuleInputSource::LunarDayIndex:
         return 30u;
     case RuleInputSource::SolarDayIndex:
-        return 32u;
+        return 33u;
     case RuleInputSource::BirthGender:
         return 2u;
     case RuleInputSource::SolarYearBranch:
@@ -212,7 +293,7 @@ bool read_rule_input(
         return true;
     case RuleInputSource::SolarDayIndex:
         if (facts.solar_day_from_previous_jie < 1u
-            || facts.solar_day_from_previous_jie > 32u) return false;
+            || facts.solar_day_from_previous_jie > 33u) return false;
         *out = static_cast<uint8_t>(facts.solar_day_from_previous_jie - 1u);
         return true;
     case RuleInputSource::BirthGender:
@@ -232,24 +313,22 @@ bool evaluate_placement(
     Branch body_palace,
     Branch* out
 ) noexcept {
-    if (out == NULL
-        || rule.input_count == 0u
-        || rule.input_count > kMaxPlacementInputs) {
+    if (out == NULL || rule.inputs.size() != rule.strides.size()) {
         return false;
     }
     std::size_t index = 0u;
-    for (std::size_t i = 0u; i < rule.input_count; ++i) {
+    for (std::size_t i = 0u; i < rule.inputs.size(); ++i) {
         uint8_t value = 0u;
         if (!read_rule_input(
                 rule.inputs[i], facts, anchors, body_palace, &value)
             || value >= rule_input_domain_size(rule.inputs[i])) {
             return false;
         }
-        index += static_cast<std::size_t>(value) * rule.strides[i];
+        if (!accumulate_rule_index(value, rule.strides[i], &index)) {
+            return false;
+        }
     }
-    if (rule.table_size > kMaxPlacementTableEntries
-        || index >= rule.table_size
-        || index >= kMaxPlacementTableEntries
+    if (index >= rule.table.size()
         || rule.table[index] >= kBranchCount) {
         return false;
     }
@@ -261,26 +340,28 @@ bool evaluate_flow_placement(
     const PlacementRule& rule,
     const FlowCoordinate& coordinate,
     Gender natal_gender,
-    Branch* out
+    Branch* out,
+    const Anchors* natal_anchors,
+    Branch body_palace
 ) noexcept {
     if (out == NULL || !is_valid(coordinate) || !is_valid(natal_gender)
-        || rule.input_count == 0u
-        || rule.input_count > kMaxPlacementInputs) {
+        || rule.inputs.size() != rule.strides.size()) {
         return false;
     }
     std::size_t index = 0u;
-    for (std::size_t i = 0u; i < rule.input_count; ++i) {
+    for (std::size_t i = 0u; i < rule.inputs.size(); ++i) {
         uint8_t value = 0u;
         if (!read_flow_rule_input(
-                rule.inputs[i], coordinate, natal_gender, &value)
+                rule.inputs[i], coordinate, natal_gender,
+                natal_anchors, body_palace, &value)
             || value >= rule_input_domain_size(rule.inputs[i])) {
             return false;
         }
-        index += static_cast<std::size_t>(value) * rule.strides[i];
+        if (!accumulate_rule_index(value, rule.strides[i], &index)) {
+            return false;
+        }
     }
-    if (rule.table_size > kMaxPlacementTableEntries
-        || index >= rule.table_size
-        || index >= kMaxPlacementTableEntries
+    if (index >= rule.table.size()
         || rule.table[index] >= kBranchCount) {
         return false;
     }
@@ -297,6 +378,7 @@ bool validate_compiled_rules(
         || rules.star_count != registry_size
         || rules.natal_star_count != rules.placement.natal.size()
         || rules.natal_star_count > registry_size
+        || rules.natal_by_star.size() != registry_size
         || rules.placement.flow.size()
             != registry_size - rules.natal_star_count
         || rules.brightness.values.size() != registry_size
@@ -311,8 +393,7 @@ bool validate_compiled_rules(
             : rules.placement.flow[i - rules.placement.natal.size()];
         const bool is_natal = i < rules.placement.natal.size();
         if (rule.star_id >= registry_size
-            || (is_natal && rule.star_id >= rules.natal_star_count)
-            || (!is_natal && rule.star_id < rules.natal_star_count)) {
+            || (rules.natal_by_star[rule.star_id] != 0u) != is_natal) {
             return false;
         }
         // Keep validation noexcept: this is intentionally O(n²) rather than
@@ -325,19 +406,19 @@ bool validate_compiled_rules(
                     earlier - rules.placement.natal.size()];
             if (prior.star_id == rule.star_id) return false;
         }
-        if (rule.input_count == 0u
-            || rule.input_count > kMaxPlacementInputs) return false;
+        if (rule.inputs.size() != rule.strides.size()) return false;
         std::size_t expected = 1u;
-        for (std::size_t input = rule.input_count; input-- > 0u;) {
+        for (std::size_t input = rule.inputs.size(); input-- > 0u;) {
             const std::size_t domain =
                 rule_input_domain_size(rule.inputs[input]);
             if (domain == 0u) return false;
             if (rule.strides[input] != expected) return false;
-            if (expected > kMaxPlacementTableEntries / domain) return false;
+            if (expected > (std::numeric_limits<std::size_t>::max)() / domain) {
+                return false;
+            }
             expected *= domain;
         }
-        if (rule.table_size != expected
-            || expected > kMaxPlacementTableEntries) return false;
+        if (rule.table.size() != expected) return false;
         for (std::size_t entry = 0u; entry < expected; ++entry) {
             if (rule.table[entry] >= kBranchCount) return false;
         }
@@ -345,7 +426,7 @@ bool validate_compiled_rules(
 
     for (std::size_t i = 0u; i < rules.placement.flow.size(); ++i) {
         const PlacementRule& rule = rules.placement.flow[i];
-        for (std::size_t input = 0u; input < rule.input_count; ++input) {
+        for (std::size_t input = 0u; input < rule.inputs.size(); ++input) {
             if (!is_flow_rule_input(rule.inputs[input])) return false;
         }
     }
@@ -360,15 +441,25 @@ bool validate_compiled_rules(
 
     for (std::size_t stem = 0u; stem < rules.sihua.by_stem.size(); ++stem) {
         const TransformSet& value = rules.sihua.by_stem[stem];
-        if (value.lu >= rules.natal_star_count
-            || value.quan >= rules.natal_star_count
-            || value.ke >= rules.natal_star_count
-            || value.ji >= rules.natal_star_count) return false;
+        if (value.lu >= registry_size || rules.natal_by_star[value.lu] == 0u
+            || value.quan >= registry_size || rules.natal_by_star[value.quan] == 0u
+            || value.ke >= registry_size || rules.natal_by_star[value.ke] == 0u
+            || value.ji >= registry_size || rules.natal_by_star[value.ji] == 0u) {
+            return false;
+        }
     }
     if (rules.masters.enabled) {
+        if (static_cast<uint8_t>(rules.masters.life_input)
+                > static_cast<uint8_t>(MasterLookupSource::SolarYearBranch)
+            || static_cast<uint8_t>(rules.masters.body_input)
+                > static_cast<uint8_t>(MasterLookupSource::SolarYearBranch)) {
+            return false;
+        }
         for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
-            if (rules.masters.life[branch] >= rules.natal_star_count
-                || rules.masters.body[branch] >= rules.natal_star_count) {
+            if (rules.masters.life[branch] >= registry_size
+                || rules.natal_by_star[rules.masters.life[branch]] == 0u
+                || rules.masters.body[branch] >= registry_size
+                || rules.natal_by_star[rules.masters.body[branch]] == 0u) {
                 return false;
             }
         }
@@ -376,12 +467,67 @@ bool validate_compiled_rules(
     return true;
 }
 
+uint64_t compiled_rules_fingerprint(
+    const CompiledRules& rules,
+    uint64_t star_registry_fingerprint
+) noexcept {
+    uint64_t hash = kFnvOffsetBasis;
+    hash_uint64(star_registry_fingerprint, &hash);
+    hash_uint64(rules.format_version, &hash);
+    hash_uint64(rules.star_count, &hash);
+    hash_uint64(rules.natal_star_count, &hash);
+
+    hash_uint64(rules.natal_by_star.size(), &hash);
+    for (std::size_t i = 0u; i < rules.natal_by_star.size(); ++i) {
+        hash_byte(rules.natal_by_star[i], &hash);
+    }
+
+    hash_uint64(rules.placement.natal.size(), &hash);
+    for (std::size_t i = 0u; i < rules.placement.natal.size(); ++i) {
+        hash_placement_rule(rules.placement.natal[i], &hash);
+    }
+    hash_uint64(rules.placement.flow.size(), &hash);
+    for (std::size_t i = 0u; i < rules.placement.flow.size(); ++i) {
+        hash_placement_rule(rules.placement.flow[i], &hash);
+    }
+
+    hash_uint64(rules.brightness.values.size(), &hash);
+    for (std::size_t star = 0u;
+         star < rules.brightness.values.size(); ++star) {
+        for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
+            hash_byte(static_cast<uint8_t>(
+                rules.brightness.values[star][branch]), &hash);
+        }
+    }
+
+    for (std::size_t stem = 0u; stem < kStemCount; ++stem) {
+        const TransformSet& transform = rules.sihua.by_stem[stem];
+        hash_uint64(transform.lu, &hash);
+        hash_uint64(transform.quan, &hash);
+        hash_uint64(transform.ke, &hash);
+        hash_uint64(transform.ji, &hash);
+    }
+
+    hash_byte(rules.masters.enabled ? 1u : 0u, &hash);
+    hash_byte(static_cast<uint8_t>(rules.masters.life_input), &hash);
+    hash_byte(static_cast<uint8_t>(rules.masters.body_input), &hash);
+    for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
+        hash_uint64(rules.masters.life[branch], &hash);
+        hash_uint64(rules.masters.body[branch], &hash);
+    }
+
+    // Zero is reserved as the uninitialized/invalid identity sentinel.
+    return hash == 0u ? UINT64_C(1) : hash;
+}
+
 bool compiled_rules_match_registry(
     const CompiledRules& rules,
     const StarRegistry& registry
 ) noexcept {
+    const uint64_t registry_fingerprint = registry.fingerprint();
     return rules.registry_fingerprint != 0u
-        && rules.registry_fingerprint == registry.fingerprint()
+        && rules.registry_fingerprint
+            == compiled_rules_fingerprint(rules, registry_fingerprint)
         && validate_compiled_rules(rules, registry.size());
 }
 

@@ -33,8 +33,18 @@ sxwnl results.
 
 | Source | Use in Taiyin | Distribution note |
 | --- | --- | --- |
-| ELP/MPP02 lunar theory | Frequency basis for the built-in compact lunar model | The runtime contains 1,175 selected phase terms from the DE405-constant-set ELP/MPP02 tables. The complete ELP table is a regeneration input and is not bundled. |
-| NASA/JPL DE441 | Fit and validation reference for the compact lunar residual, planetary semi-analytical models, event seed models, and packaged ephemerides | DE441 BSP files are not bundled. Generated Taiyin coefficients and data products are distributed instead. |
+| VSOP2013 | Theory source for the Mercury, Venus, physical-Earth, and Mars L/B/R tables | The runtime contains offline-converted, selected, and DE441-calibrated final coefficients, not the complete upstream distribution. |
+| TOP2013 | Theory source for the Jupiter, Saturn, Uranus, and Neptune L/B/R tables | The runtime contains selected and DE441-calibrated final coefficients derived from the published L/B/R tables. |
+| ELP/MPP02 lunar theory | Frequency basis for the built-in global lunar model | The runtime contains 1,241 folded terms using 763 shared arguments derived from the DE405-constant-set ELP/MPP02 tables. The complete ELP table is a regeneration input and is not bundled. |
+| NASA/JPL DE441 | Fit and validation reference for the lunar and planetary semi-analytical models, event seed models, and packaged ephemerides | DE441 BSP files are not bundled. Generated Taiyin coefficients and data products are distributed instead. |
+
+The VSOP2013 and TOP2013 distributions and documentation are published by
+IMCCE at <https://ftp.imcce.fr/pub/ephem/planets/>. Taiyin converts their
+published theory/table forms offline into a common
+`T^n A cos(phase + frequency*T)` runtime representation and folds separately
+fitted DE441 residual coefficients into the generated tables. See the root
+NOTICE and [`semi_analytic_ephemeris.md`](semi_analytic_ephemeris.md) for exact
+scope and validation results.
 
 The ELP lunar theory was developed by Michelle Chapront-Touzé and Jean
 Chapront. ELP/MPP02 is the revision by Jean Chapront and Gérard Francou and

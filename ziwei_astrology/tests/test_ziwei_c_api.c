@@ -44,6 +44,8 @@ int main(int argc, char** argv) {
     taiyin_ziwei_context* context = NULL;
     taiyin_ziwei_context* alternate_context = NULL;
     taiyin_ziwei_context* reloaded_context = NULL;
+    taiyin_ziwei_context* custom_context = NULL;
+    taiyin_ziwei_ruleset* ruleset = NULL;
     taiyin_ziwei_chart* chart = NULL;
     taiyin_ziwei_option_override option_override;
     char source_path[2048];
@@ -102,6 +104,43 @@ int main(int argc, char** argv) {
             < 0
         || !alternate_context) {
         return fail("create incompatible Ziwei context");
+    }
+
+    {
+        taiyin_ziwei_json_rule_module module;
+        uint16_t custom_star = TAIYIN_ZIWEI_INVALID_STAR_ID;
+        uint8_t is_natal = 0u;
+        taiyin_ziwei_json_rule_module_init(&module);
+        module.label = "c-json-module";
+        module.stars_json =
+            "[{\"key\":\"c_custom_star\",\"type\":\"minor\","
+            "\"rule\":{\"type\":\"constant\",\"value\":11}}]";
+        if (taiyin_ziwei_ruleset_create(&ruleset) < 0
+            || taiyin_ziwei_ruleset_add_json_module(ruleset, &module) < 0) {
+            return fail("compile a C JSON Ziwei ruleset");
+        }
+        if (taiyin_call_result_status(
+                taiyin_ziwei_ruleset_add_json_module(ruleset, &module))
+                != TAIYIN_ERROR_INVALID_ARGUMENT) {
+            return fail("report a duplicate C JSON module label as invalid input");
+        }
+        if (taiyin_ziwei_context_create_with_ruleset(
+                catalog, NULL, 0u, ruleset, &custom_context) < 0
+            ) {
+            return fail("compile a C JSON Ziwei ruleset");
+        }
+        taiyin_ziwei_ruleset_destroy(ruleset);
+        ruleset = NULL;
+        if (taiyin_ziwei_star_count(custom_context) != 160u
+            || taiyin_ziwei_find_star(
+                custom_context, "c_custom_star", &custom_star) < 0
+            || custom_star != 159u
+            || taiyin_ziwei_star_is_natal(
+                custom_context, custom_star, &is_natal) < 0
+            || is_natal != 1u
+            || taiyin_ziwei_star_count(context) != 159u) {
+            return fail("isolate a C JSON Ziwei ruleset after its builder is destroyed");
+        }
     }
 
     {
@@ -371,6 +410,8 @@ int main(int argc, char** argv) {
     }
 
     taiyin_ziwei_chart_destroy(chart);
+    taiyin_ziwei_context_destroy(custom_context);
+    taiyin_ziwei_ruleset_destroy(ruleset);
     taiyin_ziwei_context_destroy(reloaded_context);
     taiyin_ziwei_context_destroy(alternate_context);
     taiyin_ziwei_context_destroy(context);

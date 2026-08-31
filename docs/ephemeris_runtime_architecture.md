@@ -65,7 +65,7 @@ After catalog initialization or descriptor insertion, the runtime first marks di
 389  other SPK
 300  Taiyin DE441-derived OPM2 (source id 1)
 290  other OPM2
-250  built-in semi-analytical model
+260  built-in Taiyin semi-analytical ephemeris
 200  TKC1
 100  Kepler file
 ```
@@ -76,7 +76,7 @@ Built-in route-rule ids cover:
 AUTO          automatic selection by default priority
 SPK-only      SPK only
 OPM2-only     OPM2 only
-semi-analytical-only  built-in semi-analytical model only
+semi-analytical-only  built-in Taiyin semi-analytical ephemeris only
 ```
 
 Users can register their own route-rule table during setup and select it through `NativeCalcContext`. `NativeCalcContext` stores the resolved table pointer, so route rules should be treated as read-only after initialization. If a different strategy is needed, register a new route-rule id instead of mutating a table that a context may already hold.

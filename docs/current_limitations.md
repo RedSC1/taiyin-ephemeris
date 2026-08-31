@@ -55,8 +55,9 @@ Earth/Moon and major-body barycenter/body-offset logic is centralized in the run
 
 Composite evaluators request component routes through `EphemerisEngine`. AUTO
 routes can fall back by priority. When a single-method rule such as OPM2, SPK,
-or semi-analytical is selected, only that route rule is tried, which avoids
-silent method mixing during searches or composite calculations.
+or the explicit Taiyin semi-analytical route is selected, only that route rule
+is tried, which avoids silent method mixing during searches or composite
+calculations.
 
 Major-planet body IDs remain strict by default when only barycenter data is available. `TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` is an explicit native-position opt-in for using the matching barycenter as an approximation for Mars through Pluto; diagnostics keep the requested body as `target_id` and report the barycenter in `component_target_id`.
 

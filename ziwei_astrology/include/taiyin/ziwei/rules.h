@@ -73,19 +73,12 @@ constexpr bool is_valid(Brightness value) noexcept {
             <= static_cast<int8_t>(Brightness::Miao);
 }
 
-constexpr std::size_t kMaxPlacementInputs = 3u;
-// A Jie-bounded solar month can have 32 labeled days, so the largest
-// supported two-dimensional month/day table is 12 x 32.
-constexpr std::size_t kMaxPlacementTableEntries = 12u * 32u;
-
 struct PlacementRule {
     StarId star_id;
-    uint8_t input_count;
-    std::array<RuleInputSource, kMaxPlacementInputs> inputs;
-    // Row-major strides compiled at the TOML loading boundary.
-    std::array<uint16_t, kMaxPlacementInputs> strides;
-    uint16_t table_size;
-    std::array<uint8_t, kMaxPlacementTableEntries> table;
+    std::vector<RuleInputSource> inputs;
+    // Row-major strides compiled at the configuration loading boundary.
+    std::vector<std::size_t> strides;
+    std::vector<uint8_t> table;
 };
 
 struct CompiledPlacementRules {
@@ -102,8 +95,17 @@ struct CompiledTransformationRules {
     std::array<TransformSet, kStemCount> by_stem;
 };
 
+enum class MasterLookupSource : uint8_t {
+    LifePalace = 0,
+    SelectedYearBranch = 1,
+    LunarYearBranch = 2,
+    SolarYearBranch = 3,
+};
+
 struct CompiledMasterRules {
     bool enabled;
+    MasterLookupSource life_input = MasterLookupSource::LifePalace;
+    MasterLookupSource body_input = MasterLookupSource::SelectedYearBranch;
     std::array<StarId, kBranchCount> life;
     std::array<StarId, kBranchCount> body;
 };
@@ -112,7 +114,12 @@ struct CompiledRules {
     uint32_t format_version;
     std::size_t star_count;
     uint64_t registry_fingerprint;
+    // Count only. It is not an ID boundary after custom stars are appended.
     std::size_t natal_star_count;
+    // Indexed by StarId. Keeping scope per star allows a ruleset-local natal
+    // star to be appended after the bundled flow-star range without changing
+    // any stable built-in StarId.
+    std::vector<uint8_t> natal_by_star;
     CompiledPlacementRules placement;
     CompiledBrightnessRules brightness;
     CompiledTransformationRules sihua;
@@ -137,19 +144,30 @@ bool evaluate_placement(
     Branch* out
 ) noexcept;
 
-// Flow stars use only the layer coordinate's stem/branch plus natal gender.
+// Bundled flow stars use the layer coordinate plus natal gender. Custom rules
+// may additionally read immutable natal anchors/body metadata when supplied.
 // Keeping this evaluator separate avoids pretending that a hybrid flow
 // coordinate is a valid sexagenary Ganzhi.
 bool evaluate_flow_placement(
     const PlacementRule& rule,
     const FlowCoordinate& coordinate,
     Gender natal_gender,
-    Branch* out
+    Branch* out,
+    const Anchors* natal_anchors = NULL,
+    Branch body_palace = static_cast<Branch>(UINT8_C(0xff))
 ) noexcept;
 
 bool validate_compiled_rules(
     const CompiledRules& rules,
     std::size_t registry_size
+) noexcept;
+
+// Builds the compatibility identity stored in registry_fingerprint. The
+// registry fingerprint anchors StarId metadata; the compiled tables ensure
+// that charts cannot cross contexts whose stars match but whose rules differ.
+uint64_t compiled_rules_fingerprint(
+    const CompiledRules& rules,
+    uint64_t star_registry_fingerprint
 ) noexcept;
 
 bool compiled_rules_match_registry(

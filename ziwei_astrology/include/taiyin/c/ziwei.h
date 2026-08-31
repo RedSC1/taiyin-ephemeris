@@ -14,6 +14,7 @@ extern "C" {
 typedef struct taiyin_ziwei_data_catalog taiyin_ziwei_data_catalog;
 typedef struct taiyin_ziwei_context taiyin_ziwei_context;
 typedef struct taiyin_ziwei_chart taiyin_ziwei_chart;
+typedef struct taiyin_ziwei_ruleset taiyin_ziwei_ruleset;
 
 enum taiyin_ziwei_option_component {
     TAIYIN_ZIWEI_OPTION_PLACEMENT = 0,
@@ -108,6 +109,18 @@ typedef struct taiyin_ziwei_option_override {
     const char* option;
 } taiyin_ziwei_option_override;
 
+/* Optional strings may be NULL or empty. JSON rules are compiled while the
+ * module is added; chart calculations retain only immutable flat tables. */
+typedef struct taiyin_ziwei_json_rule_module {
+    uint32_t struct_size;
+    const char* label;
+    const char* stars_json;
+    const char* brightness_json;
+    const char* sihua_json;
+    const char* flow_json;
+    const char* masters_json;
+} taiyin_ziwei_json_rule_module;
+
 typedef struct taiyin_ziwei_birth_options {
     uint32_t struct_size;
     int32_t rat_hour_mode;
@@ -199,6 +212,8 @@ typedef struct taiyin_ziwei_reverse_candidate {
 
 TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_option_override_init(
     taiyin_ziwei_option_override* value);
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_json_rule_module_init(
+    taiyin_ziwei_json_rule_module* value);
 TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_birth_options_init(
     taiyin_ziwei_birth_options* value);
 TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_flow_options_init(
@@ -224,10 +239,26 @@ TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_data_catalog_re
 TAIYIN_C_ZIWEI_API uint64_t TAIYIN_C_CALL taiyin_ziwei_data_catalog_generation(
     const taiyin_ziwei_data_catalog* catalog);
 
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_ruleset_create(
+    taiyin_ziwei_ruleset** out_ruleset);
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_ruleset_destroy(
+    taiyin_ziwei_ruleset* ruleset);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
+taiyin_ziwei_ruleset_add_json_module(
+    taiyin_ziwei_ruleset* ruleset,
+    const taiyin_ziwei_json_rule_module* module);
+
 TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create(
     const taiyin_ziwei_data_catalog* catalog,
     const taiyin_ziwei_option_override* overrides,
     size_t override_count,
+    taiyin_ziwei_context** out_context);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
+taiyin_ziwei_context_create_with_ruleset(
+    const taiyin_ziwei_data_catalog* catalog,
+    const taiyin_ziwei_option_override* overrides,
+    size_t override_count,
+    const taiyin_ziwei_ruleset* ruleset,
     taiyin_ziwei_context** out_context);
 TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_context_destroy(
     taiyin_ziwei_context* context);
@@ -248,6 +279,10 @@ TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_get_star_metada
     char* buffer,
     size_t capacity,
     size_t* out_required_size);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_star_is_natal(
+    const taiyin_ziwei_context* context,
+    uint16_t star_id,
+    uint8_t* out_is_natal);
 
 TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
     const taiyin_ziwei_context* context,

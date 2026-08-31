@@ -53,8 +53,8 @@ calc_observed_utc
 Earth/Moon、major body barycenter/body offset 等组合逻辑已经集中到 runtime body registry / builtin body rules 中。Catalog 初始化时标记 direct-capable body；不能直接从数据文件读取的 body 由 fallback evaluator 组合。
 
 组合 evaluator 会通过 `EphemerisEngine` 请求组件路线。AUTO route 可以按优先级
-fallback；指定 OPM2、SPK 或半解析等单一路线时，只尝试对应 route rule，避免搜索
-或组合计算中静默混用不同 method。
+fallback；显式指定 Taiyin 半解析等单一路线时，只尝试对应
+route rule，避免搜索或组合计算中静默混用不同 method。
 
 当数据只提供 barycenter 时，major-planet body ID 默认仍保持严格语义。`TAIYIN_NATIVE_POSITION_ALLOW_BARYCENTER_APPROX` 是 native position 的显式 opt-in：调用方接受后，Mars 到 Pluto 可以用对应 barycenter 作为近似；diagnostic 里 `target_id` 保留请求的本体 ID，`component_target_id` 记录实际使用的 barycenter。
 

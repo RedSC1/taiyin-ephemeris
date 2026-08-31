@@ -139,7 +139,8 @@ Status make_flow_layer(
         const PlacementRule& rule = rules.placement.flow[i];
         Branch position = Branch::Zi;
         if (!evaluate_flow_placement(
-                rule, coordinate, natal.gender, &position)) {
+                rule, coordinate, natal.gender, &position,
+                &natal.anchors, natal.body_palace)) {
             return TAIYIN_ERROR_INVALID_ARGUMENT;
         }
         result.stars[to_index(position)].set(rule.star_id);

@@ -1,4 +1,5 @@
 #include "taiyin/internal/ephemeris_block.h"
+#include "taiyin/internal/long_range_analytic.h"
 #include "taiyin/internal/semi_analytic.h"
 #include "taiyin/physical_constants.h"
 #include "taiyin/runtime/ephemeris_route.h"
@@ -69,6 +70,8 @@ bool compile_route(
             storage, target_id, block);
 }
 
+double component(const Vector3& vector, size_t axis);
+
 void test_python_position_oracles() {
     struct Case {
         int target_id;
@@ -77,15 +80,15 @@ void test_python_position_oracles() {
         double expected[3];
     };
     const Case cases[] = {
-        {1, 10, 2451545.0, {-0.13009672007311779, -0.40059237312298285, -0.20048935633605455}},
-        {4, 10, 2000000.25, {-0.74175245146111757, -1.2046755625578387, -0.5295804600880083}},
+        {1, 10, 2451545.0, {-0.13009362215401613, -0.4005937310608239, -0.20048930119194636}},
+        {4, 10, 2000000.25, {-0.7417492506085965, -1.2046909841674482, -0.5295838418290886}},
         {9, 10, 2750000.75, {43.977240932359457, 8.5112705566859717, -10.597727104737656}},
-        {3, 10, 625400.0, {-0.5621882770636577, -0.77256208705910523, -0.34479448831055276}},
-        {399, 10, 2451545.0, {-0.1771298914135801, 0.88742994506633999, 0.38474349080421483}},
-        {399, 10, 2816700.0, {1.0044223378677171, -0.019527185094630098, -0.0087388645273331518}},
-        {301, 399, 2451545.0, {-0.0019492815368800627, -0.0017828931751430715, -0.00050871257014439451}},
-        {301, 399, 700000.0, {-0.00068273572820657443, 0.0020519544880880742, 0.0010627972998754826}},
-        {301, 399, 2816700.0, {-0.0016410348718894716, -0.0019949715110956531, -0.00077264155074353402}},
+        {3, 10, 625400.0, {-0.562190827854577, -0.77256139708056, -0.3447947066304292}},
+        {399, 10, 2451545.0, {-0.17713508454963148, 0.8874285544892133, 0.3847428220595031}},
+        {399, 10, 2816700.0, {1.0044212622554518, -0.019540260814562442, -0.00874441494108121}},
+        {301, 399, 2451545.0, {-0.0019492827576548192, -0.0017828918038918897, -0.0005087123687275709}},
+        {301, 399, 700000.0, {-0.0006827472691304753, 0.0020519505616866398, 0.001062797585325689}},
+        {301, 399, 2816700.0, {-0.0016410262827974607, -0.001994979000915163, -0.0007726454653850304}},
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
@@ -111,6 +114,82 @@ void test_python_position_oracles() {
         }
         taiyin::internal::destroy_storage_ephemeris_block(&storage);
     }
+}
+
+void test_long_range_sun_ssb_mass_balance() {
+    struct PlanetGm {
+        int body_id;
+        double gm_km3_per_s2;
+    };
+    const PlanetGm planets[] = {
+        {1, 2.2031868551400003e4},
+        {2, 3.2485859200000000e5},
+        {3, 4.0350323562548019e5},
+        {4, 4.2828375815756102e4},
+        {5, 1.2671276409999998e8},
+        {6, 3.7940584841799997e7},
+        {7, 5.7945563999999985e6},
+        {8, 6.8365271005803989e6},
+        {9, 9.7550000000000000e2},
+    };
+    const double jd = 0.0;
+    double total_gm = 1.3271244004127942e11;
+    CartesianState weighted = CartesianState();
+    for (size_t index = 0; index < sizeof(planets) / sizeof(planets[0]); ++index) {
+        StorageEphemerisBlock storage;
+        CompiledEphemerisBlock block;
+        CartesianState state;
+        const bool ok = compile_route(
+                planets[index].body_id, 10, jd, &storage, &block)
+            && taiyin::internal::eval_compiled_ephemeris_block(
+                split_jd(jd), &block, &state);
+        expect_true(ok, "evaluate long-range planet for Sun/SSB mass balance");
+        if (ok) {
+            const double gm = planets[index].gm_km3_per_s2;
+            weighted.position_au.x += state.position_au.x * gm;
+            weighted.position_au.y += state.position_au.y * gm;
+            weighted.position_au.z += state.position_au.z * gm;
+            weighted.velocity_au_per_day.x += state.velocity_au_per_day.x * gm;
+            weighted.velocity_au_per_day.y += state.velocity_au_per_day.y * gm;
+            weighted.velocity_au_per_day.z += state.velocity_au_per_day.z * gm;
+            weighted.acceleration_au_per_day2.x +=
+                state.acceleration_au_per_day2.x * gm;
+            weighted.acceleration_au_per_day2.y +=
+                state.acceleration_au_per_day2.y * gm;
+            weighted.acceleration_au_per_day2.z +=
+                state.acceleration_au_per_day2.z * gm;
+            total_gm += gm;
+        }
+        taiyin::internal::destroy_storage_ephemeris_block(&storage);
+    }
+
+    StorageEphemerisBlock sun_storage;
+    CompiledEphemerisBlock sun_block;
+    CartesianState sun;
+    const bool sun_ok = compile_route(10, 0, jd, &sun_storage, &sun_block)
+        && taiyin::internal::eval_compiled_ephemeris_block(
+            split_jd(jd), &sun_block, &sun);
+    expect_true(sun_ok, "evaluate long-range Sun/SSB mass balance route");
+    if (sun_ok) {
+        for (size_t axis = 0; axis < 3; ++axis) {
+            expect_near(
+                component(sun.position_au, axis),
+                -component(weighted.position_au, axis) / total_gm,
+                2.0e-15,
+                "long-range Sun/SSB position is zero-origin mass balance");
+            expect_near(
+                component(sun.velocity_au_per_day, axis),
+                -component(weighted.velocity_au_per_day, axis) / total_gm,
+                2.0e-15,
+                "long-range Sun/SSB velocity is zero-origin mass balance");
+            expect_near(
+                component(sun.acceleration_au_per_day2, axis),
+                -component(weighted.acceleration_au_per_day2, axis) / total_gm,
+                2.0e-15,
+                "long-range Sun/SSB acceleration is zero-origin mass balance");
+        }
+    }
+    taiyin::internal::destroy_storage_ephemeris_block(&sun_storage);
 }
 
 double component(const Vector3& vector, size_t axis) {
@@ -394,15 +473,15 @@ void test_coverage_contract() {
     double end = 0.0;
     expect_true(
         taiyin::internal::get_builtin_semi_analytic_coverage(1, 10, &start, &end)
-            && start == 625295.0 && end == 2816795.0,
+            && start == -470455.0 && end == 5373545.0,
         "planet coverage");
     expect_true(
         taiyin::internal::get_builtin_semi_analytic_coverage(10, 0, &start, &end)
-            && start == 625295.0 && end == 2816795.0,
+            && start == -470455.0 && end == 5373545.0,
         "synthesized Sun-to-SSB coverage");
     expect_true(
         taiyin::internal::get_builtin_semi_analytic_coverage(301, 399, &start, &end)
-            && start > 625300.0 && end < 2816800.0,
+            && start == -470455.0 && end == 5373545.0,
         "lunar coverage");
     expect_true(
         !taiyin::internal::get_builtin_semi_analytic_coverage(301, 10, &start, &end),
@@ -486,7 +565,7 @@ void test_runtime_routes() {
         result.descriptor.method_id == taiyin::internal::SEMI_ANALYTIC_METHOD_ID
             && result.descriptor.source_key.source_id
                 == taiyin::internal::SEMI_ANALYTIC_SOURCE_ID,
-        "AUTO route selects the built-in semi-analytical fallback");
+        "AUTO route selects the unified Taiyin semi-analytical provider");
 
     request.jd_tdb = split_jd(2451545.0);
     request.route_rule_id = taiyin::runtime::TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC;
@@ -605,18 +684,21 @@ int main() {
     expect_true(
         std::strcmp(
             taiyin::internal::builtin_semi_analytic_source_revision(),
-            "a5bdf675f921804874dc4e0a0838beebfbcf2b32") == 0,
+            "98cb7a07db154dd779815699af7b8ee4dca8674a") == 0,
         "semi-analytical source revision is recorded");
     expect_true(
         std::strcmp(
             taiyin::internal::builtin_semi_analytic_coefficients_sha256(),
-            "728d60ee0f5cb0a99b016608a33df9ba16d48f59053f19384922d6d7fc0f1270") == 0,
+            "b316fc96f64835c4002b5888c5058b8f2d5e66ee8001103fd8bdd6a6f1f9fc39") == 0,
         "semi-analytical coefficient hash is recorded");
     test_python_position_oracles();
+    test_long_range_sun_ssb_mass_balance();
     test_analytic_derivatives(1, 10, 2451545.0, 1.0 / 64.0);
     test_analytic_derivatives(6, 10, 2300000.25, 1.0 / 16.0);
     test_analytic_derivatives(399, 10, 2451545.0, 1.0 / 64.0);
     test_analytic_derivatives(301, 399, 2451545.0, 1.0 / 512.0);
+    test_analytic_derivatives(9, 10, 2451545.0, 1.0 / 64.0);
+    test_analytic_derivatives(9, 10, 2303618.75, 1.0 / 64.0);
     test_analytic_derivatives(10, 0, 2451545.0, 1.0 / 64.0);
     test_analytic_derivatives(901, 999, 2451545.0, 1.0 / 512.0);
     test_analytic_derivatives(999, 9, 2451545.0, 1.0 / 512.0);

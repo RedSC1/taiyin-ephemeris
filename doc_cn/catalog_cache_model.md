@@ -98,10 +98,10 @@ SegmentCache             -> 已加载 runtime segments
 内置 route 规则包括：
 
 ```text
-AUTO     命名 JPL SPK / 已分配来源的 OPM2 -> 其他 SPK/OPM2 -> 内置半解析 -> TKC1 -> Kepler file
+AUTO     命名 JPL SPK / 已分配来源的 OPM2 -> 其他 SPK/OPM2 -> Taiyin 半解析星历 -> TKC1 -> Kepler file
 OPM2     只尝试 OPM2
 SPK      只尝试 SPK
-SEMI     只尝试内置半解析模型
+SEMI     只尝试内置 Taiyin 半解析星历
 ```
 
 已识别 JPL source product 在 AUTO 中有 source-specific rule，因此组合状态会先在同一

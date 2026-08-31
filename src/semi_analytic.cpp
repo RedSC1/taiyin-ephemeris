@@ -1,5 +1,7 @@
 #include "taiyin/internal/semi_analytic.h"
 
+#include "taiyin/internal/long_range_analytic.h"
+
 #include "taiyin/body_id.h"
 #include "taiyin/physical_constants.h"
 
@@ -182,7 +184,10 @@ struct AstronomyEngineJupiterMoonModel {
     AstronomyEngineSeries inclination;
 };
 
-#include "internal/semi_analytic_coefficients.inc"
+// The former primary planet/Moon fit is retained only as a bounded legacy
+// component for the Pluto and Sun/SSB composite routes. New primary planet
+// and lunar requests use long_range_analytic.cpp.
+#include "legacy/compact_primary_coefficients.inc"
 #include "internal/charon_plu060_coefficients.inc"
 #include "internal/mars_satellite_coefficients.inc"
 #include "internal/triton_nep098_coefficients.inc"
@@ -1258,6 +1263,344 @@ JetVector3 ecliptic_to_icrf(const JetVector3& vector) noexcept {
     return result;
 }
 
+bool cartesian_state_is_finite(const CartesianState& state) noexcept {
+    return std::isfinite(state.position_au.x)
+        && std::isfinite(state.position_au.y)
+        && std::isfinite(state.position_au.z)
+        && std::isfinite(state.velocity_au_per_day.x)
+        && std::isfinite(state.velocity_au_per_day.y)
+        && std::isfinite(state.velocity_au_per_day.z)
+        && std::isfinite(state.acceleration_au_per_day2.x)
+        && std::isfinite(state.acceleration_au_per_day2.y)
+        && std::isfinite(state.acceleration_au_per_day2.z);
+}
+
+CartesianState cartesian_state_add(
+    const CartesianState& left,
+    const CartesianState& right,
+    double right_scale
+) noexcept {
+    CartesianState result;
+    result.position_au = Vector3{
+        left.position_au.x + right.position_au.x * right_scale,
+        left.position_au.y + right.position_au.y * right_scale,
+        left.position_au.z + right.position_au.z * right_scale};
+    result.velocity_au_per_day = Vector3{
+        left.velocity_au_per_day.x + right.velocity_au_per_day.x * right_scale,
+        left.velocity_au_per_day.y + right.velocity_au_per_day.y * right_scale,
+        left.velocity_au_per_day.z + right.velocity_au_per_day.z * right_scale};
+    result.acceleration_au_per_day2 = Vector3{
+        left.acceleration_au_per_day2.x
+            + right.acceleration_au_per_day2.x * right_scale,
+        left.acceleration_au_per_day2.y
+            + right.acceleration_au_per_day2.y * right_scale,
+        left.acceleration_au_per_day2.z
+            + right.acceleration_au_per_day2.z * right_scale};
+    return result;
+}
+
+Jet2 state_component(
+    const CartesianState& state,
+    size_t axis
+) noexcept {
+    return Jet2(
+        axis == 0 ? state.position_au.x
+            : (axis == 1 ? state.position_au.y : state.position_au.z),
+        axis == 0 ? state.velocity_au_per_day.x
+            : (axis == 1 ? state.velocity_au_per_day.y
+                : state.velocity_au_per_day.z),
+        axis == 0 ? state.acceleration_au_per_day2.x
+            : (axis == 1 ? state.acceleration_au_per_day2.y
+                : state.acceleration_au_per_day2.z));
+}
+
+bool blend_cartesian_states(
+    const CartesianState& first,
+    const CartesianState& second,
+    const Jet2& normalized_time,
+    CartesianState* out
+) noexcept {
+    if (!out) {
+        return false;
+    }
+    const Jet2 weight = normalized_time * normalized_time * normalized_time
+        * (Jet2(10.0) - normalized_time * 15.0
+            + normalized_time * normalized_time * 6.0);
+    Jet2 blended[3];
+    for (size_t axis = 0; axis < 3; ++axis) {
+        const Jet2 a = state_component(first, axis);
+        const Jet2 b = state_component(second, axis);
+        blended[axis] = a + weight * (b - a);
+    }
+    *out = CartesianState();
+    out->position_au = Vector3{
+        blended[0].value, blended[1].value, blended[2].value};
+    out->velocity_au_per_day = Vector3{
+        blended[0].first, blended[1].first, blended[2].first};
+    out->acceleration_au_per_day2 = Vector3{
+        blended[0].second, blended[1].second, blended[2].second};
+    return cartesian_state_is_finite(*out);
+}
+
+bool eval_legacy_planet_state(
+    int target_id,
+    const SplitJulianDate& jd_tdb,
+    CartesianState* out
+) noexcept {
+    const PlanetModel* model = find_planet_model(target_id);
+    JetVector3 ecliptic;
+    if (!out || !model || !eval_planet_ecliptic(*model, jd_tdb, &ecliptic)) {
+        return false;
+    }
+    const JetVector3 icrf = ecliptic_to_icrf(ecliptic);
+    *out = CartesianState();
+    out->position_au = Vector3{
+        icrf.x.value / TAIYIN_AU_KM,
+        icrf.y.value / TAIYIN_AU_KM,
+        icrf.z.value / TAIYIN_AU_KM};
+    out->velocity_au_per_day = Vector3{
+        icrf.x.first / TAIYIN_AU_KM,
+        icrf.y.first / TAIYIN_AU_KM,
+        icrf.z.first / TAIYIN_AU_KM};
+    out->acceleration_au_per_day2 = Vector3{
+        icrf.x.second / TAIYIN_AU_KM,
+        icrf.y.second / TAIYIN_AU_KM,
+        icrf.z.second / TAIYIN_AU_KM};
+    return cartesian_state_is_finite(*out);
+}
+
+bool eval_composite_pluto_state(
+    const SplitJulianDate& jd_tdb,
+    CartesianState* out
+) noexcept {
+    const PlanetModel* legacy = find_planet_model(TAIYIN_BODY_PLUTO_BARYCENTER);
+    SplitJulianDate legacy_start;
+    SplitJulianDate legacy_end;
+    SplitJulianDate j2000;
+    if (!out || !legacy
+        || !split_julian_date_from_double(legacy->jd_start, &legacy_start)
+        || !split_julian_date_from_double(legacy->jd_end, &legacy_end)
+        || !split_julian_date_from_double(kJ2000, &j2000)) {
+        return false;
+    }
+    const double year = 2000.0
+        + days_between_split_jd(j2000, jd_tdb) / 365.25;
+    if (year >= 1600.0 && year <= 2200.0) {
+        return eval_builtin_long_range_pluto_near_state(jd_tdb, out);
+    }
+    if (year > 1590.0 && year < 1600.0) {
+        CartesianState old_state;
+        CartesianState near_state;
+        return eval_legacy_planet_state(
+                TAIYIN_BODY_PLUTO_BARYCENTER, jd_tdb, &old_state)
+            && eval_builtin_long_range_pluto_near_state(jd_tdb, &near_state)
+            && blend_cartesian_states(
+                old_state,
+                near_state,
+                Jet2((year - 1590.0) / 10.0, 1.0 / (3652.5), 0.0),
+                out);
+    }
+    if (year > 2200.0 && year < 2210.0) {
+        CartesianState near_state;
+        CartesianState old_state;
+        return eval_builtin_long_range_pluto_near_state(jd_tdb, &near_state)
+            && eval_legacy_planet_state(
+                TAIYIN_BODY_PLUTO_BARYCENTER, jd_tdb, &old_state)
+            && blend_cartesian_states(
+                near_state,
+                old_state,
+                Jet2((year - 2200.0) / 10.0, 1.0 / (3652.5), 0.0),
+                out);
+    }
+
+    constexpr double kOuterBlendDays = 3652.5;
+    if (jd_tdb < legacy_start || jd_tdb > legacy_end) {
+        return eval_builtin_long_range_pluto_fallback_state(jd_tdb, out);
+    }
+    if (days_between_split_jd(legacy_start, jd_tdb) < kOuterBlendDays) {
+        CartesianState far_state;
+        CartesianState old_state;
+        const double elapsed = days_between_split_jd(legacy_start, jd_tdb);
+        return eval_builtin_long_range_pluto_fallback_state(jd_tdb, &far_state)
+            && eval_legacy_planet_state(
+                TAIYIN_BODY_PLUTO_BARYCENTER, jd_tdb, &old_state)
+            && blend_cartesian_states(
+                far_state,
+                old_state,
+                Jet2(elapsed / kOuterBlendDays,
+                    1.0 / kOuterBlendDays, 0.0),
+                out);
+    }
+    if (days_between_split_jd(jd_tdb, legacy_end) < kOuterBlendDays) {
+        CartesianState old_state;
+        CartesianState far_state;
+        const double elapsed = kOuterBlendDays
+            - days_between_split_jd(jd_tdb, legacy_end);
+        return eval_legacy_planet_state(
+                TAIYIN_BODY_PLUTO_BARYCENTER, jd_tdb, &old_state)
+            && eval_builtin_long_range_pluto_fallback_state(jd_tdb, &far_state)
+            && blend_cartesian_states(
+                old_state,
+                far_state,
+                Jet2(elapsed / kOuterBlendDays,
+                    1.0 / kOuterBlendDays, 0.0),
+                out);
+    }
+    return eval_legacy_planet_state(
+        TAIYIN_BODY_PLUTO_BARYCENTER, jd_tdb, out);
+}
+
+bool eval_primary_state_icrf(
+    int target_id,
+    int center_id,
+    const SplitJulianDate& jd_tdb,
+    CartesianState* out
+) noexcept {
+    if (!out) {
+        return false;
+    }
+    if (target_id == TAIYIN_BODY_MOON && center_id == TAIYIN_BODY_EARTH) {
+        return eval_builtin_long_range_analytic_state(
+            target_id, center_id, jd_tdb, out);
+    }
+    if (center_id == TAIYIN_BODY_SUN) {
+        if (target_id == TAIYIN_BODY_PLUTO_BARYCENTER) {
+            return eval_composite_pluto_state(jd_tdb, out);
+        }
+        if (target_id == TAIYIN_BODY_EMB) {
+            CartesianState earth;
+            CartesianState moon;
+            if (!eval_builtin_long_range_analytic_state(
+                    TAIYIN_BODY_EARTH, TAIYIN_BODY_SUN, jd_tdb, &earth)
+                || !eval_builtin_long_range_analytic_state(
+                    TAIYIN_BODY_MOON, TAIYIN_BODY_EARTH, jd_tdb, &moon)) {
+                return false;
+            }
+            *out = cartesian_state_add(
+                earth,
+                moon,
+                1.0 / (TAIYIN_EARTH_MOON_MASS_RATIO + 1.0));
+            return cartesian_state_is_finite(*out);
+        }
+        return eval_builtin_long_range_analytic_state(
+            target_id, center_id, jd_tdb, out);
+    }
+    if (target_id == TAIYIN_BODY_SUN && center_id == TAIYIN_BODY_SSB) {
+        const PlanetModel* legacy = find_planet_model(TAIYIN_BODY_PLUTO_BARYCENTER);
+        SplitJulianDate legacy_start;
+        SplitJulianDate legacy_end;
+        if (!legacy
+            || !split_julian_date_from_double(legacy->jd_start, &legacy_start)
+            || !split_julian_date_from_double(legacy->jd_end, &legacy_end)) {
+            return false;
+        }
+        constexpr double kSunOuterBlendDays = 3652.5;
+        const bool in_legacy_range = jd_tdb >= legacy_start && jd_tdb <= legacy_end;
+        const double legacy_from_start = in_legacy_range
+            ? days_between_split_jd(legacy_start, jd_tdb) : 0.0;
+        const double legacy_to_end = in_legacy_range
+            ? days_between_split_jd(jd_tdb, legacy_end) : 0.0;
+        if (in_legacy_range
+            && legacy_from_start >= kSunOuterBlendDays
+            && legacy_to_end >= kSunOuterBlendDays) {
+            JetVector3 legacy_ecliptic;
+            if (!eval_sun_ssb_ecliptic(jd_tdb, &legacy_ecliptic)) {
+                return false;
+            }
+            const JetVector3 legacy_icrf = ecliptic_to_icrf(legacy_ecliptic);
+            *out = CartesianState();
+            out->position_au = Vector3{
+                legacy_icrf.x.value / TAIYIN_AU_KM,
+                legacy_icrf.y.value / TAIYIN_AU_KM,
+                legacy_icrf.z.value / TAIYIN_AU_KM};
+            out->velocity_au_per_day = Vector3{
+                legacy_icrf.x.first / TAIYIN_AU_KM,
+                legacy_icrf.y.first / TAIYIN_AU_KM,
+                legacy_icrf.z.first / TAIYIN_AU_KM};
+            out->acceleration_au_per_day2 = Vector3{
+                legacy_icrf.x.second / TAIYIN_AU_KM,
+                legacy_icrf.y.second / TAIYIN_AU_KM,
+                legacy_icrf.z.second / TAIYIN_AU_KM};
+            return cartesian_state_is_finite(*out);
+        }
+        CartesianState weighted = CartesianState();
+        double total_gm = kSunGmKm3PerS2;
+        for (size_t index = 0;
+             index < sizeof(kPlanetGms) / sizeof(kPlanetGms[0]);
+             ++index) {
+            CartesianState state;
+            if (!eval_primary_state_icrf(
+                    kPlanetGms[index].body_id,
+                    TAIYIN_BODY_SUN,
+                    jd_tdb,
+                    &state)) {
+                return false;
+            }
+            weighted = cartesian_state_add(
+                weighted, state, kPlanetGms[index].gm_km3_per_s2);
+            total_gm += kPlanetGms[index].gm_km3_per_s2;
+        }
+        const CartesianState long_range_state = cartesian_state_add(
+            CartesianState(), weighted, -1.0 / total_gm);
+        if (jd_tdb < legacy_start || jd_tdb > legacy_end) {
+            *out = long_range_state;
+            return cartesian_state_is_finite(*out);
+        }
+        JetVector3 legacy_ecliptic;
+        if (!eval_sun_ssb_ecliptic(jd_tdb, &legacy_ecliptic)) {
+            return false;
+        }
+        const JetVector3 legacy_icrf = ecliptic_to_icrf(legacy_ecliptic);
+        CartesianState legacy_state;
+        legacy_state.position_au = Vector3{
+            legacy_icrf.x.value / TAIYIN_AU_KM,
+            legacy_icrf.y.value / TAIYIN_AU_KM,
+            legacy_icrf.z.value / TAIYIN_AU_KM};
+        legacy_state.velocity_au_per_day = Vector3{
+            legacy_icrf.x.first / TAIYIN_AU_KM,
+            legacy_icrf.y.first / TAIYIN_AU_KM,
+            legacy_icrf.z.first / TAIYIN_AU_KM};
+        legacy_state.acceleration_au_per_day2 = Vector3{
+            legacy_icrf.x.second / TAIYIN_AU_KM,
+            legacy_icrf.y.second / TAIYIN_AU_KM,
+            legacy_icrf.z.second / TAIYIN_AU_KM};
+        const double from_start = days_between_split_jd(legacy_start, jd_tdb);
+        if (from_start < kSunOuterBlendDays) {
+            return blend_cartesian_states(
+                long_range_state,
+                legacy_state,
+                Jet2(from_start / kSunOuterBlendDays,
+                    1.0 / kSunOuterBlendDays,
+                    0.0),
+                out);
+        }
+        const double to_end = days_between_split_jd(jd_tdb, legacy_end);
+        if (to_end < kSunOuterBlendDays) {
+            return blend_cartesian_states(
+                legacy_state,
+                long_range_state,
+                Jet2((kSunOuterBlendDays - to_end) / kSunOuterBlendDays,
+                    1.0 / kSunOuterBlendDays,
+                    0.0),
+                out);
+        }
+        *out = legacy_state;
+        return cartesian_state_is_finite(*out);
+    }
+    return false;
+}
+
+bool is_primary_state_route(int target_id, int center_id) noexcept {
+    if ((target_id == TAIYIN_BODY_SUN && center_id == TAIYIN_BODY_SSB)
+        || (target_id == TAIYIN_BODY_EMB && center_id == TAIYIN_BODY_SUN)) {
+        return true;
+    }
+    double start = 0.0;
+    double end = 0.0;
+    return get_builtin_long_range_analytic_coverage(
+        target_id, center_id, &start, &end);
+}
+
 bool eval_route_ecliptic(
     int target_id,
     int center_id,
@@ -1421,6 +1764,13 @@ bool calc_semi_analytic_state_void(
         || jd_tdb < start || jd_tdb > end) {
         return false;
     }
+    if (is_primary_state_route(data->target_id, data->center_id)) {
+        // Primary routes are authoritative throughout their advertised
+        // coverage.  Do not hide a model failure by silently reviving the
+        // former compact planet or lunar implementation below.
+        return eval_primary_state_icrf(
+            data->target_id, data->center_id, jd_tdb, out);
+    }
     JetVector3 ecliptic;
     if (!eval_route_ecliptic(data->target_id, data->center_id, jd_tdb, &ecliptic)) {
         return false;
@@ -1496,11 +1846,11 @@ void destroy_semi_analytic_data(void* data) noexcept {
 }  // namespace
 
 const char* builtin_semi_analytic_source_revision() noexcept {
-    return kSemiAnalyticSourceCommit;
+    return builtin_long_range_analytic_source_revision();
 }
 
 const char* builtin_semi_analytic_coefficients_sha256() noexcept {
-    return kSemiAnalyticCoefficientSha256;
+    return builtin_long_range_analytic_coefficients_sha256();
 }
 
 bool get_builtin_semi_analytic_coverage(
@@ -1511,6 +1861,30 @@ bool get_builtin_semi_analytic_coverage(
 ) noexcept {
     if (!out_jd_tdb_start || !out_jd_tdb_end) {
         return false;
+    }
+    double long_range_start = 0.0;
+    double long_range_end = 0.0;
+    if ((target_id == TAIYIN_BODY_SUN && center_id == TAIYIN_BODY_SSB)
+        || (target_id == TAIYIN_BODY_EMB && center_id == TAIYIN_BODY_SUN)) {
+        if (!get_builtin_long_range_analytic_coverage(
+                TAIYIN_BODY_EARTH,
+                TAIYIN_BODY_SUN,
+                &long_range_start,
+                &long_range_end)) {
+            return false;
+        }
+        *out_jd_tdb_start = long_range_start;
+        *out_jd_tdb_end = long_range_end;
+        return true;
+    }
+    if (get_builtin_long_range_analytic_coverage(
+            target_id,
+            center_id,
+            &long_range_start,
+            &long_range_end)) {
+        *out_jd_tdb_start = long_range_start;
+        *out_jd_tdb_end = long_range_end;
+        return true;
     }
     if (target_id == TAIYIN_BODY_SUN && center_id == TAIYIN_BODY_SSB) {
         double start = -INFINITY;

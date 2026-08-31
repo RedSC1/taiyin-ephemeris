@@ -23,6 +23,7 @@ enum class StarCategory : uint8_t {
 struct StarMetadata {
     std::string key;
     StarCategory category;
+    bool natal;
 };
 
 // String lookup is intentionally confined to rule compilation and inspection.
@@ -31,7 +32,8 @@ class StarRegistry {
 public:
     StarRegistry();
 
-    StarId add(const std::string& key, StarCategory category);
+    StarId add(const std::string& key, StarCategory category, bool natal = true);
+    void set_category(StarId id, StarCategory category);
     bool find(const std::string& key, StarId* out) const noexcept;
     const StarMetadata& at(StarId id) const;
     std::size_t size() const noexcept;

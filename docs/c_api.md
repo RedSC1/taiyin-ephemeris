@@ -329,7 +329,8 @@ data with `taiyin_runtime_registered_data_source_count()` and
 `taiyin_runtime_get_registered_data_source()`. Each result reports its kind,
 format, descriptor/sample count, coverage envelope, and physical source path.
 Built-in sources use stable labels such as `builtin:semi-analytic` and
-`builtin:eop`. Multiple descriptors from one physical OPM2, SPK, or TKC1 file
+`builtin:eop`. Multiple descriptors from one
+physical OPM2, SPK, or TKC1 file
 are aggregated into one result. A missing expected path therefore means it was
 not registered successfully.
 

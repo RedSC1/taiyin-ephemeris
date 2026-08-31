@@ -41,11 +41,17 @@ shape = [12]
 positions = [11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 ```
 
-One to three bounded inputs are allowed, with at most 384 final entries. The
-runtime schema has no offset, direction, pipeline, expression, condition, or
-arbitrary-dimensional evaluator. The loader verifies that `shape` exactly
+Any finite set of known bounded inputs is allowed. The runtime schema has no
+offset, direction, pipeline, expression, condition, or evaluator. The loader verifies that `shape` exactly
 matches every input domain, compiles row-major strides, and resolves names to
 `StarId`; placement then performs only indexing and a table read.
+
+User JSON may use the retired arithmetic shapes as a convenient authoring
+format. `ZiweiConfigLoader` exhaustively compiles them into the same flat
+runtime tables before a context is created; those JSON nodes are never kept or
+interpreted by chart calculation. Ordered labelled modules can override
+individual tables and declare ruleset-local stars without changing bundled
+StarId values.
 
 The bundled tables are generated from the defaults in the author's
 MIT-licensed Dart `ziwei_core` 0.13.0 implementation. Regenerate them with:

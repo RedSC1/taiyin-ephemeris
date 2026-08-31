@@ -63,10 +63,15 @@ not implement the historical tidal-acceleration correction parameters used by
 DE431-era historical ephemeris tables, so it should not be presented as a DE431
 historical-reproduction implementation.
 
-When no higher-priority SPK or OPM2 source is available, the built-in
-semi-analytical fallback covers approximately calendar years **-3000 through
-+3000**. See [`docs/semi_analytic_ephemeris.md`](docs/semi_analytic_ephemeris.md)
-for its model and validation details.
+When no higher-priority SPK or OPM2 source is available, one built-in Taiyin
+semi-analytical ephemeris covers the Sun, major planets, physical Earth, Moon,
+EMB, and Pluto over approximately astronomical years **-6000 through +10000**.
+It combines VSOP2013/TOP2013-derived planetary tables, a global ELP-derived
+Moon model, epoch-dependent Pluto models, and internally selected legacy
+components where they remain more accurate or faster. Satellite and
+center-of-body corrections retain their own narrower coverage. See
+[`docs/semi_analytic_ephemeris.md`](docs/semi_analytic_ephemeris.md) for model,
+route, precision, and performance details.
 
 ### Built-in satellite fallback scope
 

@@ -188,6 +188,10 @@ format:
 default.toml profile -> ZiweiDataCatalog (parse every option once)
                      -> ZiweiContext (select options; missing means option1)
                      -> CompiledRules -> NatalChart / FlowLayer
+
+optional JSON -> ZiweiRuleModule (compile arithmetic/pipeline to flat tables)
+              -> ordered ZiweiRuleset (later module wins)
+              -> ZiweiContext with an immutable composite star registry
 ```
 
 `ZiweiDataCatalog::reload()` parses and validates a complete replacement before

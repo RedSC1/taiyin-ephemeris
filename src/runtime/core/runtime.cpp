@@ -1602,9 +1602,10 @@ bool Runtime::initialize_ephemeris(const EphemerisRuntimeConfig& config) noexcep
             }
         }
         add_packaged_source_roots(packaged_roots, &next_catalog);
-        if (config.load_packaged_data
-            && !add_builtin_semi_analytic_descriptors(&next_catalog)) {
-            ok = false;
+        if (config.load_packaged_data) {
+            if (!add_builtin_semi_analytic_descriptors(&next_catalog)) {
+                ok = false;
+            }
         }
     }
 
@@ -1846,8 +1847,8 @@ bool Runtime::reset_default_route_rules() noexcept {
             || !automatic.upsert_source_method(
                 internal::SEMI_ANALYTIC_SOURCE_ID,
                 internal::SEMI_ANALYTIC_METHOD_ID,
-                250,
-                "builtin semi-analytical ephemeris")
+                260,
+                "builtin Taiyin semi-analytical ephemeris")
             || !automatic.upsert_source_method(
                 internal::TKC1_SOURCE_ID,
                 internal::TKC1_KEPLER_METHOD_ID,
@@ -1891,6 +1892,7 @@ bool Runtime::reset_default_route_rules() noexcept {
             return false;
         }
         ephemeris_route_rules_[TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC] = semi_analytic;
+
     } catch (...) {
         ephemeris_route_rules_.clear();
         return false;

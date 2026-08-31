@@ -28,8 +28,16 @@ fixture 同样保留 sxwnl 结果。
 
 | 来源 | 在 Taiyin 中的用途 | 分发说明 |
 | --- | --- | --- |
-| ELP/MPP02 月球理论 | 内置紧凑月球模型的频率基底 | 运行时包含从 DE405 常数组 ELP/MPP02 表中选出的 1,175 个相位项；完整 ELP 表只用于再生成，不随仓库分发。 |
-| NASA/JPL DE441 | 紧凑月球残差、行星半解析模型、事件 seed 模型和打包星历的拟合/验证参考 | DE441 BSP 不随仓库分发，仓库只包含生成后的 Taiyin 系数和数据产品。 |
+| VSOP2013 | 水星、金星、物理地心和火星 L/B/R 表的理论来源 | 运行时只包含离线转换、筛选并按 DE441 校准后的最终系数，不包含完整上游发行包。 |
+| TOP2013 | 木星、土星、天王星和海王星 L/B/R 表的理论来源 | 运行时包含由公开 L/B/R 表筛选并按 DE441 校准后的最终系数。 |
+| ELP/MPP02 月球理论 | 内置全年代月球模型的频率基底 | 运行时包含由 DE405 常数组 ELP/MPP02 表派生、使用 763 个共享参数的 1,241 个折叠项；完整 ELP 表只用于再生成，不随仓库分发。 |
+| NASA/JPL DE441 | 月球与行星半解析模型、事件 seed 模型和打包星历的拟合/验证参考 | DE441 BSP 不随仓库分发，仓库只包含生成后的 Taiyin 系数和数据产品。 |
+
+VSOP2013 与 TOP2013 的发行包和文档由 IMCCE 发布，见
+<https://ftp.imcce.fr/pub/ephem/planets/>。Taiyin 离线把公开理论／表转换成统一的
+`T^n A cos(phase + frequency*T)` 运行时形式，并把另行拟合的 DE441 残差系数折入
+生成表。准确范围和验证结果见根目录 NOTICE 与
+[`semi_analytic_ephemeris.md`](semi_analytic_ephemeris.md)。
 
 ELP 月球理论由 Michelle Chapront-Touzé 与 Jean Chapront 建立；ELP/MPP02
 是 Jean Chapront 与 Gérard Francou 完成的修订，并纳入 P. Bidart 的 MPP01

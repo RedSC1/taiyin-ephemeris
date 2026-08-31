@@ -1,5 +1,6 @@
 #include "taiyin/ziwei/rules_loader.h"
 
+#include "rule_modules_internal.h"
 #include "toml.hpp"
 
 #include <atomic>
@@ -234,20 +235,17 @@ PlacementRule compile_flat_placement(const std::string& filename,
     const std::string& path, StarId star_id, const toml::value& source) {
     PlacementRule result = {};
     result.star_id = star_id;
-    result.table.fill(0u);
-    result.inputs.fill(RuleInputSource::SolarYearStem);
-    result.strides.fill(0u);
 
     const std::vector<std::string> input_names =
         toml::find<std::vector<std::string> >(source, "inputs");
     const std::vector<int64_t> shape =
         toml::find<std::vector<int64_t> >(source, "shape");
-    if (input_names.empty() || input_names.size() > kMaxPlacementInputs
-        || shape.size() != input_names.size()) {
+    if (input_names.empty() || shape.size() != input_names.size()) {
         throw semantic_error(filename, path,
-            "inputs/shape must have the same 1..3 dimensions");
+            "inputs/shape must have the same non-zero dimensions");
     }
-    result.input_count = static_cast<uint8_t>(input_names.size());
+    result.inputs.resize(input_names.size());
+    result.strides.resize(input_names.size());
     std::size_t expected = 1u;
     for (std::size_t i = input_names.size(); i-- > 0u;) {
         result.inputs[i] = parse_input_source(filename,
@@ -259,12 +257,12 @@ PlacementRule compile_flat_placement(const std::string& filename,
                     << ", actual " << shape[i];
             throw semantic_error(filename, path + ".shape", message.str());
         }
-        result.strides[i] = static_cast<uint16_t>(expected);
+        result.strides[i] = expected;
+        if (expected > (std::numeric_limits<std::size_t>::max)() / domain) {
+            throw semantic_error(filename, path,
+                "flattened table size overflows size_t");
+        }
         expected *= domain;
-    }
-    if (expected > kMaxPlacementTableEntries) {
-        throw semantic_error(filename, path,
-            "flattened table exceeds the fixed 384-entry limit");
     }
     const std::vector<int64_t> positions =
         toml::find<std::vector<int64_t> >(source, "positions");
@@ -281,14 +279,13 @@ PlacementRule compile_flat_placement(const std::string& filename,
                     << " expected branch index 0..11, actual " << positions[i];
             throw semantic_error(filename, path + ".positions", message.str());
         }
-        result.table[i] = static_cast<uint8_t>(positions[i]);
+        result.table.push_back(static_cast<uint8_t>(positions[i]));
     }
-    result.table_size = static_cast<uint16_t>(positions.size());
     return result;
 }
 
 void add_stars(const std::string& filename, const toml::value& root,
-    const std::string& array_name, StarRegistry* registry) {
+    const std::string& array_name, bool natal, StarRegistry* registry) {
     const toml::array& stars = root.at(array_name).as_array();
     for (std::size_t i = 0u; i < stars.size(); ++i) {
         const std::string path = array_name + "[" + std::to_string(i) + "]";
@@ -297,7 +294,7 @@ void add_stars(const std::string& filename, const toml::value& root,
             toml::find<std::string>(stars[i], "category");
         try {
             registry->add(key,
-                parse_category(filename, path + ".category", category));
+                parse_category(filename, path + ".category", category), natal);
         } catch (const std::bad_alloc&) {
             throw;
         } catch (const std::exception& error) {
@@ -556,6 +553,7 @@ void compile_context(
     compiled.star_count = snapshot->registry.size();
     compiled.registry_fingerprint = snapshot->registry.fingerprint();
     compiled.natal_star_count = snapshot->natal_star_count;
+    compiled.natal_by_star.resize(compiled.star_count, 0u);
     compiled.placement.natal.reserve(compiled.natal_star_count);
     compiled.placement.flow.reserve(
         compiled.star_count - compiled.natal_star_count);
@@ -564,7 +562,9 @@ void compile_context(
     ZiweiOptionSelection selected;
     for (StarId id = 0u; id < compiled.star_count; ++id) {
         const std::string& star = snapshot->registry.at(id).key;
-        const bool is_longevity = id < compiled.natal_star_count
+        const bool is_natal = snapshot->registry.at(id).natal;
+        compiled.natal_by_star[id] = is_natal ? 1u : 0u;
+        const bool is_longevity = is_natal
             && is_longevity_star_key(star);
         const std::string placement_option = is_longevity
             ? choose_component_option(
@@ -580,7 +580,7 @@ void compile_context(
             is_longevity ? "longevity" : "placement",
             star,
             placement_option);
-        if (id < compiled.natal_star_count) {
+        if (is_natal) {
             compiled.placement.natal.push_back(placement);
         } else {
             compiled.placement.flow.push_back(placement);
@@ -638,12 +638,173 @@ void compile_context(
             "masters resource is not available");
     }
 
+    compiled.registry_fingerprint = compiled_rules_fingerprint(
+        compiled, snapshot->registry.fingerprint());
+
     if (!validate_compiled_rules(compiled, snapshot->registry.size())) {
         throw semantic_error(snapshot->profile_filename, "compiled_tables",
             "compiled invariant validation failed");
     }
     *out = std::move(compiled);
     *out_selection = std::move(selected);
+}
+
+StarId resolve_module_star(
+    const detail::RuleStarReference& reference,
+    const StarRegistry& registry,
+    const std::string& module,
+    const std::string& path
+) {
+    if (reference.by_id) {
+        if (reference.id >= registry.size()) {
+            throw semantic_error(module, path, "unknown numeric star id");
+        }
+        return reference.id;
+    }
+    StarId id = kInvalidStarId;
+    if (!registry.find(reference.key, &id)) {
+        throw semantic_error(module, path,
+            "unknown star key '" + reference.key + "'");
+    }
+    return id;
+}
+
+void replace_placement(
+    std::vector<PlacementRule>* rules,
+    const PlacementRule& replacement
+) {
+    for (std::size_t i = 0u; i < rules->size(); ++i) {
+        if ((*rules)[i].star_id == replacement.star_id) {
+            (*rules)[i] = replacement;
+            return;
+        }
+    }
+    rules->push_back(replacement);
+}
+
+std::size_t stem_index(const std::string& key) {
+    for (std::size_t stem = 0u; stem < kStemCount; ++stem) {
+        if (key == kStemKeys[stem]) return stem;
+    }
+    return kStemCount;
+}
+
+void apply_ruleset(
+    const ZiweiRuleset& ruleset,
+    StarRegistry* registry,
+    CompiledRules* compiled
+) {
+    const std::vector<ZiweiRuleModule>& modules = ruleset.modules();
+    for (std::size_t module_index = 0u;
+         module_index < modules.size(); ++module_index) {
+        const detail::ZiweiRuleModuleData& module =
+            detail::ZiweiRuleModuleAccess::get(modules[module_index]);
+
+        for (std::size_t i = 0u; i < module.stars.size(); ++i) {
+            const detail::RuleStarDefinition& definition = module.stars[i];
+            StarId id = kInvalidStarId;
+            if (registry->find(definition.key, &id)) {
+                const StarMetadata& existing = registry->at(id);
+                if (existing.natal != definition.natal) {
+                    throw semantic_error(module.label, definition.key,
+                        "cannot change natal/flow scope");
+                }
+                if (definition.has_category
+                    && existing.category != definition.category) {
+                    registry->set_category(id, definition.category);
+                }
+                continue;
+            }
+            id = registry->add(
+                definition.key, definition.category, definition.natal);
+            compiled->star_count = registry->size();
+            compiled->natal_by_star.push_back(definition.natal ? 1u : 0u);
+            if (definition.natal) ++compiled->natal_star_count;
+            std::array<int8_t, kBranchCount> default_brightness;
+            default_brightness.fill(static_cast<int8_t>(Brightness::None));
+            compiled->brightness.values.push_back(default_brightness);
+        }
+
+        for (std::map<std::string, PlacementRule>::const_iterator it =
+                module.natal_placements.begin();
+             it != module.natal_placements.end(); ++it) {
+            StarId id = kInvalidStarId;
+            if (!registry->find(it->first, &id)
+                || !registry->at(id).natal) {
+                throw semantic_error(module.label, "natalPlacements." + it->first,
+                    "unknown or non-natal star");
+            }
+            PlacementRule rule = it->second;
+            rule.star_id = id;
+            replace_placement(&compiled->placement.natal, rule);
+        }
+        for (std::map<std::string, PlacementRule>::const_iterator it =
+                module.flow_placements.begin();
+             it != module.flow_placements.end(); ++it) {
+            StarId id = kInvalidStarId;
+            if (!registry->find(it->first, &id)
+                || registry->at(id).natal) {
+                throw semantic_error(module.label, "flowPlacements." + it->first,
+                    "unknown or non-flow star");
+            }
+            PlacementRule rule = it->second;
+            rule.star_id = id;
+            replace_placement(&compiled->placement.flow, rule);
+        }
+        for (std::map<std::string,
+                std::array<int8_t, kBranchCount> >::const_iterator it =
+                module.brightness.begin();
+             it != module.brightness.end(); ++it) {
+            StarId id = kInvalidStarId;
+            if (!registry->find(it->first, &id)) {
+                throw semantic_error(module.label, "brightness." + it->first,
+                    "unknown star key");
+            }
+            compiled->brightness.values[id] = it->second;
+        }
+        for (std::map<std::string, detail::RuleTransformPatch>::const_iterator it =
+                module.sihua.begin(); it != module.sihua.end(); ++it) {
+            const std::size_t stem = stem_index(it->first);
+            if (stem >= kStemCount) {
+                throw semantic_error(module.label, "sihua." + it->first,
+                    "unknown stem key");
+            }
+            TransformSet& target = compiled->sihua.by_stem[stem];
+            StarId* fields[4] = {&target.lu, &target.quan, &target.ke, &target.ji};
+            for (std::size_t kind = 0u; kind < 4u; ++kind) {
+                if (it->second.present[kind] == 0u) continue;
+                *fields[kind] = resolve_module_star(
+                    it->second.stars[kind], *registry, module.label,
+                    "sihua." + it->first);
+            }
+        }
+        if (module.masters.has_life || module.masters.has_body) {
+            compiled->masters.enabled = true;
+        }
+        if (module.masters.has_life) {
+            compiled->masters.life_input = module.masters.life_input;
+            for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
+                compiled->masters.life[branch] = resolve_module_star(
+                    module.masters.life[branch], *registry, module.label,
+                    "masters.life");
+            }
+        }
+        if (module.masters.has_body) {
+            compiled->masters.body_input = module.masters.body_input;
+            for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
+                compiled->masters.body[branch] = resolve_module_star(
+                    module.masters.body[branch], *registry, module.label,
+                    "masters.body");
+            }
+        }
+    }
+    compiled->star_count = registry->size();
+    compiled->registry_fingerprint = compiled_rules_fingerprint(
+        *compiled, registry->fingerprint());
+    if (!validate_compiled_rules(*compiled, registry->size())) {
+        throw semantic_error("ruleset", "compiled_tables",
+            "module composition produced invalid rules");
+    }
 }
 
 std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
@@ -676,10 +837,10 @@ std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
         snapshot->generation = g_catalog_generation.fetch_add(
             1u, std::memory_order_relaxed);
         add_stars(stars_filename, stars_root,
-            "natal_stars", &snapshot->registry);
+            "natal_stars", true, &snapshot->registry);
         snapshot->natal_star_count = snapshot->registry.size();
         add_stars(stars_filename, stars_root,
-            "flow_stars", &snapshot->registry);
+            "flow_stars", false, &snapshot->registry);
 
         const toml::array& placements =
             placement_root.at("placements").as_array();
@@ -788,6 +949,8 @@ std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
                 }
                 CompiledMasterRules compiled;
                 compiled.enabled = true;
+                compiled.life_input = MasterLookupSource::LifePalace;
+                compiled.body_input = MasterLookupSource::SelectedYearBranch;
                 for (std::size_t branch = 0u;
                      branch < kBranchCount; ++branch) {
                     compiled.life[branch] = resolve_star(
@@ -859,19 +1022,21 @@ ZiweiOptionSelection::ZiweiOptionSelection()
       sihua() {}
 
 ZiweiContext::ZiweiContext()
-    : snapshot_(), compiled_(), selected_() {}
+    : snapshot_(), registry_(), compiled_(), selected_() {}
 
 ZiweiContext::ZiweiContext(
     std::shared_ptr<const detail::ZiweiCatalogSnapshot> snapshot,
+    std::shared_ptr<const StarRegistry> registry,
     CompiledRules compiled,
     ZiweiOptionSelection selected
 ) : snapshot_(std::move(snapshot)),
+    registry_(std::move(registry)),
     compiled_(std::move(compiled)),
     selected_(std::move(selected)) {}
 
 const StarRegistry& ZiweiContext::star_registry() const {
-    if (!snapshot_) throw std::logic_error("ZiweiContext is not initialized");
-    return snapshot_->registry;
+    if (!registry_) throw std::logic_error("ZiweiContext is not initialized");
+    return *registry_;
 }
 
 const CompiledRules& ZiweiContext::compiled_tables() const noexcept {
@@ -887,8 +1052,8 @@ uint64_t ZiweiContext::catalog_generation() const noexcept {
 }
 
 bool ZiweiContext::valid() const noexcept {
-    return snapshot_.get() != NULL
-        && validate_compiled_rules(compiled_, snapshot_->registry.size());
+    return snapshot_.get() != NULL && registry_.get() != NULL
+        && compiled_rules_match_registry(compiled_, *registry_);
 }
 
 ZiweiDataCatalog::ZiweiDataCatalog(const std::string& profile_path)
@@ -910,13 +1075,29 @@ ZiweiContext ZiweiDataCatalog::create_context() const {
 ZiweiContext ZiweiDataCatalog::create_context(
     const ZiweiOptionSelection& selection
 ) const {
+    return create_context(selection, ZiweiRuleset());
+}
+
+ZiweiContext ZiweiDataCatalog::create_context(
+    const ZiweiOptionSelection& selection,
+    const ZiweiRuleset& ruleset
+) const {
     const std::shared_ptr<const detail::ZiweiCatalogSnapshot> snapshot =
         std::atomic_load(&snapshot_);
     if (!snapshot) throw std::logic_error("ZiweiDataCatalog is not initialized");
     CompiledRules compiled;
     ZiweiOptionSelection selected;
     compile_context(snapshot, selection, &compiled, &selected);
-    return ZiweiContext(snapshot, std::move(compiled), std::move(selected));
+    if (ruleset.modules().empty()) {
+        const std::shared_ptr<const StarRegistry> registry(
+            snapshot, &snapshot->registry);
+        return ZiweiContext(snapshot, registry,
+            std::move(compiled), std::move(selected));
+    }
+    std::shared_ptr<StarRegistry> registry(new StarRegistry(snapshot->registry));
+    apply_ruleset(ruleset, registry.get(), &compiled);
+    return ZiweiContext(snapshot, registry,
+        std::move(compiled), std::move(selected));
 }
 
 void ZiweiDataCatalog::reload() {

@@ -194,6 +194,7 @@ set(TAIYIN_NATIVE_CORE_SOURCES
     src/kepler_file.cpp
     src/lunar_limb_tll1.cpp
     src/lunar_orientation.cpp
+    src/long_range_analytic.cpp
     src/observer.cpp
     src/route_inflight_map.cpp
     src/semi_analytic.cpp
@@ -579,6 +580,11 @@ add_executable(test_semi_analytic
     tests/test_semi_analytic.cpp
 )
 target_link_libraries(test_semi_analytic PRIVATE taiyin_ephemeris)
+
+add_executable(test_long_range_analytic
+    tests/test_long_range_analytic.cpp
+)
+target_link_libraries(test_long_range_analytic PRIVATE taiyin_ephemeris)
 
 add_executable(test_custom_ephemeris_method
     tests/test_custom_ephemeris_method.cpp
@@ -1139,6 +1145,7 @@ add_test(NAME semi_analytic COMMAND test_semi_analytic)
 set_tests_properties(semi_analytic PROPERTIES
     ENVIRONMENT "TAIYIN_DATA_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
 )
+add_test(NAME long_range_analytic COMMAND test_long_range_analytic)
 add_test(NAME custom_ephemeris_method COMMAND test_custom_ephemeris_method)
 add_test(NAME global_ephemeris_runtime COMMAND test_global_ephemeris_runtime)
 set_tests_properties(global_ephemeris_runtime PROPERTIES

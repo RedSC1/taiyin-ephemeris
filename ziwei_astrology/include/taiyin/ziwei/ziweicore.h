@@ -11,6 +11,7 @@
 #include "taiyin/ziwei/flow_calendar_adapter.h"
 #include "taiyin/ziwei/limits.h"
 #include "taiyin/ziwei/rules.h"
+#include "taiyin/ziwei/rule_modules.h"
 #include "taiyin/ziwei/rules_loader.h"
 #include "taiyin/ziwei/reverse_lookup.h"
 #include "taiyin/ziwei/star_registry.h"

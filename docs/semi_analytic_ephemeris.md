@@ -1,19 +1,35 @@
-# Built-in Semi-Analytical Ephemeris
+# Built-in Semi-Analytical Ephemerides
 
 Status: Current
-Last reviewed: 2026-08-12
-Primary code: `src/semi_analytic.cpp`, `src/internal/semi_analytic_coefficients.inc`
+Last reviewed: 2026-08-31
+Primary code: `src/long_range_analytic.cpp`, `src/semi_analytic.cpp`
 
-Taiyin includes a frozen, data-file-free semi-analytical fallback for epochs
-where no higher-priority SPK or OPM2 route is available. It is registered in
-the default route table below SPK and OPM2 and above TKC1/Kepler sources.
+Taiyin exposes one frozen, data-file-free semi-analytical ephemeris provider.
+It is registered below SPK and OPM2 and above TKC1/Kepler sources. The public
+route is `TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC`; its internal components are
+selected per target and epoch, so callers do not have to choose between a
+"compact" and a "long-range" theory.
+
+The primary runtime consists of:
+
+- VSOP2013/TOP2013-derived L/B/R tables for Mercury through Neptune and the
+  physical Earth;
+- one globally calibrated ELP-derived Moon series;
+- a high-accuracy 1600–2200 Pluto model plus a broad, lower-accuracy fallback;
+- internally reconstructed EMB and Sun/SSB states; and
+- the existing satellite and physical-center/COB correction models.
+
+The former compact major-body and lunar implementation is legacy code. Its
+major-body table is retained only where it is more accurate or substantially
+cheaper inside the Pluto and Sun/SSB composite routes. It is not registered as
+a second provider and cannot be selected as a separate public route.
 
 ## Coverage And Routes
 
-Planetary series cover JD TDB `625295.0` through `2816795.0`, approximately
-calendar years -3000 through +3000. The lunar fit covers JD TDB `625306.84`
-through `2816794.84`; Earth/Sun uses the intersection of the EMB and lunar
-intervals.
+The principal Sun, planet, EMB, Earth, Moon, and Pluto routes cover JD TDB
+`-470455.0` through `5373545.0`, approximately astronomical years -6000
+through +10000. Satellite routes retain their own separately documented
+coverage intervals and do not extrapolate.
 
 Supported direct routes are:
 
@@ -30,8 +46,101 @@ Charon / Pluto, with Pluto / Pluto barycenter reconstructed from Charon and
 Triton / Neptune, with Neptune / Neptune barycenter reconstructed from Triton
 ```
 
-The explicit route is `TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC`. No Moshier or
-PLAN404 code or coefficient table is loaded or distributed by that route.
+The explicit data-free route is:
+
+```text
+TAIYIN_EPHEMERIS_ROUTE_SEMI_ANALYTIC  Taiyin semi-analytical ephemeris
+```
+
+No Moshier or PLAN404 code or coefficient table is loaded or distributed by
+either route.
+
+## Primary Planetary Model
+
+The runtime form is the classic Poisson/Fourier-monomial layout
+
+```text
+sum(T^n * A * cos(phase + frequency * T))
+T = (JD_TDB - 2451545.0) / 365250
+```
+
+evaluated independently for heliocentric longitude, latitude, and radius.
+Mercury, Venus, physical Earth, and Mars are generated from the complete
+VSOP2013 elliptic-element solutions; Jupiter through Neptune use TOP2013 L/B/R
+tables. Offline conversion, coefficient selection, and residual fitting target
+DE441. Polynomial and periodic fitted residuals are folded into the final
+tables rather than evaluated as a second correction layer.
+
+The checked-in planetary artifact contains 8,697 terms in 209
+coordinate/time-power groups. The native VSOP2013/TOP2013 axes are converted
+with the same fixed matrix used by the source JavaScript implementation:
+official theory axes to ICRF, then ICRF to Taiyin's mean-J2000 ecliptic frame.
+The runtime subsequently returns ICRF/J2000 equatorial Cartesian states. This
+is intentionally not replaced by a small-angle approximate inverse matrix;
+such an approximation creates distance-scaled errors of hundreds of
+kilometres for outer planets.
+
+A second-order jet evaluator returns position, velocity, and acceleration
+analytically; it does not finite-difference the series. EMB is reconstructed
+from the physical-Earth and Moon states. Sun/SSB is reconstructed from the
+nine planetary systems; inside the legacy table's well-tested interior the
+equivalent compact Sun/SSB evaluator remains in use as a faster component,
+with C2-continuous ten-year transitions at its coverage boundaries.
+
+### DE441 comparison and evaluation cost
+
+The following deterministic comparison uses 401 uniformly spaced TDB epochs
+from 1600 through 2200 and DE441 `target -> Sun` Cartesian states as the
+oracle. The local Release microbenchmark measures one direct compiled state
+evaluation, including analytical position, velocity, and acceleration but
+excluding catalog routing. Timing is machine-dependent.
+
+| Target | position RMS km | angular RMS arcsec | us/state |
+| --- | ---: | ---: | ---: |
+| Mercury | 6.11 | 0.0218 | 5.4 |
+| Venus | 10.48 | 0.0193 | 2.7 |
+| Earth | 15.34 | 0.0211 | 6.8 |
+| Mars | 40.50 | 0.0364 | 8.3 |
+| Jupiter | 79.80 | 0.0209 | 10.9 |
+| Saturn | 91.68 | 0.0132 | 17.0 |
+| Uranus | 373.12 | 0.0254 | 8.4 |
+| Neptune | 793.78 | 0.0347 | 2.8 |
+
+Across the complete advertised -6000 through +10000 interval (1,201 uniform
+samples per target), L/B/R position RMS / angular RMS are:
+
+| Target | RMS km | RMS arcsec | Maximum km |
+| --- | ---: | ---: | ---: |
+| Mercury | 25.67 | 0.0911 | 103.09 |
+| Venus | 96.65 | 0.1829 | 505.58 |
+| Earth | 98.57 | 0.1350 | 494.93 |
+| Mars | 409.64 | 0.3691 | 1458.10 |
+| Jupiter | 760.50 | 0.1971 | 3104.76 |
+| Saturn | 2352.06 | 0.3121 | 17664.74 |
+| Uranus | 14405.56 | 1.0124 | 50081.60 |
+| Neptune | 6119.70 | 0.2596 | 22708.21 |
+
+These are sparse deterministic grids, not formal worst-case guarantees. They
+describe the frozen geometric state model, not final apparent/topocentric
+coordinates.
+
+## Moon And Pluto
+
+The Moon uses 1,241 folded terms with 763 shared phase arguments. The three
+coordinates reuse those arguments and are differentiated analytically. DE441
+comparison results are `0.282 km / 0.129 arcsec` RMS over 1600–2200 (601
+uniform samples), `0.833 km / 0.421 arcsec` over -3000–+3000 (1,201 samples),
+and `2.251 km / 1.173 arcsec` over the full -6000–+10000 interval (2,001
+samples).
+
+Pluto uses a direct DE441-fit Chebyshev model from 1600 through 2200, with
+ten-year C2 transitions to the more accurate legacy compact model inside its
+old coverage. At the old coverage endpoints it transitions over ten years to
+a broad 25-group Legendre/Fourier fallback. The modern model measures about
+`891 km / 0.025 arcsec` RMS against DE441 on 601 uniform samples. The complete
+-6000–+10000 composite is deliberately only a computable fallback, about
+`786,000 km / 25.5 arcsec` RMS on a 2,001-point grid; it must not be presented
+as precision Pluto astrometry.
 
 ### Satellite Precision Boundary
 
@@ -47,30 +156,20 @@ No Saturnian or Uranian satellite route is built in. The physical Saturn and
 Uranus requests therefore require direct data, or the caller must explicitly
 allow the ordinary barycenter approximation where that is acceptable.
 
-## Model
+## Legacy Compact Components
 
-- Mercury through Pluto and EMB use compact harmonic series independently
-  fitted to JPL DE441.
-- The Moon uses 1,175 terms selected from the complete ELP/MPP02 DE405 series
-  by their RMS three-dimensional contribution over the supported interval.
-  A sparse correction is then fitted to DE441 in J2000 longitude, latitude,
-  and log-radius. The correction contains 10, 20, and 15 phase groups for the
-  three channels respectively.
-- Earth/Sun is reconstructed from EMB/Sun and Moon/Earth using the Earth-Moon
-  mass ratio.
-- Sun/SSB is reconstructed by mass-weighting all nine heliocentric planetary-
-  barycenter states with the DE440 planetary-system gravitational parameters.
-  This route supplies the barycentric origin needed by fixed-star apparent
-  calculations without introducing a separate data file.
-- The ELP/MPP02 precession parameters transform the lunar series directly to
-  the J2000 ecliptic, then all routes are returned as ICRF/J2000 equatorial
-  Cartesian states.
-- Position, velocity, and acceleration are evaluated together with second-order
-  automatic differentiation. The derivatives are not finite differences.
+The former compact major-body coefficient artifact now lives under
+`src/legacy/`. Its bounded Pluto and Sun/SSB components remain useful in the
+unified provider where their measured accuracy or cost is better. The old
+Moon and ordinary-planet paths are no longer selected by production routing.
+Satellite and center-of-body models remain current components and are
+documented below; moving the former primary model to legacy does not alter
+those routes.
 
-The frozen C++ table records both the planetary source revision and the SHA-256
-of the checked-in lunar artifact. Regeneration is a private maintainer process;
-it is not part of a normal build or public source snapshot.
+The generated primary table records the source JavaScript revision and a
+SHA-256 over the complete coefficient payload actually consumed by the C++
+generator. Regeneration is a maintainer process and is not part of a normal
+build.
 
 ### Mars-System Satellite Residual Layer
 

@@ -61,7 +61,7 @@ Catalog 初始化或新增 descriptor 后，会先在 `BodyRegistry` 里标记 d
 389  其他 SPK
 300  Taiyin DE441-derived OPM2（source id 1）
 290  其他 OPM2
-250  内置半解析模型
+260  内置 Taiyin 半解析星历
 200  TKC1
 100  Kepler file
 ```
@@ -72,7 +72,7 @@ Catalog 初始化或新增 descriptor 后，会先在 `BodyRegistry` 里标记 d
 AUTO          按默认优先级自动选择
 SPK-only      只走 SPK
 OPM2-only     只走 OPM2
-semi-analytical-only  只走内置半解析模型
+semi-analytical-only  只走内置 Taiyin 半解析星历
 ```
 
 用户可以在 setup 阶段注册自己的 route-rule table，并通过 `NativeCalcContext` 选择对应 route-rule id。`NativeCalcContext` 会保存已解析的 table 指针，所以 route rule 应按“初始化后只读”的方式使用；如果需要另一套策略，应注册新的 route-rule id，而不是原地修改一个可能已经被 context 持有的 table。

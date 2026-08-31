@@ -8,7 +8,11 @@ namespace ziwei {
 
 StarRegistry::StarRegistry() : stars_(), ids_by_key_() {}
 
-StarId StarRegistry::add(const std::string& key, StarCategory category) {
+StarId StarRegistry::add(
+    const std::string& key,
+    StarCategory category,
+    bool natal
+) {
     if (key.empty()) {
         throw std::invalid_argument("star key must not be empty");
     }
@@ -20,7 +24,7 @@ StarId StarRegistry::add(const std::string& key, StarCategory category) {
     }
 
     const StarId id = static_cast<StarId>(stars_.size());
-    stars_.push_back(StarMetadata{key, category});
+    stars_.push_back(StarMetadata{key, category, natal});
     try {
         ids_by_key_.insert(std::make_pair(key, id));
     } catch (...) {
@@ -29,6 +33,10 @@ StarId StarRegistry::add(const std::string& key, StarCategory category) {
         throw;
     }
     return id;
+}
+
+void StarRegistry::set_category(StarId id, StarCategory category) {
+    stars_.at(static_cast<std::size_t>(id)).category = category;
 }
 
 bool StarRegistry::find(const std::string& key, StarId* out) const noexcept {
@@ -62,6 +70,8 @@ uint64_t StarRegistry::fingerprint() const noexcept {
         const StarMetadata& star = stars_[index];
         const uint8_t category = static_cast<uint8_t>(star.category);
         hash ^= category;
+        hash *= prime;
+        hash ^= star.natal ? UINT64_C(1) : UINT64_C(0);
         hash *= prime;
         for (std::size_t byte = 0u; byte < star.key.size(); ++byte) {
             hash ^= static_cast<uint8_t>(star.key[byte]);

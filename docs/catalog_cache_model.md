@@ -103,10 +103,10 @@ SegmentCache             -> loaded runtime segments
 Built-in route rules include:
 
 ```text
-AUTO     recognized JPL SPK / assigned OPM2 products -> other SPK/OPM2 -> semi-analytical -> TKC1 -> Kepler file
+AUTO     recognized JPL SPK / assigned OPM2 products -> other SPK/OPM2 -> Taiyin semi-analytical -> TKC1 -> Kepler file
 OPM2     any OPM2 product only
 SPK      any SPK product only
-SEMI     built-in semi-analytical only
+SEMI     built-in Taiyin semi-analytical ephemeris only
 ```
 
 Recognized JPL source products have source-specific AUTO rules, so a composite

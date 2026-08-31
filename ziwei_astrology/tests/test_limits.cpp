@@ -272,8 +272,14 @@ int main() {
         && day.limit.coordinate.branch == Branch::You,
         "Jie-based flow day accepts a 31st labeled day", &failures);
     expect(make_flow_day(natal, month, 33u, Stem::Jia, &day)
+        == TAIYIN_STATUS_OK
+        && day.limit.coordinate.branch == Branch::Hai,
+        "Jie-based flow day accepts an exceptional 33rd labeled day",
+        &failures);
+    expect(make_flow_day(natal, month, 34u, Stem::Jia, &day)
         == TAIYIN_ERROR_INVALID_ARGUMENT,
-        "flow day rejects an impossible Jie-relative day", &failures);
+        "flow day rejects a Jie-relative day beyond the compiled domain",
+        &failures);
 
     if (failures != 0) {
         std::cerr << failures << " Ziwei limit checks failed\n";

@@ -8,6 +8,8 @@ set(TAIYIN_ZIWEI_SOURCES
     src/flow.cpp
     src/flow_calendar_adapter.cpp
     src/limits.cpp
+    src/json_internal.cpp
+    src/rule_modules.cpp
     src/rules.cpp
     src/rules_loader.cpp
     src/reverse_lookup.cpp
@@ -96,6 +98,9 @@ target_compile_definitions(taiyin_c_static PRIVATE
 
 install(FILES include/taiyin/c/ziwei.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/taiyin/c)
+install(DIRECTORY include/taiyin/ziwei/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/taiyin/ziwei
+    FILES_MATCHING PATTERN "*.h")
 install(DIRECTORY rules/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/taiyin/ziwei
     FILES_MATCHING PATTERN "*.toml" PATTERN "README.md")

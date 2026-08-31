@@ -2,6 +2,7 @@
 #define TAIYIN_ZIWEI_DATA_CATALOG_H
 
 #include "taiyin/ziwei/rules.h"
+#include "taiyin/ziwei/rule_modules.h"
 #include "taiyin/ziwei/star_registry.h"
 
 #include <cstdint>
@@ -51,11 +52,13 @@ private:
     friend class ZiweiDataCatalog;
     ZiweiContext(
         std::shared_ptr<const detail::ZiweiCatalogSnapshot> snapshot,
+        std::shared_ptr<const StarRegistry> registry,
         CompiledRules compiled,
         ZiweiOptionSelection selected
     );
 
     std::shared_ptr<const detail::ZiweiCatalogSnapshot> snapshot_;
+    std::shared_ptr<const StarRegistry> registry_;
     CompiledRules compiled_;
     ZiweiOptionSelection selected_;
 };
@@ -74,6 +77,9 @@ public:
 
     ZiweiContext create_context() const;
     ZiweiContext create_context(const ZiweiOptionSelection& selection) const;
+    ZiweiContext create_context(
+        const ZiweiOptionSelection& selection,
+        const ZiweiRuleset& ruleset) const;
 
     // Strong exception guarantee: a parse/validation error leaves the current
     // snapshot untouched. Concurrent create_context() calls see either the old

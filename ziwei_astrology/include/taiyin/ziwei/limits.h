@@ -10,8 +10,8 @@ namespace taiyin {
 namespace ziwei {
 
 // Lunar flow days use 1..30. Jie-bounded solar months can span 31 or, after
-// civil-day assignment at the endpoints, exceptionally 32 labeled days.
-constexpr uint8_t kMaxFlowDayIndex = 32u;
+// civil-day assignment at the endpoints, exceptionally 32 or 33 labeled days.
+constexpr uint8_t kMaxFlowDayIndex = 33u;
 
 enum class ChildhoodStrategy : uint8_t {
     Skip = 0,

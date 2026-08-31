@@ -36,7 +36,55 @@ publishes a new immutable snapshot. Existing contexts continue using their old
 snapshot without locks. The old `load_rules_from_toml()` remains as a
 compatibility one-shot loader but should not be used per chart.
 
-Placement resources contain only final finite mappings: `inputs`, their exact
+## Ordered JSON rule modules
+
+`ZiweiConfigLoader::compile_json()` accepts the former Dart `stars`,
+`flow_stars`, brightness, Si-Hua, and master JSON shapes and compiles them once
+into an immutable `ZiweiRuleModule`. `constant`, `anchor_offset`, `lookup`,
+`lookup_offset`, and `pipeline` exist only at this loading boundary: their
+bounded input domains are enumerated immediately and the module retains flat
+answer tables.
+
+Modules are combined by `ZiweiRuleset` in explicit order. A later module
+replaces overlapping placement or brightness tables and patches only the
+specified Si-Hua fields. Labels must be unique; custom JSON cannot use the
+reserved `option1` through `option4` labels. Unknown star keys declared by a
+module receive ruleset-local IDs after the bundled range, while the built-in
+IDs remain unchanged. Persist the stable star key rather than a local ID.
+In a composite registry, `natal_star_count` is a count, not an ID boundary:
+custom natal stars are appended after all bundled IDs. Inspect
+`StarMetadata::natal` (or `taiyin_ziwei_star_is_natal()`) instead of testing
+`id < natal_star_count`.
+
+```cpp
+ZiweiJsonRuleModuleInput input;
+input.label = "my-rules";
+input.stars_json = R"json([
+  {"key":"custom_star","type":"minor",
+   "rule":{"type":"anchor_offset","anchor":"ziwei","offset":2}}
+])json";
+
+ZiweiRuleset ruleset = ZiweiConfigLoader::override_with(
+    ZiweiConfigLoader::get_default(), input);
+ZiweiContext context = catalog.create_context(
+    ZiweiOptionSelection(), ruleset);
+```
+
+Contexts own an immutable composite registry and compiled table snapshot.
+Creating a customized context does not mutate the catalog defaults or an
+already-created context. Custom natal and flow stars participate in the same
+dynamic palace bitsets and transformation overlays as bundled stars.
+For `masters_json`, an explicit `boundary` of `lunar` or `solar` selects that
+year branch; when omitted, the bundled semantics remain unchanged (life master
+uses the life palace and body master uses the context's selected year boundary).
+Custom `brightness_labels` are presentation/localization text and are not
+stored by the C++ core; bindings may preserve them separately.
+
+The C ABI exposes the same lifecycle with `taiyin_ziwei_ruleset_create()`,
+`taiyin_ziwei_ruleset_add_json_module()`, and
+`taiyin_ziwei_context_create_with_ruleset()`.
+
+Bundled placement resources contain only final finite mappings: `inputs`, their exact
 `shape`, and a row-major `positions` array. They cannot express offsets,
 directions, pipelines, conditions, or arbitrary expressions. Loading validates
 all dimensions and compiles row-major strides; chart construction only indexes
