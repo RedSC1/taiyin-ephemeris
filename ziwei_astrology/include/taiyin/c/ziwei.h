@@ -109,8 +109,10 @@ typedef struct taiyin_ziwei_option_override {
     const char* option;
 } taiyin_ziwei_option_override;
 
-/* Optional strings may be NULL or empty. JSON rules are compiled while the
- * module is added; chart calculations retain only immutable flat tables. */
+/* Optional strings may be NULL or empty. label is the option name contributed
+ * by this whole module. JSON is compiled while the module is added; chart
+ * calculations retain only immutable flat tables. Catalog options cannot be
+ * replaced or removed. */
 typedef struct taiyin_ziwei_json_rule_module {
     uint32_t struct_size;
     const char* label;
@@ -247,6 +249,10 @@ TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
 taiyin_ziwei_ruleset_add_json_module(
     taiyin_ziwei_ruleset* ruleset,
     const taiyin_ziwei_json_rule_module* module);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL
+taiyin_ziwei_ruleset_remove_module(
+    taiyin_ziwei_ruleset* ruleset,
+    const char* label);
 
 TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_context_create(
     const taiyin_ziwei_data_catalog* catalog,

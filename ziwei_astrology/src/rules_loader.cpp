@@ -11,6 +11,7 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -38,6 +39,7 @@ struct ZiweiCatalogSnapshot {
         std::array<int8_t, kBranchCount> > brightness_variants;
     std::unordered_map<std::string, TransformSet> sihua_variants;
     std::unordered_map<std::string, CompiledMasterRules> master_variants;
+    std::set<std::string> module_owned_stars;
 };
 
 }  // namespace detail
@@ -566,12 +568,15 @@ void compile_context(
         compiled.natal_by_star[id] = is_natal ? 1u : 0u;
         const bool is_longevity = is_natal
             && is_longevity_star_key(star);
+        const bool is_module_owned =
+            snapshot->module_owned_stars.count(star) != 0u;
         const std::string placement_option = is_longevity
             ? choose_component_option(
                 overrides.longevity, snapshot->profile_selection.longevity)
             : choose_option(
                 overrides.placement,
-                overrides.placement_default,
+                is_module_owned ? std::string()
+                                : overrides.placement_default,
                 snapshot->profile_selection.placement,
                 star);
         const PlacementRule placement = require_variant(
@@ -590,7 +595,8 @@ void compile_context(
 
         const std::string brightness_option = choose_option(
             overrides.brightness,
-            overrides.brightness_default,
+            is_module_owned ? std::string()
+                            : overrides.brightness_default,
             snapshot->profile_selection.brightness,
             star);
         compiled.brightness.values[id] = require_variant(
@@ -625,14 +631,17 @@ void compile_context(
         const std::string option = !overrides.masters.empty()
             ? overrides.masters
             : snapshot->profile_selection.masters;
-        const std::unordered_map<std::string, CompiledMasterRules>::const_iterator
-            found = snapshot->master_variants.find(option);
-        if (found == snapshot->master_variants.end()) {
-            throw semantic_error(snapshot->profile_filename, "masters",
-                "missing selected option '" + option + "'");
+        if (!option.empty()) {
+            const std::unordered_map<std::string,
+                CompiledMasterRules>::const_iterator found =
+                snapshot->master_variants.find(option);
+            if (found == snapshot->master_variants.end()) {
+                throw semantic_error(snapshot->profile_filename, "masters",
+                    "missing selected option '" + option + "'");
+            }
+            compiled.masters = found->second;
+            selected.masters = option;
         }
-        compiled.masters = found->second;
-        selected.masters = option;
     } else if (!overrides.masters.empty()) {
         throw semantic_error(snapshot->profile_filename, "overrides.masters",
             "masters resource is not available");
@@ -652,12 +661,18 @@ void compile_context(
 StarId resolve_module_star(
     const detail::RuleStarReference& reference,
     const StarRegistry& registry,
+    std::size_t catalog_star_count,
     const std::string& module,
     const std::string& path
 ) {
     if (reference.by_id) {
         if (reference.id >= registry.size()) {
             throw semantic_error(module, path, "unknown numeric star id");
+        }
+        if (reference.id >= catalog_star_count) {
+            throw semantic_error(module, path,
+                "numeric references to user-added stars are unstable; "
+                "use the star key instead");
         }
         return reference.id;
     }
@@ -669,19 +684,6 @@ StarId resolve_module_star(
     return id;
 }
 
-void replace_placement(
-    std::vector<PlacementRule>* rules,
-    const PlacementRule& replacement
-) {
-    for (std::size_t i = 0u; i < rules->size(); ++i) {
-        if ((*rules)[i].star_id == replacement.star_id) {
-            (*rules)[i] = replacement;
-            return;
-        }
-    }
-    rules->push_back(replacement);
-}
-
 std::size_t stem_index(const std::string& key) {
     for (std::size_t stem = 0u; stem < kStemCount; ++stem) {
         if (key == kStemKeys[stem]) return stem;
@@ -689,78 +691,143 @@ std::size_t stem_index(const std::string& key) {
     return kStemCount;
 }
 
-void apply_ruleset(
-    const ZiweiRuleset& ruleset,
-    StarRegistry* registry,
-    CompiledRules* compiled
+std::string variant_option(const std::string& key) {
+    const std::string::size_type separator = key.find('\n');
+    return separator == std::string::npos
+        ? std::string() : key.substr(separator + 1u);
+}
+
+template <typename T>
+bool variants_contain_option(
+    const std::unordered_map<std::string, T>& variants,
+    const std::string& option
 ) {
+    for (typename std::unordered_map<std::string, T>::const_iterator it =
+            variants.begin(); it != variants.end(); ++it) {
+        if (variant_option(it->first) == option) return true;
+    }
+    return false;
+}
+
+bool catalog_contains_option(
+    const detail::ZiweiCatalogSnapshot& snapshot,
+    const std::string& option
+) {
+    return variants_contain_option(snapshot.placement_variants, option)
+        || variants_contain_option(snapshot.brightness_variants, option)
+        || variants_contain_option(snapshot.sihua_variants, option)
+        || snapshot.master_variants.find(option)
+            != snapshot.master_variants.end();
+}
+
+template <typename T>
+void add_module_variant(
+    std::unordered_map<std::string, T>* variants,
+    const std::string& module,
+    const std::string& component,
+    const std::string& key,
+    const T& value
+) {
+    if (!variants->insert(std::make_pair(
+            entry_key(key, module), value)).second) {
+        throw semantic_error(module, component + "." + key,
+            "option '" + module + "' already exists");
+    }
+}
+
+std::shared_ptr<const detail::ZiweiCatalogSnapshot> extend_catalog_snapshot(
+    const std::shared_ptr<const detail::ZiweiCatalogSnapshot>& base,
+    const ZiweiRuleset& ruleset,
+    const ZiweiOptionSelection& selection
+) {
+    std::shared_ptr<detail::ZiweiCatalogSnapshot> snapshot(
+        new detail::ZiweiCatalogSnapshot(*base));
+    const std::size_t catalog_star_count = base->registry.size();
     const std::vector<ZiweiRuleModule>& modules = ruleset.modules();
     for (std::size_t module_index = 0u;
          module_index < modules.size(); ++module_index) {
         const detail::ZiweiRuleModuleData& module =
             detail::ZiweiRuleModuleAccess::get(modules[module_index]);
+        if (catalog_contains_option(*snapshot, module.label)) {
+            throw semantic_error(module.label, "option",
+                "the catalog or another module already defines option '"
+                    + module.label + "'");
+        }
+
+        std::set<std::string> new_stars;
 
         for (std::size_t i = 0u; i < module.stars.size(); ++i) {
             const detail::RuleStarDefinition& definition = module.stars[i];
             StarId id = kInvalidStarId;
-            if (registry->find(definition.key, &id)) {
-                const StarMetadata& existing = registry->at(id);
+            if (snapshot->registry.find(definition.key, &id)) {
+                const StarMetadata& existing = snapshot->registry.at(id);
                 if (existing.natal != definition.natal) {
                     throw semantic_error(module.label, definition.key,
                         "cannot change natal/flow scope");
                 }
                 if (definition.has_category
                     && existing.category != definition.category) {
-                    registry->set_category(id, definition.category);
+                    throw semantic_error(module.label, definition.key,
+                        "cannot replace a catalog star category");
                 }
                 continue;
             }
-            id = registry->add(
+            id = snapshot->registry.add(
                 definition.key, definition.category, definition.natal);
-            compiled->star_count = registry->size();
-            compiled->natal_by_star.push_back(definition.natal ? 1u : 0u);
-            if (definition.natal) ++compiled->natal_star_count;
-            std::array<int8_t, kBranchCount> default_brightness;
-            default_brightness.fill(static_cast<int8_t>(Brightness::None));
-            compiled->brightness.values.push_back(default_brightness);
+            if (definition.natal) ++snapshot->natal_star_count;
+            snapshot->module_owned_stars.insert(definition.key);
+            snapshot->profile_selection.placement[definition.key] = module.label;
+            snapshot->profile_selection.brightness[definition.key] = module.label;
+            new_stars.insert(definition.key);
         }
 
         for (std::map<std::string, PlacementRule>::const_iterator it =
                 module.natal_placements.begin();
              it != module.natal_placements.end(); ++it) {
             StarId id = kInvalidStarId;
-            if (!registry->find(it->first, &id)
-                || !registry->at(id).natal) {
+            if (!snapshot->registry.find(it->first, &id)
+                || !snapshot->registry.at(id).natal) {
                 throw semantic_error(module.label, "natalPlacements." + it->first,
                     "unknown or non-natal star");
             }
             PlacementRule rule = it->second;
             rule.star_id = id;
-            replace_placement(&compiled->placement.natal, rule);
+            add_module_variant(&snapshot->placement_variants, module.label,
+                "placement", it->first, rule);
         }
         for (std::map<std::string, PlacementRule>::const_iterator it =
                 module.flow_placements.begin();
              it != module.flow_placements.end(); ++it) {
             StarId id = kInvalidStarId;
-            if (!registry->find(it->first, &id)
-                || registry->at(id).natal) {
+            if (!snapshot->registry.find(it->first, &id)
+                || snapshot->registry.at(id).natal) {
                 throw semantic_error(module.label, "flowPlacements." + it->first,
                     "unknown or non-flow star");
             }
             PlacementRule rule = it->second;
             rule.star_id = id;
-            replace_placement(&compiled->placement.flow, rule);
+            add_module_variant(&snapshot->placement_variants, module.label,
+                "placement", it->first, rule);
         }
         for (std::map<std::string,
                 std::array<int8_t, kBranchCount> >::const_iterator it =
                 module.brightness.begin();
              it != module.brightness.end(); ++it) {
             StarId id = kInvalidStarId;
-            if (!registry->find(it->first, &id)) {
+            if (!snapshot->registry.find(it->first, &id)) {
                 throw semantic_error(module.label, "brightness." + it->first,
                     "unknown star key");
             }
-            compiled->brightness.values[id] = it->second;
+            add_module_variant(&snapshot->brightness_variants, module.label,
+                "brightness", it->first, it->second);
+            new_stars.erase(it->first);
+        }
+        for (std::set<std::string>::const_iterator it = new_stars.begin();
+             it != new_stars.end(); ++it) {
+            std::array<int8_t, kBranchCount> none;
+            none.fill(static_cast<int8_t>(Brightness::None));
+            add_module_variant(&snapshot->brightness_variants, module.label,
+                "brightness", *it, none);
         }
         for (std::map<std::string, detail::RuleTransformPatch>::const_iterator it =
                 module.sihua.begin(); it != module.sihua.end(); ++it) {
@@ -769,42 +836,74 @@ void apply_ruleset(
                 throw semantic_error(module.label, "sihua." + it->first,
                     "unknown stem key");
             }
-            TransformSet& target = compiled->sihua.by_stem[stem];
+            const std::unordered_map<std::string, std::string>::const_iterator
+                inherited = snapshot->profile_selection.sihua.find(it->first);
+            const std::string inherited_option = inherited
+                == snapshot->profile_selection.sihua.end()
+                ? std::string("option1") : inherited->second;
+            TransformSet target = require_variant(*snapshot,
+                snapshot->sihua_variants, "sihua", it->first,
+                inherited_option);
             StarId* fields[4] = {&target.lu, &target.quan, &target.ke, &target.ji};
             for (std::size_t kind = 0u; kind < 4u; ++kind) {
                 if (it->second.present[kind] == 0u) continue;
                 *fields[kind] = resolve_module_star(
-                    it->second.stars[kind], *registry, module.label,
-                    "sihua." + it->first);
+                    it->second.stars[kind], snapshot->registry,
+                    catalog_star_count, module.label, "sihua." + it->first);
             }
+            add_module_variant(&snapshot->sihua_variants, module.label,
+                "sihua", it->first, target);
         }
         if (module.masters.has_life || module.masters.has_body) {
-            compiled->masters.enabled = true;
-        }
-        if (module.masters.has_life) {
-            compiled->masters.life_input = module.masters.life_input;
-            for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
-                compiled->masters.life[branch] = resolve_module_star(
-                    module.masters.life[branch], *registry, module.label,
-                    "masters.life");
+            CompiledMasterRules masters;
+            const std::string inherited_option =
+                snapshot->profile_selection.masters.empty()
+                ? std::string("option1")
+                : snapshot->profile_selection.masters;
+            const std::unordered_map<std::string,
+                CompiledMasterRules>::const_iterator inherited =
+                snapshot->master_variants.find(inherited_option);
+            if (inherited == snapshot->master_variants.end()) {
+                if (!module.masters.has_life || !module.masters.has_body) {
+                    throw semantic_error(module.label, "masters",
+                        "a one-sided master patch requires a catalog master table");
+                }
+                masters.enabled = true;
+                masters.life.fill(kInvalidStarId);
+                masters.body.fill(kInvalidStarId);
+            } else {
+                masters = inherited->second;
             }
-        }
-        if (module.masters.has_body) {
-            compiled->masters.body_input = module.masters.body_input;
-            for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
-                compiled->masters.body[branch] = resolve_module_star(
-                    module.masters.body[branch], *registry, module.label,
-                    "masters.body");
+            if (module.masters.has_life) {
+                masters.life_input = module.masters.life_input;
+                for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
+                    masters.life[branch] = resolve_module_star(
+                        module.masters.life[branch], snapshot->registry,
+                        catalog_star_count, module.label, "masters.life");
+                }
+            }
+            if (module.masters.has_body) {
+                masters.body_input = module.masters.body_input;
+                for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
+                    masters.body[branch] = resolve_module_star(
+                        module.masters.body[branch], snapshot->registry,
+                        catalog_star_count, module.label, "masters.body");
+                }
+            }
+            if (!snapshot->master_variants.insert(std::make_pair(
+                    module.label, masters)).second) {
+                throw semantic_error(module.label, "masters",
+                    "option '" + module.label + "' already exists");
             }
         }
     }
-    compiled->star_count = registry->size();
-    compiled->registry_fingerprint = compiled_rules_fingerprint(
-        *compiled, registry->fingerprint());
-    if (!validate_compiled_rules(*compiled, registry->size())) {
-        throw semantic_error("ruleset", "compiled_tables",
-            "module composition produced invalid rules");
-    }
+    validate_longevity_variants(
+        snapshot->profile_filename, snapshot->placement_variants);
+    CompiledRules validation;
+    ZiweiOptionSelection selected;
+    const std::shared_ptr<const detail::ZiweiCatalogSnapshot> result(snapshot);
+    compile_context(result, selection, &validation, &selected);
+    return result;
 }
 
 std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
@@ -985,7 +1084,8 @@ std::shared_ptr<const detail::ZiweiCatalogSnapshot> load_catalog_snapshot(
                 selected_option(profile, "sihua", key);
         }
         snapshot->profile_selection.masters =
-            default_option(profile, "masters");
+            snapshot->master_variants.empty()
+                ? std::string() : default_option(profile, "masters");
         snapshot->profile_selection.longevity =
             default_option(profile, "longevity");
 
@@ -1085,18 +1185,23 @@ ZiweiContext ZiweiDataCatalog::create_context(
     const std::shared_ptr<const detail::ZiweiCatalogSnapshot> snapshot =
         std::atomic_load(&snapshot_);
     if (!snapshot) throw std::logic_error("ZiweiDataCatalog is not initialized");
-    CompiledRules compiled;
-    ZiweiOptionSelection selected;
-    compile_context(snapshot, selection, &compiled, &selected);
     if (ruleset.modules().empty()) {
+        CompiledRules compiled;
+        ZiweiOptionSelection selected;
+        compile_context(snapshot, selection, &compiled, &selected);
         const std::shared_ptr<const StarRegistry> registry(
             snapshot, &snapshot->registry);
         return ZiweiContext(snapshot, registry,
             std::move(compiled), std::move(selected));
     }
-    std::shared_ptr<StarRegistry> registry(new StarRegistry(snapshot->registry));
-    apply_ruleset(ruleset, registry.get(), &compiled);
-    return ZiweiContext(snapshot, registry,
+    const std::shared_ptr<const detail::ZiweiCatalogSnapshot> extended =
+        extend_catalog_snapshot(snapshot, ruleset, selection);
+    CompiledRules compiled;
+    ZiweiOptionSelection selected;
+    compile_context(extended, selection, &compiled, &selected);
+    const std::shared_ptr<const StarRegistry> registry(
+        extended, &extended->registry);
+    return ZiweiContext(extended, registry,
         std::move(compiled), std::move(selected));
 }
 

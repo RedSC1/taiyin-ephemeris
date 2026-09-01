@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
     taiyin_ziwei_context* alternate_context = NULL;
     taiyin_ziwei_context* reloaded_context = NULL;
     taiyin_ziwei_context* custom_context = NULL;
+    taiyin_ziwei_context* removed_context = NULL;
     taiyin_ziwei_ruleset* ruleset = NULL;
     taiyin_ziwei_chart* chart = NULL;
     taiyin_ziwei_option_override option_override;
@@ -108,9 +109,16 @@ int main(int argc, char** argv) {
 
     {
         taiyin_ziwei_json_rule_module module;
+        taiyin_ziwei_option_override module_defaults[2];
         uint16_t custom_star = TAIYIN_ZIWEI_INVALID_STAR_ID;
         uint8_t is_natal = 0u;
         taiyin_ziwei_json_rule_module_init(&module);
+        taiyin_ziwei_option_override_init(&module_defaults[0]);
+        module_defaults[0].component = TAIYIN_ZIWEI_OPTION_PLACEMENT;
+        module_defaults[0].option = "option1";
+        taiyin_ziwei_option_override_init(&module_defaults[1]);
+        module_defaults[1].component = TAIYIN_ZIWEI_OPTION_BRIGHTNESS;
+        module_defaults[1].option = "option1";
         module.label = "c-json-module";
         module.stars_json =
             "[{\"key\":\"c_custom_star\",\"type\":\"minor\","
@@ -125,9 +133,20 @@ int main(int argc, char** argv) {
             return fail("report a duplicate C JSON module label as invalid input");
         }
         if (taiyin_ziwei_context_create_with_ruleset(
-                catalog, NULL, 0u, ruleset, &custom_context) < 0
+                catalog, module_defaults, 2u, ruleset, &custom_context) < 0
             ) {
-            return fail("compile a C JSON Ziwei ruleset");
+            return fail("preserve C JSON star options under component defaults");
+        }
+        if (taiyin_ziwei_ruleset_remove_module(
+                ruleset, "c-json-module") < 0
+            || taiyin_ziwei_context_create_with_ruleset(
+                catalog, NULL, 0u, ruleset, &removed_context) < 0
+            || taiyin_ziwei_star_count(removed_context) != 159u) {
+            return fail("remove every option contributed by a C JSON module");
+        }
+        if (taiyin_call_result_status(taiyin_ziwei_ruleset_remove_module(
+                ruleset, "c-json-module")) != TAIYIN_ERROR_INVALID_ARGUMENT) {
+            return fail("reject removal of a missing C JSON module");
         }
         taiyin_ziwei_ruleset_destroy(ruleset);
         ruleset = NULL;
@@ -411,6 +430,7 @@ int main(int argc, char** argv) {
 
     taiyin_ziwei_chart_destroy(chart);
     taiyin_ziwei_context_destroy(custom_context);
+    taiyin_ziwei_context_destroy(removed_context);
     taiyin_ziwei_ruleset_destroy(ruleset);
     taiyin_ziwei_context_destroy(reloaded_context);
     taiyin_ziwei_context_destroy(alternate_context);

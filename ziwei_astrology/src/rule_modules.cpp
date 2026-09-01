@@ -620,10 +620,29 @@ const std::vector<ZiweiRuleModule>& ZiweiRuleset::modules() const noexcept {
     return modules_;
 }
 
-ZiweiRuleset ZiweiRuleset::with(const ZiweiRuleModule& module) const {
+ZiweiRuleset ZiweiRuleset::add_module(const ZiweiRuleModule& module) const {
     if (!module.valid()) throw std::invalid_argument("rule module is not initialized");
     std::vector<ZiweiRuleModule> result(modules_);
     result.push_back(module);
+    return ZiweiRuleset(result);
+}
+
+ZiweiRuleset ZiweiRuleset::remove_module(const std::string& label) const {
+    const std::string normalized = require_label(label);
+    std::vector<ZiweiRuleModule> result;
+    result.reserve(modules_.size());
+    bool found = false;
+    for (std::size_t i = 0u; i < modules_.size(); ++i) {
+        if (modules_[i].label() == normalized) {
+            found = true;
+            continue;
+        }
+        result.push_back(modules_[i]);
+    }
+    if (!found) {
+        throw std::invalid_argument(
+            "user rule module '" + normalized + "' does not exist");
+    }
     return ZiweiRuleset(result);
 }
 
@@ -665,11 +684,11 @@ ZiweiRuleModule ZiweiConfigLoader::compile_json(
     }
 }
 
-ZiweiRuleset ZiweiConfigLoader::override_with(
+ZiweiRuleset ZiweiConfigLoader::add_json_module(
     const ZiweiRuleset& base,
     const ZiweiJsonRuleModuleInput& input
 ) {
-    return base.with(compile_json(input));
+    return base.add_module(compile_json(input));
 }
 
 }  // namespace ziwei

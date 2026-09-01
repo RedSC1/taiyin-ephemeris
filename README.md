@@ -2,7 +2,7 @@
 
 [中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
-> **Pre-release notice:** The current `1.0.0-beta.6` version identifies an
+> **Pre-release notice:** The current `1.0.0-beta.7` version identifies an
 > in-development pre-release, not a final production release. Public APIs,
 > packaged data boundaries, documentation, and the planned language bindings
 > may still change before the first stable release.
@@ -243,11 +243,17 @@ lunar-point C++ entry points. The C++ ABI itself is not a stable distribution
 interface; application and FFI consumers should use the base C ABI instead.
 
 Chinese metaphysics extensions are disabled by default. Without
-  `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON`, CMake does not build BaZi
-  code, targets, tests, C ABI symbols, or headers.
-- BaZi is the only currently optional native extension. To build it, explicitly enable both
-  `-DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` and
-  `-DTAIYIN_BUILD_BAZI_EXTENSION=ON`; no extra compiler toolchain is required.
+`TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON`, CMake does not build BaZi or
+Ziwei code, targets, tests, C ABI symbols, or headers. Enable each independent
+module with `TAIYIN_BUILD_BAZI_EXTENSION=ON` or
+`TAIYIN_BUILD_ZIWEI_EXTENSION=ON`; no extra compiler toolchain is required.
+
+Ziwei's bundled TOML catalog is the immutable rule baseline. A user JSON module
+may add one named option across placement, brightness, Si-Hua, flow-star, and
+master tables, but cannot replace or remove a TOML option. Removing a user
+module by label removes everything contributed under that option name and only
+affects subsequently created contexts; existing contexts retain their immutable
+snapshot. See the [Ziwei API](ziwei_astrology/docs/api.md).
 
 Ganzhi is built into the Chinese-calendar implementation because it supplies
 the calendrical year/month/day/hour cycle rather than a metaphysics
@@ -258,8 +264,8 @@ The extension documentation is listed in [`docs/index.md`](docs/index.md),
 including [sidereal astrology](docs/astrology_sidereal.md),
 [houses](docs/astrology_houses.md), [lunar points](docs/astrology_lunar_points.md),
 and the [Chinese calendar](docs/chinese_calendar.md).
-The optional metaphysics layer is documented separately in
-[BaZi](docs/bazi.md).
+The optional metaphysics layers are documented separately in
+[BaZi](docs/bazi.md) and [Ziwei](ziwei_astrology/docs/api.md).
 
 ## Documentation
 
@@ -269,6 +275,8 @@ The optional metaphysics layer is documented separately in
   data-package, and known-behavior boundaries.
 - [`docs/bazi.md`](docs/bazi.md) — optional BaZi build, ownership, calculation,
   and validation contract.
+- [`ziwei_astrology/docs/api.md`](ziwei_astrology/docs/api.md) — optional Ziwei
+  rules, charts, flow layers, and removable user option modules.
 - [`docs/event_search.md`](docs/event_search.md) — event-search primitives.
 - [`docs/solar_visibility.md`](docs/solar_visibility.md) — solar rise/set,
   twilight, transit, fast paths, and refraction conventions.

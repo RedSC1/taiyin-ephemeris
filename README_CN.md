@@ -2,7 +2,7 @@
 
 [English README](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
-> **预发布说明：** 当前的 `1.0.0-beta.6` 是开发中的预发布版本，并非最终稳定发布。
+> **预发布说明：** 当前的 `1.0.0-beta.7` 是开发中的预发布版本，并非最终稳定发布。
 > 公开 API、随包数据边界、文档和计划中的语言绑定在首个稳定版发布前仍可能调整。
 
 Taiyin Ephemeris 是一个可嵌入的天文库，用于计算太阳系天体位置、观测坐标、
@@ -201,11 +201,16 @@ const Status status = calc_positions_ut(
 应用和 FFI 应使用基础 C ABI。
 
 中国术数扩展默认关闭。未设置
-  `TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 时，CMake 不会构建 BaZi
-  代码、target、测试、C ABI symbol 或头文件。
-- BaZi 是目前唯一可选的 native 扩展。构建时必须显式同时设置
-  `-DTAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 和
-  `-DTAIYIN_BUILD_BAZI_EXTENSION=ON`，不需要额外编译器工具链。
+`TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` 时，CMake 不会构建八字或
+紫微代码、target、测试、C ABI symbol 或头文件。两个独立模块分别通过
+`TAIYIN_BUILD_BAZI_EXTENSION=ON` 和 `TAIYIN_BUILD_ZIWEI_EXTENSION=ON`
+启用，不需要额外编译器工具链。
+
+紫微随附的 TOML catalog 是不可变的基础规则库。用户 JSON module 可以用一个
+名称同时增加安星、亮度、四化、流曜、命主/身主 option，但不能覆盖或删除 TOML
+已有 option。按 label 删除用户 module 时，会一次清除该名称贡献的全部内容；它只
+影响之后创建的 context，已经创建的 context 继续持有原来的不可变快照。详见
+[`ziwei_astrology/docs/api.md`](ziwei_astrology/docs/api.md)。
 
 Ganzhi 属于中国历法的年、月、日、时纪法，固定包含在 Chinese Calendar 实现中，
 不属于中国术数解释模块。未来的奇门、六壬等扩展会在同一术数门下使用各自独立的
@@ -215,7 +220,8 @@ opt-in 选项。
 [恒星黄道](doc_cn/astrology_sidereal.md)、[宫位](doc_cn/astrology_houses.md)、
 [月球点](doc_cn/astrology_lunar_points.md) 和
 [中国历法](doc_cn/chinese_calendar.md)。
-可选术数层另见[八字扩展](doc_cn/bazi.md)。
+可选术数层另见[八字扩展](doc_cn/bazi.md)和
+[紫微 API](ziwei_astrology/docs/api.md)。
 
 ## 文档
 
@@ -224,6 +230,8 @@ opt-in 选项。
 - [`doc_cn/current_limitations.md`](doc_cn/current_limitations.md) — 覆盖范围、
   数据包和已知行为边界。
 - [`doc_cn/bazi.md`](doc_cn/bazi.md) — 可选八字构建、所有权、计算与验证契约。
+- [`ziwei_astrology/docs/api.md`](ziwei_astrology/docs/api.md) — 可选紫微规则、
+  命盘、流运和可移除的用户 option module。
 - [`doc_cn/event_search.md`](doc_cn/event_search.md) — event-search primitive。
 - [`doc_cn/solar_visibility.md`](doc_cn/solar_visibility.md) — 太阳升落、twilight、
   transit、快速路线和折射约定。

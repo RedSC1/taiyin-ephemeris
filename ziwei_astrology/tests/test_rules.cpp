@@ -401,6 +401,62 @@ int main() {
         }
         expect(unsupported_masters_threw,
             "master override rejects a catalog without master rules", &failures);
+
+        ZiweiJsonRuleModuleInput complete_masters_input;
+        complete_masters_input.label = "custom-masters";
+        complete_masters_input.masters_json =
+            "{\"ming_zhu\":{\"table\":{"
+            "\"0\":\"alpha\",\"1\":\"alpha\",\"2\":\"alpha\","
+            "\"3\":\"alpha\",\"4\":\"alpha\",\"5\":\"alpha\","
+            "\"6\":\"alpha\",\"7\":\"alpha\",\"8\":\"alpha\","
+            "\"9\":\"alpha\",\"10\":\"alpha\",\"11\":\"alpha\"}},"
+            "\"shen_zhu\":{\"table\":{"
+            "\"0\":\"beta\",\"1\":\"beta\",\"2\":\"beta\","
+            "\"3\":\"beta\",\"4\":\"beta\",\"5\":\"beta\","
+            "\"6\":\"beta\",\"7\":\"beta\",\"8\":\"beta\","
+            "\"9\":\"beta\",\"10\":\"beta\",\"11\":\"beta\"}}}";
+        const ZiweiRuleset complete_masters_ruleset =
+            ZiweiConfigLoader::get_default().add_module(
+                ZiweiConfigLoader::compile_json(complete_masters_input));
+        const ZiweiContext unselected_masters = catalog.create_context(
+            ZiweiOptionSelection(), complete_masters_ruleset);
+        ZiweiOptionSelection complete_masters_selection;
+        complete_masters_selection.masters = "custom-masters";
+        const ZiweiContext selected_masters = catalog.create_context(
+            complete_masters_selection, complete_masters_ruleset);
+        expect(!unselected_masters.compiled_tables().masters.enabled
+                && unselected_masters.selected_options().masters.empty(),
+            "adding a complete master option does not select it by default",
+            &failures);
+        expect(selected_masters.compiled_tables().masters.enabled
+                && selected_masters.compiled_tables().masters.life[0] == alpha
+                && selected_masters.compiled_tables().masters.body[0] == beta,
+            "a complete JSON master option works without catalog master rules",
+            &failures);
+
+        bool one_sided_masters_threw = false;
+        try {
+            ZiweiJsonRuleModuleInput partial_masters_input;
+            partial_masters_input.label = "custom-life-only";
+            partial_masters_input.masters_json =
+                "{\"ming_zhu\":{\"table\":{"
+                "\"0\":\"alpha\",\"1\":\"alpha\",\"2\":\"alpha\","
+                "\"3\":\"alpha\",\"4\":\"alpha\",\"5\":\"alpha\","
+                "\"6\":\"alpha\",\"7\":\"alpha\",\"8\":\"alpha\","
+                "\"9\":\"alpha\",\"10\":\"alpha\","
+                "\"11\":\"alpha\"}}}";
+            const ZiweiRuleset partial_masters_ruleset =
+                ZiweiConfigLoader::get_default().add_module(
+                    ZiweiConfigLoader::compile_json(partial_masters_input));
+            ZiweiOptionSelection partial_selection;
+            partial_selection.masters = "custom-life-only";
+            catalog.create_context(partial_selection, partial_masters_ruleset);
+        } catch (const RuleLoadError&) {
+            one_sided_masters_threw = true;
+        }
+        expect(one_sided_masters_threw,
+            "a one-sided master patch still requires an inherited master table",
+            &failures);
         expect(catalog.create_context().valid(),
             "catalog remains usable after an invalid option selection",
             &failures);
@@ -449,9 +505,19 @@ int main() {
             "\"6\":\"ziwei\",\"7\":\"ziwei\",\"8\":\"ziwei\","
             "\"9\":\"ziwei\",\"10\":\"ziwei\",\"11\":\"ziwei\"}}}";
         const ZiweiRuleModule first = ZiweiConfigLoader::compile_json(first_input);
-        const ZiweiRuleset ruleset = ZiweiConfigLoader::get_default().with(first);
-        const ZiweiContext custom = catalog.create_context(
+        const ZiweiRuleset ruleset =
+            ZiweiConfigLoader::get_default().add_module(first);
+        const ZiweiContext unselected = catalog.create_context(
             ZiweiOptionSelection(), ruleset);
+        expect(unselected.selected_options().placement.at("ziwei") == "option1",
+            "adding a module does not replace the catalog-selected option",
+            &failures);
+        ZiweiOptionSelection custom_selection;
+        custom_selection.placement["ziwei"] = "custom-base";
+        custom_selection.sihua["jia"] = "custom-base";
+        custom_selection.masters = "custom-base";
+        const ZiweiContext custom = catalog.create_context(
+            custom_selection, ruleset);
         StarId custom_star = kInvalidStarId;
         expect(custom.star_registry().size() == 161u
                 && custom.star_registry().find("custom_star", &custom_star)
@@ -472,6 +538,21 @@ int main() {
                     Gender::Male, &custom_position, &anchors, Branch::Hai)
                 && custom_position == Branch::You,
             "custom flow rules can reuse immutable natal anchors", &failures);
+        ZiweiOptionSelection component_defaults;
+        component_defaults.placement_default = "option1";
+        component_defaults.brightness_default = "option1";
+        const ZiweiContext with_component_defaults = catalog.create_context(
+            component_defaults, ruleset);
+        expect(with_component_defaults.selected_options().placement.at("ziwei")
+                    == "option1"
+                && with_component_defaults.selected_options().placement.at(
+                    "custom_star") == "custom-base"
+                && with_component_defaults.selected_options().placement.at(
+                    "custom_flow") == "custom-base"
+                && with_component_defaults.selected_options().brightness.at(
+                    "custom_star") == "custom-base",
+            "component defaults do not displace module-owned star options",
+            &failures);
         const PlacementRule* ziwei_rule = find_rule(
             custom.compiled_tables().placement.natal, ziwei);
         const PlacementRule* custom_rule = find_rule(
@@ -479,7 +560,8 @@ int main() {
         expect(ziwei_rule != NULL && evaluate_placement(
                 *ziwei_rule, facts, anchors, Branch::Hai, &custom_position)
                 && custom_position == Branch::Zi,
-            "JSON constant overrides a bundled placement", &failures);
+            "a JSON placement is exposed as a separately selected option",
+            &failures);
         expect(custom_rule != NULL && evaluate_placement(
                 *custom_rule, facts, anchors, Branch::Hai, &custom_position)
                 && custom_position == Branch::Hai,
@@ -543,7 +625,7 @@ int main() {
         legacy_input.brightness_json =
             "{\"_comment\":\"presentation metadata\","
             "\"brightness_labels\":[\"陷\",\"不\",\"平\",\"利\",\"得\",\"旺\",\"庙\"]}";
-        const ZiweiRuleset legacy_ruleset = ZiweiConfigLoader::get_default().with(
+        const ZiweiRuleset legacy_ruleset = ZiweiConfigLoader::get_default().add_module(
             ZiweiConfigLoader::compile_json(legacy_input));
         const ZiweiContext legacy = catalog.create_context(
             ZiweiOptionSelection(), legacy_ruleset);
@@ -591,7 +673,7 @@ int main() {
             "\"steps\":[{\"type\":\"constant\",\"value\":2147483647},"
             "{\"type\":\"constant\",\"value\":2147483647}]}}]";
         const ZiweiRuleset wide_pipeline_ruleset =
-            ZiweiConfigLoader::get_default().with(
+            ZiweiConfigLoader::get_default().add_module(
                 ZiweiConfigLoader::compile_json(wide_pipeline_input));
         const ZiweiContext wide_pipeline = catalog.create_context(
             ZiweiOptionSelection(), wide_pipeline_ruleset);
@@ -622,7 +704,7 @@ int main() {
             "\"wu\":2147483647,\"wei\":2147483647,\"shen\":2147483647,"
             "\"you\":2147483647,\"xu\":2147483647,\"hai\":2147483647}}}]";
         const ZiweiRuleset wide_offset_ruleset =
-            ZiweiConfigLoader::get_default().with(
+            ZiweiConfigLoader::get_default().add_module(
                 ZiweiConfigLoader::compile_json(wide_offset_input));
         const ZiweiContext wide_offsets = catalog.create_context(
             ZiweiOptionSelection(), wide_offset_ruleset);
@@ -692,29 +774,124 @@ int main() {
         second_input.label = "custom-last";
         second_input.stars_json =
             "[{\"key\":\"ziwei\",\"rule\":{\"type\":\"constant\",\"value\":5}}]";
-        const ZiweiRuleset layered = ruleset.with(
+        const ZiweiRuleset layered = ruleset.add_module(
             ZiweiConfigLoader::compile_json(second_input));
-        const ZiweiContext last_wins = catalog.create_context(
-            ZiweiOptionSelection(), layered);
-        ziwei_rule = find_rule(last_wins.compiled_tables().placement.natal, ziwei);
+        ZiweiOptionSelection last_selection = custom_selection;
+        last_selection.placement["ziwei"] = "custom-last";
+        const ZiweiContext custom_last = catalog.create_context(
+            last_selection, layered);
+        ziwei_rule = find_rule(
+            custom_last.compiled_tables().placement.natal, ziwei);
         expect(ziwei_rule != NULL && evaluate_placement(
                 *ziwei_rule, facts, anchors, Branch::Hai, &custom_position)
                 && custom_position == Branch::Si,
-            "later labelled modules override earlier compiled tables",
+            "separate labelled modules expose separate placement options",
             &failures);
         expect(custom.star_registry().fingerprint()
-                    == last_wins.star_registry().fingerprint()
+                    == custom_last.star_registry().fingerprint()
                 && custom.compiled_tables().registry_fingerprint
-                    != last_wins.compiled_tables().registry_fingerprint
-                && custom.valid() && last_wins.valid(),
+                    != custom_last.compiled_tables().registry_fingerprint
+                && custom.valid() && custom_last.valid(),
             "compiled rule identity distinguishes contexts with the same star registry",
             &failures);
         FlowLayer mismatched_flow_layer;
         expect(make_flow_layer(FlowLevel::Year,
-                    FlowCoordinate{Stem::Jia, Branch::Zi}, custom_chart,
-                    last_wins.compiled_tables(), &mismatched_flow_layer)
+                FlowCoordinate{Stem::Jia, Branch::Zi}, custom_chart,
+                custom_last.compiled_tables(), &mismatched_flow_layer)
                     == taiyin::TAIYIN_ERROR_INVALID_ARGUMENT,
             "charts reject a same-registry context with different compiled rules",
+            &failures);
+
+        const ZiweiRuleset without_last = layered.remove_module("custom-last");
+        const ZiweiContext restored = catalog.create_context(
+            custom_selection, without_last);
+        ziwei_rule = find_rule(
+            restored.compiled_tables().placement.natal, ziwei);
+        expect(ziwei_rule != NULL && evaluate_placement(
+                *ziwei_rule, facts, anchors, Branch::Hai, &custom_position)
+                && custom_position == Branch::Zi,
+            "removing one user module removes all of its option tables",
+            &failures);
+        bool missing_module_threw = false;
+        try {
+            without_last.remove_module("option1");
+        } catch (const std::invalid_argument&) {
+            missing_module_threw = true;
+        }
+        expect(missing_module_threw,
+            "catalog options cannot be removed as user modules", &failures);
+        const ZiweiRuleset without_custom = ruleset.remove_module("custom-base");
+        const ZiweiContext catalog_only = catalog.create_context(
+            ZiweiOptionSelection(), without_custom);
+        expect(catalog_only.star_registry().size() == 159u,
+            "removing a module removes all stars and tables it contributed",
+            &failures);
+        bool removed_options_rejected = true;
+        ZiweiOptionSelection removed_selection;
+        removed_selection.placement["ziwei"] = "custom-base";
+        try {
+            catalog.create_context(removed_selection, without_custom);
+            removed_options_rejected = false;
+        } catch (const RuleLoadError&) {
+        }
+        removed_selection = ZiweiOptionSelection();
+        removed_selection.sihua["jia"] = "custom-base";
+        try {
+            catalog.create_context(removed_selection, without_custom);
+            removed_options_rejected = false;
+        } catch (const RuleLoadError&) {
+        }
+        removed_selection = ZiweiOptionSelection();
+        removed_selection.masters = "custom-base";
+        try {
+            catalog.create_context(removed_selection, without_custom);
+            removed_options_rejected = false;
+        } catch (const RuleLoadError&) {
+        }
+        expect(removed_options_rejected,
+            "removing a module removes its placement, Si-Hua and master options",
+            &failures);
+        expect(custom.star_registry().find("custom_star", &custom_star)
+                && custom.compiled_tables().sihua.by_stem[0].lu == custom_star
+                && custom.compiled_tables().masters.life[0] == custom_star,
+            "removing a module does not mutate an existing context snapshot",
+            &failures);
+
+        bool unstable_numeric_reference_threw = false;
+        try {
+            ZiweiJsonRuleModuleInput numeric_reference_input;
+            numeric_reference_input.label = "unstable-numeric-reference";
+            numeric_reference_input.stars_json =
+                "[{\"key\":\"retarget_star\","
+                "\"rule\":{\"type\":\"constant\",\"value\":0}}]";
+            numeric_reference_input.sihua_json = "{\"jia\":{\"lu\":159}}";
+            const ZiweiRuleset numeric_reference_ruleset = ruleset.add_module(
+                ZiweiConfigLoader::compile_json(numeric_reference_input));
+            ZiweiOptionSelection numeric_reference_selection;
+            numeric_reference_selection.sihua["jia"] =
+                "unstable-numeric-reference";
+            catalog.create_context(
+                numeric_reference_selection, numeric_reference_ruleset);
+        } catch (const RuleLoadError&) {
+            unstable_numeric_reference_threw = true;
+        }
+        expect(unstable_numeric_reference_threw,
+            "numeric references cannot target removable user-star IDs",
+            &failures);
+
+        ZiweiJsonRuleModuleInput stable_numeric_input;
+        stable_numeric_input.label = "stable-numeric-reference";
+        stable_numeric_input.sihua_json = "{\"jia\":{\"lu\":0}}";
+        const ZiweiRuleset stable_numeric_ruleset =
+            ZiweiConfigLoader::get_default().add_module(
+                ZiweiConfigLoader::compile_json(stable_numeric_input));
+        ZiweiOptionSelection stable_numeric_selection;
+        stable_numeric_selection.sihua["jia"] = "stable-numeric-reference";
+        const ZiweiContext stable_numeric_context = catalog.create_context(
+            stable_numeric_selection, stable_numeric_ruleset);
+        expect(stable_numeric_context.compiled_tables().sihua.by_stem[0].lu
+                == 0u,
+            "numeric references to stable catalog star IDs remain supported",
             &failures);
 
         bool excessive_nesting_threw = false;
@@ -736,7 +913,7 @@ int main() {
 
         bool duplicate_label_threw = false;
         try {
-            layered.with(first);
+            layered.add_module(first);
         } catch (const std::invalid_argument&) {
             duplicate_label_threw = true;
         }

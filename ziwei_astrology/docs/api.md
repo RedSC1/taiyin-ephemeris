@@ -36,7 +36,7 @@ publishes a new immutable snapshot. Existing contexts continue using their old
 snapshot without locks. The old `load_rules_from_toml()` remains as a
 compatibility one-shot loader but should not be used per chart.
 
-## Ordered JSON rule modules
+## Removable JSON option modules
 
 `ZiweiConfigLoader::compile_json()` accepts the former Dart `stars`,
 `flow_stars`, brightness, Si-Hua, and master JSON shapes and compiles them once
@@ -45,12 +45,19 @@ into an immutable `ZiweiRuleModule`. `constant`, `anchor_offset`, `lookup`,
 bounded input domains are enumerated immediately and the module retains flat
 answer tables.
 
-Modules are combined by `ZiweiRuleset` in explicit order. A later module
-replaces overlapping placement or brightness tables and patches only the
-specified Si-Hua fields. Labels must be unique; custom JSON cannot use the
-reserved `option1` through `option4` labels. Unknown star keys declared by a
-module receive ruleset-local IDs after the bundled range, while the built-in
-IDs remain unchanged. Persist the stable star key rather than a local ID.
+Each module label is the option name contributed by that whole module across
+placement, brightness, Si-Hua, flow-star, and master tables. Modules only add
+options: they never replace or remove an option loaded from TOML. A label that
+matches any catalog option or another user module is rejected instead of using
+last-write-wins behavior. Unknown star keys declared by a module receive
+ruleset-local IDs after the bundled range, while the built-in IDs remain
+unchanged. Persist the stable star key rather than a local ID.
+Numeric JSON references may address bundled catalog IDs only. References to
+user-added stars must use their stable string keys because removing another
+module may otherwise renumber ruleset-local IDs.
+Component-wide placement and brightness defaults apply to catalog stars. A
+module-owned star retains its module option unless the caller explicitly
+selects another option for that star key.
 In a composite registry, `natal_star_count` is a count, not an ID boundary:
 custom natal stars are appended after all bundled IDs. Inspect
 `StarMetadata::natal` (or `taiyin_ziwei_star_is_natal()`) instead of testing
@@ -64,15 +71,23 @@ input.stars_json = R"json([
    "rule":{"type":"anchor_offset","anchor":"ziwei","offset":2}}
 ])json";
 
-ZiweiRuleset ruleset = ZiweiConfigLoader::override_with(
+ZiweiRuleset ruleset = ZiweiConfigLoader::add_json_module(
     ZiweiConfigLoader::get_default(), input);
+ZiweiOptionSelection selection;
+selection.placement["custom_star"] = "my-rules";
 ZiweiContext context = catalog.create_context(
-    ZiweiOptionSelection(), ruleset);
+    selection, ruleset);
+
+// Removes every placement, brightness, Si-Hua, flow-star, master table, and
+// new star contributed by this user module. It cannot remove TOML options.
+ruleset = ruleset.remove_module("my-rules");
 ```
 
 Contexts own an immutable composite registry and compiled table snapshot.
 Creating a customized context does not mutate the catalog defaults or an
-already-created context. Custom natal and flow stars participate in the same
+already-created context. Removing a module affects only contexts created from
+the resulting ruleset; existing contexts retain their prior snapshot. Custom
+natal and flow stars participate in the same
 dynamic palace bitsets and transformation overlays as bundled stars.
 For `masters_json`, an explicit `boundary` of `lunar` or `solar` selects that
 year branch; when omitted, the bundled semantics remain unchanged (life master
@@ -82,6 +97,7 @@ stored by the C++ core; bindings may preserve them separately.
 
 The C ABI exposes the same lifecycle with `taiyin_ziwei_ruleset_create()`,
 `taiyin_ziwei_ruleset_add_json_module()`, and
+`taiyin_ziwei_ruleset_remove_module()`, plus
 `taiyin_ziwei_context_create_with_ruleset()`.
 
 Bundled placement resources contain only final finite mappings: `inputs`, their exact

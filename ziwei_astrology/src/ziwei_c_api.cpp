@@ -474,9 +474,24 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_ruleset_add_json_module(
         input.flow_json = module->flow_json ? module->flow_json : empty;
         input.masters_json = module->masters_json ? module->masters_json : empty;
         const taiyin::ziwei::ZiweiRuleset replacement =
-            taiyin::ziwei::ZiweiConfigLoader::override_with(
+            taiyin::ziwei::ZiweiConfigLoader::add_json_module(
                 ruleset->value, input);
         ruleset->value = replacement;
+        return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+    } catch (...) {
+        return taiyin_c_internal::pack_call_result(exception_status());
+    }
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_ruleset_remove_module(
+    taiyin_ziwei_ruleset* ruleset,
+    const char* label
+) {
+    if (!ruleset || !label || label[0] == '\0') {
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    }
+    try {
+        ruleset->value = ruleset->value.remove_module(label);
         return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
     } catch (...) {
         return taiyin_c_internal::pack_call_result(exception_status());
