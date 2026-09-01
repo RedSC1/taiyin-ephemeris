@@ -1,6 +1,7 @@
 #include "json_internal.h"
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <locale>
 #include <sstream>
