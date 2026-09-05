@@ -16,7 +16,7 @@ runtime and import-library name, for example `taiyin-10.dll` and
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
 the independent semantic library version; the current beta is
-`1.0.0-beta.8`. `taiyin_get_library_codename()` reports the major-release codename;
+`1.0.0-beta.9`. `taiyin_get_library_codename()` reports the major-release codename;
 Taiyin `1.x.x` is **Singularity**. The returned version and codename strings
 have static library lifetime and must not be freed. `taiyin_get_capabilities()`
 reports the functional modules and feature-level extensions present in the
