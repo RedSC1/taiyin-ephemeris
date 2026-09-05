@@ -153,17 +153,47 @@ Status compute_anchors(
     result.solar_term = facts.solar_term_pillars;
     result.lunar = facts.lunar_pillars;
 
-    const int month_offset = facts.effective_lunar_month - 1;
-    const int hour_index = to_index(facts.lunar_pillars.hour.branch);
+    const Stem year_stem = options.rules.wu_hu_dun_year_boundary
+            == PillarBoundary::SolarTerm
+        ? facts.solar_term_pillars.year.stem
+        : facts.lunar_pillars.year.stem;
+    PlacementAnchors placed;
+    const Status status = compute_placement_anchors(
+        facts.effective_lunar_month, facts.lunar_date.day,
+        to_index(facts.lunar_pillars.hour.branch), to_index(year_stem),
+        options.chart_mode, &placed);
+    if (status != TAIYIN_STATUS_OK) return status;
+    result.bureau = placed.bureau;
+    result.ziwei = placed.ziwei;
+    result.tianfu = placed.tianfu;
+    result.palace_positions = placed.palace_positions;
+    *out = result;
+    *out_body_palace = placed.body_palace;
+    return TAIYIN_STATUS_OK;
+}
+
+Status compute_placement_anchors(
+    int month, int day, int hour_branch, int year_stem,
+    ZiweiChartMode mode, PlacementAnchors* out, const Bureau* fixed_bureau
+) noexcept {
+    if (!out || month < 1 || month > 12 || day < 1 || day > 30
+        || hour_branch < 0 || hour_branch > 11 || year_stem < 0 || year_stem > 9
+        || static_cast<uint8_t>(mode) > 2u
+        || (fixed_bureau && !is_valid(*fixed_bureau))) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    PlacementAnchors result = {};
+    const int month_offset = month - 1;
+    const int hour_index = hour_branch;
     const Branch original_life = static_cast<Branch>(
         normalized_index(2 + month_offset - hour_index, 12));
     const Branch body = static_cast<Branch>(
         normalized_index(2 + month_offset + hour_index, 12));
 
     Branch life = original_life;
-    if (options.chart_mode == ZiweiChartMode::DiPan) {
+    if (mode == ZiweiChartMode::DiPan) {
         life = body;
-    } else if (options.chart_mode == ZiweiChartMode::RenPan) {
+    } else if (mode == ZiweiChartMode::RenPan) {
         life = advance_branch(original_life, 2);
     }
     for (std::size_t palace = 0u; palace < kPalaceCount; ++palace) {
@@ -171,26 +201,20 @@ Status compute_anchors(
             advance_branch(life, -static_cast<int>(palace));
     }
 
-    const Stem year_stem = options.rules.wu_hu_dun_year_boundary
-            == PillarBoundary::SolarTerm
-        ? facts.solar_term_pillars.year.stem
-        : facts.lunar_pillars.year.stem;
-    std::array<Stem, kBranchCount> palace_stems = {};
-    if (compute_palace_stems(year_stem, &palace_stems) != TAIYIN_STATUS_OK) {
+    if (compute_palace_stems(static_cast<Stem>(year_stem), &result.palace_stems)
+            != TAIYIN_STATUS_OK) {
         return TAIYIN_ERROR_INTERNAL;
     }
-    const Stem life_stem = palace_stems[to_index(life)];
+    const Stem life_stem = result.palace_stems[to_index(life)];
     const Ganzhi life_ganzhi = {life_stem, life};
     if (!is_valid(life_ganzhi)) return TAIYIN_ERROR_INTERNAL;
 
-    result.bureau = bureau_from_palace_ganzhi(life_ganzhi);
-    result.ziwei = ziwei_position(facts.lunar_date.day, result.bureau);
+    result.bureau = fixed_bureau ? *fixed_bureau : bureau_from_palace_ganzhi(life_ganzhi);
+    result.ziwei = ziwei_position(static_cast<uint8_t>(day), result.bureau);
     result.tianfu = static_cast<Branch>(
         normalized_index(4 - to_index(result.ziwei), 12));
-    if (!validate_anchors(result)) return TAIYIN_ERROR_INTERNAL;
-
+    result.body_palace = body;
     *out = result;
-    *out_body_palace = body;
     return TAIYIN_STATUS_OK;
 }
 

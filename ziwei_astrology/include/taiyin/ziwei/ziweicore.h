@@ -3,6 +3,7 @@
 
 #include "taiyin/ziwei/anchors.h"
 #include "taiyin/ziwei/chart.h"
+#include "taiyin/ziwei/placement.h"
 #include "taiyin/ziwei/calendar_adapter.h"
 #include "taiyin/ziwei/data_catalog.h"
 #include "taiyin/ziwei/debug_dump.h"

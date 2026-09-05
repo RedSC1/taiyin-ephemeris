@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static int fail(const char* message) {
     fprintf(stderr, "test_ziwei_c_api: %s\n", message);
@@ -32,6 +33,126 @@ static int encode_china_standard(
     return taiyin_julian_day_split(out_clock, &local) >= 0
         && taiyin_add_seconds_to_split_jd(
             &local, -8.0 * 3600.0, out_instant) >= 0;
+}
+
+static taiyin_status TAIYIN_C_CALL fixed_random(void* data, uint32_t* out) {
+    int* calls = (int*)data;
+    ++*calls; *out = *calls == 1 ? UINT32_MAX : 12345u;
+    return TAIYIN_STATUS_OK;
+}
+
+static int test_casting(const taiyin_ziwei_context* context, const taiyin_ziwei_context* other) {
+    taiyin_ziwei_casting_options options;
+    taiyin_ziwei_casting_summary before, after;
+    taiyin_ziwei_placement_patch patch;
+    taiyin_ziwei_placement_input input;
+    taiyin_ziwei_casting_chart *base=NULL, *changed=NULL, *shifted=NULL, *restored=NULL, *invalid=NULL;
+    size_t count=0, count2=0;
+    int calls=0, rc=1;
+    uint8_t *positions=NULL, *positions2=NULL;
+    uint16_t *masks=NULL, *masks2=NULL;
+    taiyin_ziwei_casting_options_init(&options);
+    taiyin_ziwei_casting_summary_init(&before);
+    taiyin_ziwei_casting_summary_init(&after);
+    taiyin_ziwei_placement_patch_init(&patch);
+    taiyin_ziwei_placement_input_init(&input);
+    if(taiyin_ziwei_casting_chart_random(context,&options,fixed_random,&calls,&base)<0
+        || calls!=2 || taiyin_ziwei_casting_chart_get_summary(base,&before)<0
+        || before.index!=12345 || before.method!=3
+        || taiyin_ziwei_casting_chart_get_stars(base,NULL,NULL,0,&count)<0 || count==0) goto done;
+    positions=(uint8_t*)malloc(count); positions2=(uint8_t*)malloc(count);
+    masks=(uint16_t*)malloc(count*sizeof(uint16_t)); masks2=(uint16_t*)malloc(count*sizeof(uint16_t));
+    if(!positions || !positions2 || !masks || !masks2) goto done;
+    if(taiyin_ziwei_casting_chart_get_stars(base,positions,masks,count,&count2)<0
+        || taiyin_call_result_status(taiyin_ziwei_casting_chart_get_stars(base,positions2,masks2,count-1,&count2))!=TAIYIN_ERROR_INVALID_ARGUMENT
+        || taiyin_ziwei_casting_chart_from_index(context,before.index,&options,&restored)<0
+        || taiyin_ziwei_casting_chart_get_stars(restored,positions2,masks2,count,&count2)<0
+        || memcmp(positions,positions2,count) || memcmp(masks,masks2,count*sizeof(uint16_t))) goto done;
+    taiyin_ziwei_casting_chart_destroy(restored); restored=NULL;
+    patch.year_stem=9; patch.year_branch=7; patch.month=3; patch.day=30; patch.update_bureau=1;
+    if(taiyin_call_result_status(taiyin_ziwei_casting_chart_modify(other,base,&patch,&invalid))!=TAIYIN_ERROR_INVALID_ARGUMENT || invalid
+        || taiyin_ziwei_casting_chart_modify(context,base,&patch,&changed)<0
+        || taiyin_ziwei_casting_chart_shift_life_palace(changed,-25,&shifted)<0
+        || taiyin_ziwei_casting_chart_get_summary(shifted,&after)<0
+        || after.life_palace_shift!=11 || after.input.day!=30 || after.original_input.day!=before.input.day
+        || after.palace_branches[0]!=(before.palace_branches[0]+11)%12
+        || memcmp(after.palace_stems,before.palace_stems,12)
+        || taiyin_ziwei_casting_chart_reset(shifted,&restored)<0
+        || taiyin_ziwei_casting_chart_get_stars(restored,positions2,masks2,count,&count2)<0
+        || memcmp(positions,positions2,count) || memcmp(masks,masks2,count*sizeof(uint16_t))) goto done;
+    patch.day=INT32_MAX;
+    if(taiyin_call_result_status(taiyin_ziwei_casting_chart_modify(context,base,&patch,&invalid))!=TAIYIN_ERROR_INVALID_ARGUMENT || invalid) goto done;
+    taiyin_ziwei_casting_chart_destroy(restored); restored=NULL;
+    if(taiyin_ziwei_casting_chart_from_number(context,"000123456",&options,&restored)<0
+        || taiyin_ziwei_casting_chart_get_summary(restored,&after)<0 || after.index!=209225 || after.method!=2) goto done;
+    {
+        char text[7]; size_t size=0; int32_t brightness=0;
+        if(taiyin_ziwei_casting_chart_get_number(restored,NULL,0,&size)<0 || size!=7
+            || taiyin_ziwei_casting_chart_get_number(restored,text,sizeof(text),&size)<0 || strcmp(text,"123456")
+            || taiyin_call_result_status(taiyin_ziwei_casting_chart_get_number(restored,text,6,&size))!=TAIYIN_ERROR_INVALID_ARGUMENT
+            || taiyin_ziwei_casting_chart_get_brightness(context,restored,0,&brightness)<0
+            || taiyin_call_result_status(taiyin_ziwei_casting_chart_get_brightness(other,restored,0,&brightness))!=TAIYIN_ERROR_INVALID_ARGUMENT) goto done;
+    }
+    taiyin_ziwei_casting_chart_destroy(restored); restored=NULL;
+    input.year_stem=INT32_MAX;
+    if(taiyin_call_result_status(taiyin_ziwei_casting_chart_create(context,&input,&options,&invalid))!=TAIYIN_ERROR_INVALID_ARGUMENT || invalid) goto done;
+    input.year_stem=0; input.year_branch=1;
+    if(taiyin_ziwei_casting_chart_create(context,&input,&options,&restored)<0
+        || taiyin_ziwei_casting_chart_get_omitted_placements(restored,NULL,0,&count2)<0 || count2!=2) goto done;
+    {
+        taiyin_ziwei_omitted_placement omitted[2];
+        if(taiyin_ziwei_casting_chart_get_omitted_placements(restored,omitted,2,&count2)<0
+            || omitted[0].missing_inputs==0 || omitted[1].missing_inputs==0) goto done;
+    }
+    rc=0;
+done:
+    free(positions); free(positions2); free(masks); free(masks2);
+    taiyin_ziwei_casting_chart_destroy(base); taiyin_ziwei_casting_chart_destroy(changed);
+    taiyin_ziwei_casting_chart_destroy(shifted); taiyin_ziwei_casting_chart_destroy(restored);
+    taiyin_ziwei_casting_chart_destroy(invalid);
+    return rc;
+}
+
+static int test_manual_natal(const taiyin_ziwei_context* context,
+    const taiyin_chinese_calendar_context* calendar, taiyin_ziwei_chart* base) {
+    taiyin_ziwei_chart *modified=NULL, *shifted=NULL, *restored=NULL;
+    taiyin_ziwei_placement_patch patch;
+    taiyin_ziwei_placement_input input;
+    taiyin_ziwei_flow_options options;
+    taiyin_ziwei_flow_summary before,after;
+    taiyin_split_julian_date instant;
+    taiyin_calendar_datetime local;
+    uint8_t old_anchors[31],new_anchors[31],shift=0;
+    int rc=1;
+    taiyin_ziwei_placement_patch_init(&patch);
+    taiyin_ziwei_placement_input_init(&input);
+    taiyin_ziwei_flow_options_init(&options);
+    taiyin_ziwei_flow_summary_init(&before); taiyin_ziwei_flow_summary_init(&after);
+    if(!encode_china_standard(2026,8,29,12,0,&local,&instant)
+        || taiyin_ziwei_chart_set_flow(context,calendar,&instant,&local,&options,TAIYIN_ZIWEI_FLOW_HOUR,base,&before,NULL)<0
+        || taiyin_ziwei_chart_get_anchors(base,old_anchors)<0) goto done;
+    patch.year_stem=9; patch.year_branch=7; patch.month=3; patch.day=30;
+    if(taiyin_ziwei_chart_modify(context,base,&patch,&modified)<0
+        || taiyin_ziwei_chart_flow_layer_count(modified)!=0
+        || taiyin_ziwei_chart_flow_layer_count(base)!=5
+        || taiyin_ziwei_chart_set_flow(context,calendar,&instant,&local,&options,TAIYIN_ZIWEI_FLOW_HOUR,modified,&after,NULL)<0
+        || before.decade_start_age!=after.decade_start_age || before.target_day!=after.target_day
+        || before.target_month!=after.target_month || before.effective_birth_year!=after.effective_birth_year
+        || taiyin_ziwei_chart_shift_life_palace(modified,-1,&shifted)<0
+        || taiyin_ziwei_chart_get_placement(shifted,&input,&patch,&shift)<0 || shift!=11 || input.day!=30
+        || taiyin_ziwei_chart_set_flow(context,calendar,&instant,&local,&options,TAIYIN_ZIWEI_FLOW_HOUR,shifted,&after,NULL)<0
+        || taiyin_ziwei_chart_reset(shifted,&restored)<0
+        || taiyin_ziwei_chart_get_anchors(restored,new_anchors)<0
+        || memcmp(old_anchors,new_anchors,31)) goto done;
+    taiyin_ziwei_chart_destroy(restored); restored=NULL;
+    patch.update_bureau=1;
+    if(taiyin_ziwei_chart_modify(context,modified,&patch,&restored)<0
+        || taiyin_ziwei_chart_set_flow(context,calendar,&instant,&local,&options,TAIYIN_ZIWEI_FLOW_HOUR,restored,&after,NULL)<0
+        || before.target_day!=after.target_day || before.effective_birth_year!=after.effective_birth_year) goto done;
+    rc=0;
+done:
+    taiyin_ziwei_chart_destroy(modified); taiyin_ziwei_chart_destroy(shifted); taiyin_ziwei_chart_destroy(restored);
+    return rc;
 }
 
 int main(int argc, char** argv) {
@@ -428,6 +549,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    if(test_casting(context,alternate_context)) return fail("manual/random casting C ABI");
+    if(test_manual_natal(context,calendar,chart)) return fail("natal edits preserve flow calendar and root");
     taiyin_ziwei_chart_destroy(chart);
     taiyin_ziwei_context_destroy(custom_context);
     taiyin_ziwei_context_destroy(removed_context);

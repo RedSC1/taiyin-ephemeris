@@ -94,6 +94,22 @@ struct Anchors {
     std::array<Branch, kPalaceCount> palace_positions;
 };
 
+// Calendar-free anchors: no synthetic pillars or birth instant.
+struct PlacementAnchors {
+    Bureau bureau;
+    Branch ziwei;
+    Branch tianfu;
+    Branch body_palace;
+    std::array<Branch, kPalaceCount> palace_positions;
+    std::array<Stem, kBranchCount> palace_stems;
+};
+
+Status compute_placement_anchors(
+    int month, int day, int hour_branch, int year_stem,
+    ZiweiChartMode mode, PlacementAnchors* out,
+    const Bureau* fixed_bureau = NULL
+) noexcept;
+
 bool validate_anchors(const Anchors& anchors) noexcept;
 
 // The result contains raw zero-based enum indices in AnchorSlot order. It is

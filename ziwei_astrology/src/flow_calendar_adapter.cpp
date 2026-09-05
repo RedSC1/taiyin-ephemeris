@@ -69,11 +69,15 @@ bool same_birth_chart(
     const ResolvedBirth& birth,
     const NatalChart& natal
 ) noexcept {
+    const NatalChart& original = natal.original_chart ? *natal.original_chart : natal;
     return same_calendar_facts(birth.facts, natal.birth_facts)
+        && same_calendar_facts(birth.facts, original.birth_facts)
         && is_valid(birth.leap_month_strategy)
         && birth.facts.birth.gender == natal.gender
         && birth.body_palace == natal.body_palace
-        && flatten_anchors(birth.anchors) == flatten_anchors(natal.anchors);
+        && same_pillars(birth.anchors.solar_term, natal.anchors.solar_term)
+        && same_pillars(birth.anchors.lunar, natal.anchors.lunar)
+        && flatten_anchors(birth.anchors) == flatten_anchors(original.anchors);
 }
 
 bool valid_options(const FlowResolutionOptions& options) noexcept {

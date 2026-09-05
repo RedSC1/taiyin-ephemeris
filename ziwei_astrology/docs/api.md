@@ -113,6 +113,10 @@ typed `Brightness` value (`None`, `Xian`, `Bu`, `Ping`, `Li`, `De`, `Wang`, or
 
 ## Birth and natal chart
 
+For calendar-independent inputs, reported numbers, random casting, or editing
+placements without changing birth facts, see [manual placement and casting](manual-casting.md).
+Those APIs reuse the same compiled rule tables; a `CastingChart` is not a `NatalChart`.
+
 For real dates, use `resolve_birth_from_calendar()`. It accepts a caller-owned
 `ChineseCalendarContext`, one physical UTC instant, the already-resolved local
 or virtual wall clock, gender, and `BirthResolutionOptions`. The result

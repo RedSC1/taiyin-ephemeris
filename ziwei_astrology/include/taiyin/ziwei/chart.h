@@ -5,11 +5,13 @@
 #include "taiyin/ziwei/anchors.h"
 #include "taiyin/ziwei/dynamic_bitset.h"
 #include "taiyin/ziwei/rules.h"
+#include "taiyin/ziwei/placement_types.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 namespace taiyin {
 namespace ziwei {
@@ -61,6 +63,11 @@ struct NatalTransformationOverlay {
 };
 
 struct NatalChart {
+    // Edits retain one immutable original, not a linked list of previous edits.
+    // Birth facts/pillars remain untouched; only placement and palace roles vary.
+    std::shared_ptr<const NatalChart> original_chart;
+    PlacementModification modification;
+    std::vector<OmittedPlacement> omitted_placements;
     // Preserve the complete normalized birth facts that produced this chart.
     // Flow resolution uses them to reject accidental birth/chart pairings.
     CalendarFacts birth_facts;

@@ -3,6 +3,12 @@
 This optional C++11 module is the rule engine for Ziwei Doushu. It depends on
 Taiyin's Chinese-calendar/Ganzhi layer, but not on the optional BaZi runtime.
 
+It also supports calendar-free manual placement, editing an existing chart,
+palace-role shifts, and reproducible reported-number/random casting charts.
+See [manual placement and casting](docs/manual-casting.md)
+([中文](docs/manual-casting.zh-CN.md)) and the runnable
+[manual casting example](examples/manual_casting.cpp).
+
 The implementation deliberately separates three stages:
 
 1. Taiyin resolves the physical instant, local civil-time policy, lunar date,

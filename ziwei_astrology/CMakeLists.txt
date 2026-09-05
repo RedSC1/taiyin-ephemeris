@@ -1,6 +1,7 @@
 set(TAIYIN_ZIWEI_SOURCES
     src/anchors.cpp
     src/chart.cpp
+    src/placement.cpp
     src/calendar_adapter.cpp
     src/calendar_adapter_internal.cpp
     src/debug_dump.cpp
@@ -18,6 +19,9 @@ set(TAIYIN_ZIWEI_SOURCES
 
 add_library(taiyin_ziwei_extension STATIC ${TAIYIN_ZIWEI_SOURCES})
 add_library(taiyin::ziwei ALIAS taiyin_ziwei_extension)
+if(WIN32)
+    target_link_libraries(taiyin_ziwei_extension PRIVATE bcrypt)
+endif()
 target_link_libraries(
     taiyin_ziwei_extension
     PUBLIC taiyin_chinese_calendar_ganzhi_extension
@@ -47,6 +51,9 @@ if(TAIYIN_BUILD_MODULAR_C_API)
     target_include_directories(taiyin_ziwei SYSTEM
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/toml11)
     target_link_libraries(taiyin_ziwei PRIVATE taiyin)
+    if(WIN32)
+        target_link_libraries(taiyin_ziwei PRIVATE bcrypt)
+    endif()
     target_compile_definitions(taiyin_ziwei PRIVATE
         TAIYIN_C_BUILD
         TAIYIN_C_ZIWEI_BUILD
@@ -106,6 +113,10 @@ install(DIRECTORY rules/
     FILES_MATCHING PATTERN "*.toml" PATTERN "README.md")
 
 add_executable(example_ziwei_basic_chart examples/basic_chart.cpp)
+add_executable(example_ziwei_manual_casting examples/manual_casting.cpp)
+target_link_libraries(example_ziwei_manual_casting PRIVATE taiyin_ziwei_extension)
+target_compile_definitions(example_ziwei_manual_casting PRIVATE
+    TAIYIN_ZIWEI_RULES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/rules/default.toml")
 target_link_libraries(example_ziwei_basic_chart PRIVATE taiyin_ziwei_extension)
 target_compile_definitions(example_ziwei_basic_chart PRIVATE
     TAIYIN_ZIWEI_RULES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/rules/default.toml"
@@ -138,6 +149,10 @@ target_compile_definitions(test_ziwei_rules PRIVATE
 )
 
 add_executable(test_ziwei_chart_flow tests/test_chart_flow.cpp)
+add_executable(test_ziwei_placement tests/test_placement.cpp)
+find_package(Threads REQUIRED)
+target_link_libraries(test_ziwei_placement PRIVATE taiyin_ziwei_extension Threads::Threads)
+target_compile_definitions(test_ziwei_placement PRIVATE TAIYIN_ZIWEI_TEST_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(test_ziwei_chart_flow PRIVATE taiyin_ziwei_extension)
 target_compile_definitions(test_ziwei_chart_flow PRIVATE
     TAIYIN_ZIWEI_TEST_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
@@ -208,6 +223,7 @@ add_test(NAME ziwei_dynamic_bitset COMMAND test_ziwei_dynamic_bitset)
 add_test(NAME ziwei_types COMMAND test_ziwei_types)
 add_test(NAME ziwei_rules COMMAND test_ziwei_rules)
 add_test(NAME ziwei_chart_flow COMMAND test_ziwei_chart_flow)
+add_test(NAME ziwei_placement COMMAND test_ziwei_placement)
 add_test(NAME ziwei_anchor_computation COMMAND test_ziwei_anchor_computation)
 add_test(NAME ziwei_oracle_differential COMMAND test_ziwei_oracle_differential)
 add_test(NAME ziwei_limits COMMAND test_ziwei_limits)
@@ -217,6 +233,7 @@ add_test(NAME ziwei_limit_oracle COMMAND test_ziwei_limit_oracle)
 add_test(NAME ziwei_flow_calendar_adapter
     COMMAND test_ziwei_flow_calendar_adapter)
 add_test(NAME ziwei_example_basic_chart COMMAND example_ziwei_basic_chart)
+add_test(NAME ziwei_example_manual_casting COMMAND example_ziwei_manual_casting)
 add_test(NAME ziwei_c_api COMMAND test_ziwei_c_api
     ${PROJECT_SOURCE_DIR}/data ${CMAKE_CURRENT_SOURCE_DIR}/rules/default.toml
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/option_default.toml)
@@ -224,13 +241,13 @@ add_test(NAME ziwei_c_api_static COMMAND test_ziwei_c_api_static
     ${PROJECT_SOURCE_DIR}/data ${CMAKE_CURRENT_SOURCE_DIR}/rules/default.toml
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/data/option_default.toml)
 set_tests_properties(
-    ziwei_dynamic_bitset ziwei_types ziwei_rules ziwei_chart_flow
+    ziwei_dynamic_bitset ziwei_types ziwei_rules ziwei_chart_flow ziwei_placement
     ziwei_anchor_computation ziwei_oracle_differential ziwei_limits
     ziwei_calendar_adapter
     ziwei_oracle_corpus
     ziwei_limit_oracle
     ziwei_flow_calendar_adapter
-    ziwei_example_basic_chart
+    ziwei_example_basic_chart ziwei_example_manual_casting
     ziwei_c_api ziwei_c_api_static
     PROPERTIES LABELS "ziwei"
 )

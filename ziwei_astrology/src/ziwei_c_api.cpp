@@ -5,6 +5,7 @@
 #include "taiyin/ziwei/ziweicore.h"
 
 #include <cstring>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -33,7 +34,10 @@ struct taiyin_ziwei_chart {
     taiyin::ziwei::ResolvedBirth birth;
     taiyin::ziwei::Chart value;
     uint64_t registry_fingerprint;
+    taiyin::ziwei::AnchorOptions anchor_options;
 };
+
+struct taiyin_ziwei_casting_chart { taiyin::ziwei::CastingChart value; };
 
 namespace {
 
@@ -277,9 +281,238 @@ bool chart_matches_context(
             == context->value.compiled_tables().registry_fingerprint;
 }
 
+template<class T, class F>
+taiyin_call_result create_output(T** out, F build) {
+    if (!out) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    *out = NULL;
+    try {
+        std::unique_ptr<T> p(new T());
+        const taiyin_status status = build(p.get());
+        if (status == TAIYIN_STATUS_OK) *out = p.release();
+        return taiyin_c_internal::pack_call_result(status);
+    } catch (...) { return taiyin_c_internal::pack_call_result(exception_status()); }
+}
+
+taiyin::ziwei::PlacementInput placement_input(const taiyin_ziwei_placement_input& p) {
+    taiyin::ziwei::PlacementInput r;
+    r.year_stem = p.year_stem; r.year_branch = p.year_branch; r.month = p.month;
+    r.day = p.day; r.hour_branch = p.hour_branch; return r;
+}
+taiyin::ziwei::PlacementPatch placement_patch(const taiyin_ziwei_placement_patch& p) {
+    taiyin::ziwei::PlacementPatch r;
+    r.year_stem = p.year_stem; r.year_branch = p.year_branch; r.month = p.month;
+    r.day = p.day; r.hour_branch = p.hour_branch; r.update_bureau = p.update_bureau; return r;
+}
+void copy_input(const taiyin::ziwei::PlacementInput& p, taiyin_ziwei_placement_input* r) {
+    init_struct(r); r->year_stem = p.year_stem; r->year_branch = p.year_branch;
+    r->month = p.month; r->day = p.day; r->hour_branch = p.hour_branch;
+}
+void copy_patch(const taiyin::ziwei::PlacementModification& p, taiyin_ziwei_placement_patch* r) {
+    init_struct(r); r->year_stem = p.overrides.year_stem; r->year_branch = p.overrides.year_branch;
+    r->month = p.overrides.month; r->day = p.overrides.day; r->hour_branch = p.overrides.hour_branch;
+    r->update_bureau = p.update_bureau ? 1 : 0;
+}
+bool casting_options(const taiyin_ziwei_context* context,
+    const taiyin_ziwei_casting_options* o, bool manual) {
+    return context && context->value.valid() && taiyin_c_internal::valid_struct(o)
+        && o->gender >= 0 && o->gender <= 1 && o->chart_mode >= 0 && o->chart_mode <= 2
+        && (o->fixed_bureau == -1 || (manual && o->fixed_bureau >= 0 && o->fixed_bureau <= 4));
+}
+taiyin_call_result copy_omitted(const std::vector<taiyin::ziwei::OmittedPlacement>& v,
+    taiyin_ziwei_omitted_placement* out, size_t capacity, size_t* count) {
+    if (!count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    *count = v.size();
+    if (out && capacity < v.size()) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    if (out) for (size_t i = 0; i < v.size(); ++i) {
+        out[i].star_id = v[i].star_id; out[i].missing_inputs = 0;
+        for (taiyin::ziwei::RuleInputSource s : v[i].missing_inputs)
+            out[i].missing_inputs |= UINT32_C(1) << static_cast<unsigned>(s);
+    }
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+}
+struct CRandom { taiyin_ziwei_random_uint32 fn; void* data; };
+taiyin_status c_random(void* data, uint32_t* out) {
+    CRandom& r = *static_cast<CRandom*>(data); return r.fn(r.data, out);
+}
+
 }  // namespace
 
 extern "C" {
+
+void TAIYIN_C_CALL taiyin_ziwei_placement_input_init(taiyin_ziwei_placement_input* p) {
+    if (p) copy_input(taiyin::ziwei::PlacementInput(), p);
+}
+void TAIYIN_C_CALL taiyin_ziwei_placement_patch_init(taiyin_ziwei_placement_patch* p) {
+    if (!p) return;
+    init_struct(p); p->year_stem = p->year_branch = p->month = p->day = p->hour_branch = p->update_bureau = -1;
+}
+void TAIYIN_C_CALL taiyin_ziwei_casting_options_init(taiyin_ziwei_casting_options* p) {
+    init_struct(p); if (p) p->fixed_bureau = -1;
+}
+void TAIYIN_C_CALL taiyin_ziwei_casting_summary_init(taiyin_ziwei_casting_summary* p) { init_struct(p); }
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_modify(const taiyin_ziwei_context* ctx,
+    const taiyin_ziwei_chart* source, const taiyin_ziwei_placement_patch* patch, taiyin_ziwei_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_chart* r) -> taiyin_status {
+        if (!chart_matches_context(source, ctx) || !taiyin_c_internal::valid_struct(patch)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        r->birth = source->birth; r->registry_fingerprint = source->registry_fingerprint;
+        r->anchor_options = source->anchor_options;
+        return taiyin::ziwei::modify_natal_chart(source->value.natal, placement_patch(*patch),
+            source->anchor_options, ctx->value.compiled_tables(), &r->value.natal);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_shift_life_palace(
+    const taiyin_ziwei_chart* source, int32_t steps, taiyin_ziwei_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_chart* r) -> taiyin_status {
+        if (!source) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        r->birth = source->birth; r->registry_fingerprint = source->registry_fingerprint;
+        r->anchor_options = source->anchor_options;
+        return taiyin::ziwei::shift_natal_life_palace(source->value.natal, steps, &r->value.natal);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_reset(const taiyin_ziwei_chart* source, taiyin_ziwei_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_chart* r) -> taiyin_status {
+        if (!source) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        r->birth = source->birth; r->registry_fingerprint = source->registry_fingerprint;
+        r->anchor_options = source->anchor_options;
+        return taiyin::ziwei::reset_natal_chart(source->value.natal, &r->value.natal);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_placement(const taiyin_ziwei_chart* source,
+    taiyin_ziwei_placement_input* input, taiyin_ziwei_placement_patch* patch, uint8_t* shift) {
+    if (!source || !taiyin_c_internal::valid_struct(input) || !taiyin_c_internal::valid_struct(patch) || !shift)
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    copy_input(taiyin::ziwei::natal_placement_input(source->value.natal), input);
+    copy_patch(source->value.natal.modification, patch);
+    *shift = source->value.natal.modification.life_palace_shift;
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_omitted_placements(const taiyin_ziwei_chart* source,
+    taiyin_ziwei_omitted_placement* out, size_t capacity, size_t* count) {
+    if (!source) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    return copy_omitted(source->value.natal.omitted_placements, out, capacity, count);
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_create(const taiyin_ziwei_context* ctx,
+    const taiyin_ziwei_placement_input* input, const taiyin_ziwei_casting_options* o, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        if (!casting_options(ctx, o, true) || !taiyin_c_internal::valid_struct(input)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        const taiyin::ziwei::Bureau bureau = static_cast<taiyin::ziwei::Bureau>(o->fixed_bureau);
+        return taiyin::ziwei::make_casting_chart(placement_input(*input), static_cast<taiyin::ziwei::Gender>(o->gender),
+            static_cast<taiyin::ziwei::ZiweiChartMode>(o->chart_mode), ctx->value.compiled_tables(), &r->value,
+            o->fixed_bureau == -1 ? NULL : &bureau);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_from_index(const taiyin_ziwei_context* ctx,
+    uint32_t index, const taiyin_ziwei_casting_options* o, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        if (!casting_options(ctx, o, false)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin::ziwei::casting_chart_from_index(index, static_cast<taiyin::ziwei::Gender>(o->gender),
+            static_cast<taiyin::ziwei::ZiweiChartMode>(o->chart_mode), ctx->value.compiled_tables(), &r->value);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_from_number(const taiyin_ziwei_context* ctx,
+    const char* number, const taiyin_ziwei_casting_options* o, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        if (!number || !casting_options(ctx, o, false)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin::ziwei::casting_chart_from_number(number, static_cast<taiyin::ziwei::Gender>(o->gender),
+            static_cast<taiyin::ziwei::ZiweiChartMode>(o->chart_mode), ctx->value.compiled_tables(), &r->value);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_random(const taiyin_ziwei_context* ctx,
+    const taiyin_ziwei_casting_options* o, taiyin_ziwei_random_uint32 fn, void* data, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        if (!casting_options(ctx, o, false)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        CRandom random = {fn, data};
+        return taiyin::ziwei::random_casting_chart(static_cast<taiyin::ziwei::Gender>(o->gender),
+            static_cast<taiyin::ziwei::ZiweiChartMode>(o->chart_mode), ctx->value.compiled_tables(), &r->value,
+            fn ? c_random : NULL, fn ? &random : NULL);
+    });
+}
+void TAIYIN_C_CALL taiyin_ziwei_casting_chart_destroy(taiyin_ziwei_casting_chart* p) { delete p; }
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_modify(const taiyin_ziwei_context* ctx,
+    const taiyin_ziwei_casting_chart* source, const taiyin_ziwei_placement_patch* patch, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        if (!ctx || !source || !taiyin_c_internal::valid_struct(patch)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+        return taiyin::ziwei::modify_casting_chart(source->value, placement_patch(*patch), ctx->value.compiled_tables(), &r->value);
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_shift_life_palace(
+    const taiyin_ziwei_casting_chart* source, int32_t steps, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        return source ? taiyin::ziwei::shift_casting_life_palace(source->value, steps, &r->value) : TAIYIN_ERROR_INVALID_ARGUMENT;
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_reset(
+    const taiyin_ziwei_casting_chart* source, taiyin_ziwei_casting_chart** out) {
+    return create_output(out, [&](taiyin_ziwei_casting_chart* r) -> taiyin_status {
+        return source ? taiyin::ziwei::reset_casting_chart(source->value, &r->value) : TAIYIN_ERROR_INVALID_ARGUMENT;
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_summary(
+    const taiyin_ziwei_casting_chart* source, taiyin_ziwei_casting_summary* out) {
+    if (!source || !taiyin_c_internal::valid_struct(out)) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    const taiyin::ziwei::CastingChart& c = source->value;
+    const taiyin::ziwei::CastingChart& root = c.original_chart ? *c.original_chart : c;
+    taiyin_ziwei_casting_summary r; init_struct(&r);
+    copy_input(c.plate.input, &r.input); copy_input(root.plate.input, &r.original_input);
+    copy_patch(c.modification, &r.overrides);
+    r.index = c.index; r.method = static_cast<uint8_t>(c.method);
+    r.gender = taiyin::ziwei::to_index(c.plate.gender); r.chart_mode = static_cast<uint8_t>(c.chart_mode);
+    r.bureau = taiyin::ziwei::to_index(c.plate.anchors.bureau);
+    r.original_bureau = taiyin::ziwei::to_index(root.plate.anchors.bureau);
+    r.body_palace = taiyin::ziwei::to_index(c.plate.anchors.body_palace);
+    r.update_bureau = c.modification.update_bureau ? 1 : 0; r.life_palace_shift = c.modification.life_palace_shift;
+    r.year_transform_stem = taiyin::ziwei::to_index(c.plate.year_transform_stem);
+    for (size_t i = 0; i < 12; ++i) {
+        r.palace_branches[i] = taiyin::ziwei::to_index(c.plate.anchors.palace_positions[i]);
+        r.palace_stems[i] = taiyin::ziwei::to_index(c.plate.anchors.palace_stems[i]);
+    }
+    r.life_master = c.plate.life_master; r.body_master = c.plate.body_master;
+    r.year_lu = c.plate.year_transformations.lu; r.year_quan = c.plate.year_transformations.quan;
+    r.year_ke = c.plate.year_transformations.ke; r.year_ji = c.plate.year_transformations.ji;
+    *out = r; return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_stars(const taiyin_ziwei_casting_chart* source,
+    uint8_t* positions, uint16_t* masks, size_t capacity, size_t* count) {
+    if (!source || !count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    const taiyin::ziwei::PlacementResult& p = source->value.plate;
+    *count = p.star_positions.size();
+    if ((positions || masks) && capacity < *count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    for (size_t i = 0; i < *count; ++i) {
+        if (positions) positions[i] = p.star_positions[i];
+        if (masks) masks[i] = p.transformation_masks[i];
+    }
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_omitted_placements(const taiyin_ziwei_casting_chart* source,
+    taiyin_ziwei_omitted_placement* out, size_t capacity, size_t* count) {
+    if (!source) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    return copy_omitted(source->value.plate.omitted_placements, out, capacity, count);
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_brightness(
+    const taiyin_ziwei_context* ctx, const taiyin_ziwei_casting_chart* source, uint16_t star, int32_t* out) {
+    if (!ctx || !source || !out || source->value.plate.rule_registry_fingerprint
+        != ctx->value.compiled_tables().registry_fingerprint || star >= source->value.plate.star_positions.size())
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    const uint8_t branch = source->value.plate.star_positions[star];
+    if (branch == 0xffu) { *out = TAIYIN_ZIWEI_BRIGHTNESS_NONE; return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK); }
+    taiyin::ziwei::Brightness value;
+    const taiyin_status status = taiyin::ziwei::brightness_at(ctx->value.compiled_tables(), star,
+        static_cast<taiyin::ziwei::Branch>(branch), &value);
+    if (status == TAIYIN_STATUS_OK) *out = static_cast<int32_t>(value);
+    return taiyin_c_internal::pack_call_result(status);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_number(
+    const taiyin_ziwei_casting_chart* source, char* out, size_t capacity, size_t* size) {
+    if (!source || !size) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    const std::string& number = source->value.number;
+    *size = number.size() + 1;
+    if (out && capacity < *size) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    if (out) std::memcpy(out, number.c_str(), *size);
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
+}
 
 void TAIYIN_C_CALL taiyin_ziwei_option_override_init(
     taiyin_ziwei_option_override* value
@@ -643,6 +876,7 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         const taiyin::ziwei::BirthResolutionOptions cpp_options =
             to_cpp_birth_options(*options);
+        created->anchor_options = cpp_options.anchor_options;
         taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
         taiyin::Status status = taiyin::ziwei::resolve_birth_from_calendar(
             &tracked.value,

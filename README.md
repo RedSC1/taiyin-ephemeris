@@ -255,6 +255,11 @@ module by label removes everything contributed under that option name and only
 affects subsequently created contexts; existing contexts retain their immutable
 snapshot. See the [Ziwei API](ziwei_astrology/docs/api.md).
 
+Ziwei also provides calendar-free manual placement and reproducible reported-number/
+random casting charts, plus birth-chart placement edits that preserve the original
+birth facts. See [manual placement and casting](ziwei_astrology/docs/manual-casting.md)
+([中文](ziwei_astrology/docs/manual-casting.zh-CN.md)).
+
 Ganzhi is built into the Chinese-calendar implementation because it supplies
 the calendrical year/month/day/hour cycle rather than a metaphysics
 interpretation. Future Qimen or Liuren extensions will use their own opt-in

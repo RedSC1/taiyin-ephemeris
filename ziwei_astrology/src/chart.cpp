@@ -1,4 +1,5 @@
 #include "taiyin/ziwei/chart.h"
+#include "plate_internal.h"
 
 #include <algorithm>
 #include <new>
@@ -9,18 +10,18 @@ namespace ziwei {
 namespace {
 
 void add_mark(
-    NatalTransformationOverlay* overlay,
+    std::vector<StarTransformMask>* masks,
     StarId star,
     StarTransformMark mark
 ) noexcept {
-    if (star != kInvalidStarId && star < overlay->marks_by_star.size()) {
-        overlay->marks_by_star[star] = static_cast<StarTransformMask>(
-            overlay->marks_by_star[star] | (StarTransformMask(1u) << to_index(mark)));
+    if (star != kInvalidStarId && star < masks->size()) {
+        (*masks)[star] = static_cast<StarTransformMask>(
+            (*masks)[star] | (StarTransformMask(1u) << to_index(mark)));
     }
 }
 
 void add_transform_set(
-    NatalTransformationOverlay* overlay,
+    std::vector<StarTransformMask>* masks,
     const TransformSet& transforms,
     StarTransformMark lu_mark
 ) noexcept {
@@ -28,44 +29,48 @@ void add_transform_set(
         transforms.lu, transforms.quan, transforms.ke, transforms.ji,
     };
     for (std::size_t kind = 0u; kind < 4u; ++kind) {
-        add_mark(overlay, ids[kind], static_cast<StarTransformMark>(
+        add_mark(masks, ids[kind], static_cast<StarTransformMark>(
             to_index(lu_mark) + kind));
     }
 }
 
-void decorate_star_transforms(
-    NatalChart* chart,
-    const CompiledRules& rules
+}  // namespace
+
+void detail::decorate_transformations(
+    const std::array<PalaceState, kBranchCount>& palaces,
+    const std::array<Stem, kBranchCount>& stems,
+    const TransformSet& year, const CompiledRules& rules,
+    std::vector<StarTransformMask>* masks
 ) {
-    const std::size_t star_count = chart->palaces[0].stars.size();
-    chart->transformations.marks_by_star.assign(star_count, 0u);
-    add_transform_set(&chart->transformations,
-        chart->transformations.birth_year, StarTransformMark::BirthYearLu);
+    masks->assign(rules.star_count, 0u);
+    add_transform_set(masks, year, StarTransformMark::BirthYearLu);
     for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
         const Branch opposite = static_cast<Branch>((branch + 6u) % kBranchCount);
-        const DynamicBitset& placed = chart->palaces[branch].stars;
+        const DynamicBitset& placed = palaces[branch].stars;
         const TransformSet& own = rules.sihua.by_stem[
-            to_index(chart->palace_stems[branch])];
+            to_index(stems[branch])];
         const TransformSet& opposite_set = rules.sihua.by_stem[
-            to_index(chart->palace_stems[to_index(opposite)])];
+            to_index(stems[to_index(opposite)])];
         const StarId own_ids[4] = {own.lu, own.quan, own.ke, own.ji};
         const StarId opposite_ids[4] = {
             opposite_set.lu, opposite_set.quan, opposite_set.ke, opposite_set.ji};
         for (std::size_t kind = 0u; kind < 4u; ++kind) {
             if (own_ids[kind] != kInvalidStarId && placed.test(own_ids[kind])) {
-                add_mark(&chart->transformations, own_ids[kind],
+                add_mark(masks, own_ids[kind],
                     static_cast<StarTransformMark>(
                         to_index(StarTransformMark::CentrifugalLu) + kind));
             }
             if (opposite_ids[kind] != kInvalidStarId
                 && placed.test(opposite_ids[kind])) {
-                add_mark(&chart->transformations, opposite_ids[kind],
+                add_mark(masks, opposite_ids[kind],
                     static_cast<StarTransformMark>(
                         to_index(StarTransformMark::CentripetalLu) + kind));
             }
         }
     }
 }
+
+namespace {
 
 Branch master_lookup_branch(
     MasterLookupSource source,
@@ -144,7 +149,8 @@ Status make_natal_chart(
             : anchors.lunar.year.stem;
         result.transformations.birth_year_stem = sihua_stem;
         result.transformations.birth_year = rules.sihua.by_stem[to_index(sihua_stem)];
-        decorate_star_transforms(&result, rules);
+        detail::decorate_transformations(result.palaces, result.palace_stems,
+            result.transformations.birth_year, rules, &result.transformations.marks_by_star);
         if (rules.masters.enabled) {
             const Branch life = master_lookup_branch(
                 rules.masters.life_input, anchors, options);

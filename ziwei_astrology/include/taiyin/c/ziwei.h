@@ -15,6 +15,113 @@ typedef struct taiyin_ziwei_data_catalog taiyin_ziwei_data_catalog;
 typedef struct taiyin_ziwei_context taiyin_ziwei_context;
 typedef struct taiyin_ziwei_chart taiyin_ziwei_chart;
 typedef struct taiyin_ziwei_ruleset taiyin_ziwei_ruleset;
+typedef struct taiyin_ziwei_casting_chart taiyin_ziwei_casting_chart;
+
+/* Calendar-free parameters; all integers are validated before narrowing. */
+typedef struct taiyin_ziwei_placement_input {
+    uint32_t struct_size;
+    int32_t year_stem, year_branch, month, day, hour_branch;
+} taiyin_ziwei_placement_input;
+
+/* -1 means unchanged, including update_bureau (0=original, 1=recompute). */
+typedef struct taiyin_ziwei_placement_patch {
+    uint32_t struct_size;
+    int32_t year_stem, year_branch, month, day, hour_branch;
+    int32_t update_bureau;
+} taiyin_ziwei_placement_patch;
+
+typedef struct taiyin_ziwei_casting_options {
+    uint32_t struct_size;
+    int32_t gender;     /* 0=male, 1=female */
+    int32_t chart_mode; /* 0=Tian, 1=Di, 2=Ren */
+    /* -1=automatic; otherwise 0=water2, 1=wood3, 2=metal4, 3=earth5, 4=fire6.
+     * A fixed bureau is accepted only by the manual create entry. */
+    int32_t fixed_bureau;
+} taiyin_ziwei_casting_options;
+
+/* method: 0=manual, 1=index, 2=number, 3=random.
+ * index-v1 and random decode [0,259200); number uses JS number-v1.
+ * Manual index is UINT32_MAX. Original input/index are retained across edits. */
+typedef struct taiyin_ziwei_casting_summary {
+    uint32_t struct_size;
+    taiyin_ziwei_placement_input input, original_input;
+    taiyin_ziwei_placement_patch overrides;
+    uint32_t index;
+    uint8_t method, gender, chart_mode, bureau, original_bureau, body_palace;
+    uint8_t update_bureau, life_palace_shift, year_transform_stem;
+    uint8_t palace_branches[12], palace_stems[12];
+    uint16_t life_master, body_master;
+    uint16_t year_lu, year_quan, year_ke, year_ji;
+} taiyin_ziwei_casting_summary;
+
+/* missing_inputs: bit n corresponds to the documented RuleInputSource order:
+ * 0..7 solar year/month/day/hour stem,branch; 8..15 lunar equivalents;
+ * 16 bureau,17 ziwei,18 tianfu,19 life,20 body;
+ * 21..24 solar main/secondary void, lunar main/secondary void;
+ * 25 solar month index,26 lunar month index,27 lunar day index,
+ * 28 solar day index,29 birth gender. A missing star has position 0xff. */
+typedef struct taiyin_ziwei_omitted_placement {
+    uint16_t star_id;
+    uint32_t missing_inputs;
+} taiyin_ziwei_omitted_placement;
+
+/* Synchronous, not retained. Return a taiyin_status, NOT a packed call result.
+ * NULL uses OS randomness; failure is reported, never replaced by a PRNG. */
+typedef taiyin_status (TAIYIN_C_CALL *taiyin_ziwei_random_uint32)(void*, uint32_t*);
+
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_placement_input_init(taiyin_ziwei_placement_input*);
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_placement_patch_init(taiyin_ziwei_placement_patch*);
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_casting_options_init(taiyin_ziwei_casting_options*);
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_casting_summary_init(taiyin_ziwei_casting_summary*);
+
+/* Independent output handles; input chart and context are never mutated.
+ * Natal edits clear stale flow layers. Re-resolve flows with the original birth. */
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_modify(
+    const taiyin_ziwei_context*, const taiyin_ziwei_chart*,
+    const taiyin_ziwei_placement_patch*, taiyin_ziwei_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_shift_life_palace(
+    const taiyin_ziwei_chart*, int32_t steps, taiyin_ziwei_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_reset(
+    const taiyin_ziwei_chart*, taiyin_ziwei_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_placement(
+    const taiyin_ziwei_chart*, taiyin_ziwei_placement_input*,
+    taiyin_ziwei_placement_patch*, uint8_t* out_life_palace_shift);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_omitted_placements(
+    const taiyin_ziwei_chart*, taiyin_ziwei_omitted_placement*, size_t capacity, size_t* out_count);
+
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_create(
+    const taiyin_ziwei_context*, const taiyin_ziwei_placement_input*,
+    const taiyin_ziwei_casting_options*, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_from_index(
+    const taiyin_ziwei_context*, uint32_t index, const taiyin_ziwei_casting_options*, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_from_number(
+    const taiyin_ziwei_context*, const char* decimal_number, const taiyin_ziwei_casting_options*, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_random(
+    const taiyin_ziwei_context*, const taiyin_ziwei_casting_options*,
+    taiyin_ziwei_random_uint32, void* user_data, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API void TAIYIN_C_CALL taiyin_ziwei_casting_chart_destroy(taiyin_ziwei_casting_chart*);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_modify(
+    const taiyin_ziwei_context*, const taiyin_ziwei_casting_chart*,
+    const taiyin_ziwei_placement_patch*, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_shift_life_palace(
+    const taiyin_ziwei_casting_chart*, int32_t steps, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_reset(
+    const taiyin_ziwei_casting_chart*, taiyin_ziwei_casting_chart**);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_summary(
+    const taiyin_ziwei_casting_chart*, taiyin_ziwei_casting_summary*);
+/* Bulk arrays indexed by StarId; NULL arrays query count only. Capacity in stars.
+ * Masks: year Lu/Quan/Ke/Ji bits 0..3, self 4..7, centripetal 8..11. */
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_stars(
+    const taiyin_ziwei_casting_chart*, uint8_t* positions, uint16_t* masks,
+    size_t capacity, size_t* out_count);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_omitted_placements(
+    const taiyin_ziwei_casting_chart*, taiyin_ziwei_omitted_placement*, size_t capacity, size_t* out_count);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_brightness(
+    const taiyin_ziwei_context*, const taiyin_ziwei_casting_chart*, uint16_t star_id, int32_t* out_brightness);
+/* Includes terminating NUL in out_size. Empty string for non-number charts.
+ * NULL buffer queries required size; original number persists after edits. */
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_casting_chart_get_number(
+    const taiyin_ziwei_casting_chart*, char* out, size_t capacity, size_t* out_size);
 
 enum taiyin_ziwei_option_component {
     TAIYIN_ZIWEI_OPTION_PLACEMENT = 0,
