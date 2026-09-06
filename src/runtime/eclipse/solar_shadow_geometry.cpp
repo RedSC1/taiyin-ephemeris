@@ -3,6 +3,7 @@
 #include "taiyin/angle.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -27,6 +28,97 @@ double quadratic_form_oblate_mixed(
     return a.x * b.x
         + a.y * b.y
         + a.z * b.z * inverse_axis_ratio2;
+}
+
+double discriminant_tolerance(double a, double b_half, double c) noexcept {
+    const double scale = std::max(
+        1.0, std::fabs(b_half * b_half) + std::fabs(a * c));
+    return 64.0 * std::numeric_limits<double>::epsilon() * scale;
+}
+
+struct GeneratorDiscriminant {
+    double normalized_discriminant;
+    double vertex_parameter;
+};
+
+// In the rotated equatorial frame write the generator as
+//   origin = O + r N(theta), direction = V + delta N(theta).
+// Q is diag(1, 1, 1 / axis_ratio^2). All products not depending on theta
+// are shared by the angular search; no intersection roots or points are
+// needed to maximize b^2/a - c.
+struct ConeDiscriminantEvaluator {
+    double axis_x, axis_y, moon_z, r, radius, rotation, axis_ratio;
+    double delta, oo, vv, ov, os, vs, ns;
+
+    ConeDiscriminantEvaluator(double x, double y, double z, double moon_radius,
+                             double fundamental_radius, double angle,
+                             double ratio) noexcept
+        : axis_x(x), axis_y(y), moon_z(z), r(moon_radius),
+          radius(fundamental_radius), rotation(angle), axis_ratio(ratio),
+          delta(fundamental_radius - moon_radius) {
+        const double c = std::cos(angle), s = std::sin(angle);
+        const double inverse = 1.0 / (ratio * ratio);
+        const double oy = y * c - z * s, oz = y * s + z * c;
+        const double vy = z * s, vz = -z * c;
+        oo = x * x + oy * oy + oz * oz * inverse;
+        vv = vy * vy + vz * vz * inverse;
+        ov = oy * vy + oz * vz * inverse;
+        os = oy * c + oz * s * inverse;
+        vs = vy * c + vz * s * inverse;
+        ns = c * c + s * s * inverse;
+    }
+
+    bool direct(double angle, GeneratorDiscriminant* out) const noexcept {
+        const SolarShadowGenerator generator = make_solar_circular_cone_generator(
+            axis_x, axis_y, moon_z, r, radius, angle);
+        SolarGeneratorEarthIntersection intersection;
+        if (!intersect_solar_generator_with_oblate_earth(
+                generator, rotation, axis_ratio, &intersection)) return false;
+        out->normalized_discriminant = intersection.normalized_discriminant;
+        out->vertex_parameter = intersection.vertex_parameter;
+        return true;
+    }
+
+    bool evaluate(double angle, double cosine, double sine,
+                  GeneratorDiscriminant* out) const noexcept {
+        const double nn = cosine * cosine + ns * sine * sine;
+        const double on = axis_x * cosine + os * sine;
+        const double vn = vs * sine;
+        const double a = vv + 2.0 * delta * vn + delta * delta * nn;
+        const double b = ov + delta * on + r * vn + r * delta * nn;
+        const double c = oo + 2.0 * r * on + r * r * nn - 1.0;
+        const double discriminant = b * b - a * c;
+        // Reassociation can perturb cancellation at tangency. Preserve the
+        // original tolerance/rounding path there, and its behavior for extreme
+        // or degenerate finite inputs. Ordinary samples use only scalars.
+        if (!(a > 0.0) || !std::isfinite(a) || !std::isfinite(b)
+            || !std::isfinite(c) || !std::isfinite(discriminant)
+            || std::fabs(discriminant) <= 8.0 * discriminant_tolerance(a, b, c)) {
+            return direct(angle, out);
+        }
+        out->normalized_discriminant = discriminant / a;
+        out->vertex_parameter = -b / a;
+        return true;
+    }
+
+    bool operator()(double angle, GeneratorDiscriminant* out) const noexcept {
+        return evaluate(angle, std::cos(angle), std::sin(angle), out);
+    }
+};
+
+constexpr int kConeCoarseCount = 24;
+const std::array<std::array<double, 2>, kConeCoarseCount>& cone_coarse_angles() {
+    // C++11 thread-safe initialization; immutable across contexts.
+    static const std::array<std::array<double, 2>, kConeCoarseCount> values = [] {
+        std::array<std::array<double, 2>, kConeCoarseCount> result{};
+        const double step = 2.0 * TAIYIN_PI / kConeCoarseCount;
+        for (int i = 0; i < kConeCoarseCount; ++i) {
+            const double angle = step * i;
+            result[i] = {{std::cos(angle), std::sin(angle)}};
+        }
+        return result;
+    }();
+    return values;
 }
 
 double normalize_signed_radians(double value) noexcept {
@@ -142,10 +234,7 @@ bool intersect_solar_generator_with_oblate_earth(
     out->vertex_parameter = -b_half / a;
 
     double discriminant = b_half * b_half - a * c;
-    const double discriminant_scale = std::max(
-        1.0, std::fabs(b_half * b_half) + std::fabs(a * c));
-    const double tangent_tolerance = 64.0
-        * std::numeric_limits<double>::epsilon() * discriminant_scale;
+    const double tangent_tolerance = discriminant_tolerance(a, b_half, c);
     if (discriminant < -tangent_tolerance) {
         out->discriminant = discriminant;
         out->normalized_discriminant = discriminant / a;
@@ -323,34 +412,25 @@ bool maximize_solar_circular_cone_earth_discriminant(
         return false;
     }
 
-    const auto evaluate = [&](double angle, SolarGeneratorEarthIntersection* intersection) {
-        const SolarShadowGenerator generator = make_solar_circular_cone_generator(
-            axis_x,
-            axis_y,
-            moon_z,
-            moon_radius,
-            fundamental_radius,
-            angle);
-        return intersect_solar_generator_with_oblate_earth(
-            generator,
-            frame_rotation_rad,
-            earth_axis_ratio,
-            intersection);
-    };
+    const ConeDiscriminantEvaluator evaluate(
+        axis_x, axis_y, moon_z, moon_radius, fundamental_radius,
+        frame_rotation_rad, earth_axis_ratio);
 
     // Ellipsoid flattening introduces only low-order angular variation in
     // this scalar. A 15-degree periodic scan safely brackets the global peak;
     // the following refinement, rather than dense sampling, supplies the
     // grazing-contact accuracy.
-    constexpr int coarse_count = 24;
+    constexpr int coarse_count = kConeCoarseCount;
     const double coarse_step = 2.0 * TAIYIN_PI / static_cast<double>(coarse_count);
     double best_angle = 0.0;
     double best_value = -std::numeric_limits<double>::infinity();
-    SolarGeneratorEarthIntersection best_intersection;
+    GeneratorDiscriminant best_intersection{};
+    const auto& coarse_angles = cone_coarse_angles();
     for (int index = 0; index < coarse_count; ++index) {
         const double angle = coarse_step * static_cast<double>(index);
-        SolarGeneratorEarthIntersection intersection;
-        if (!evaluate(angle, &intersection)) return false;
+        GeneratorDiscriminant intersection{};
+        if (!evaluate.evaluate(angle, coarse_angles[index][0],
+                               coarse_angles[index][1], &intersection)) return false;
         if (!(intersection.vertex_parameter > 0.0)
             || !std::isfinite(intersection.normalized_discriminant)) {
             continue;
@@ -371,8 +451,8 @@ bool maximize_solar_circular_cone_earth_discriminant(
     const double golden = (std::sqrt(5.0) - 1.0) * 0.5;
     double c = hi - golden * (hi - lo);
     double d = lo + golden * (hi - lo);
-    SolarGeneratorEarthIntersection ci;
-    SolarGeneratorEarthIntersection di;
+    GeneratorDiscriminant ci{};
+    GeneratorDiscriminant di{};
     if (!evaluate(c, &ci) || !evaluate(d, &di)) return false;
     double fc = ci.vertex_parameter > 0.0
         ? ci.normalized_discriminant
