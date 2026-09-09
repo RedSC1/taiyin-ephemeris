@@ -11,9 +11,11 @@ Rust 等绑定层使用。统一入口为：
 
 在支持版本化 SONAME 的平台，安装后的动态库名为 `taiyin`（Linux 为
 `libtaiyin.so`，macOS 为 `libtaiyin.dylib`）。Windows 的 DLL 和 import
-library 名称带 ABI 号，例如 `taiyin-10.dll` 和 `taiyin-10.lib`。动态加载时先检查
+library 名称带 ABI 号，例如 `taiyin-11.dll` 和 `taiyin-11.lib`。动态加载时先检查
 `taiyin_get_c_abi_version()`；`taiyin_get_library_version()` 返回与 ABI
-版本独立的库语义版本，当前预发布版本为 `1.0.0-beta.10`；
+版本独立的库语义版本，当前预发布版本为 `1.0.0-beta.11`（C ABI 11）。
+本版新增紫微显式排盘时钟转换、流运导航和反查 C 接口；从 ABI 10 升级时，
+绑定与可选模块必须和内核一起重新构建。
 `taiyin_get_library_codename()` 返回大版本代号，Taiyin `1.x.x` 的代号为
 **Singularity**。版本和代号字符串拥有静态库生命周期，调用方不得释放；
 `taiyin_get_capabilities()` 可查询当前库包含的位置、事件、日食、占星和

@@ -55,23 +55,49 @@ Status chart_time_to_ut1(
     }
     SplitJulianDate result = local - offset(*calendar, clock);
     if (!split_julian_date_is_finite(result)) return TAIYIN_ERROR_INVALID_ARGUMENT;
-    // An inverse at an exact hour denotes the beginning of the new slot.
-    // The solar-time inverse permits a sub-microsecond residual. Validate its
-    // side explicitly, rather than globally snapping nearby input instants.
-    if (clock.mode == ChartClockMode::ApparentSolar
-        && normalized.minute == 0 && normalized.second == 0.0) {
+    // Verify every inverse, including subsecond values produced by a previous
+    // clock mapping/navigation. Checking only exact hours can move a requested
+    // midnight + a few nanoseconds into the preceding date. This corrects the
+    // inverse residual, not the supplied civil fields or arbitrary UT1 inputs.
+    if (clock.mode == ChartClockMode::ApparentSolar) {
         SplitJulianDate boundary;
         if (!julian_day_split(normalized, &boundary)) return TAIYIN_ERROR_INVALID_ARGUMENT;
-        bool reached = false;
-        for (int i = 0; i < 4; ++i) {
+        const auto residual_at = [&](const SplitJulianDate& jd, double* residual) -> Status {
             CalendarDateTime evaluated;
-            s = chart_time_from_ut1(calendar, clock, result, &evaluated, diagnostic);
-            if (s != TAIYIN_STATUS_OK) return s;
+            const Status status = chart_time_from_ut1(calendar, clock, jd, &evaluated, diagnostic);
+            if (status != TAIYIN_STATUS_OK) return status;
             SplitJulianDate evaluated_jd;
             if (!julian_day_split(evaluated, &evaluated_jd)) return TAIYIN_ERROR_INTERNAL;
-            const double residual = evaluated_jd - boundary;
-            if (std::fabs(residual) > 4.0e-11) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
-            if (residual >= 0.0) { reached = true; break; }
+            *residual = evaluated_jd - boundary;
+            return std::fabs(*residual) <= 4.0e-11
+                ? TAIYIN_STATUS_OK : TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
+        };
+        bool reached = false;
+        bool have_lower = false;
+        SplitJulianDate lower;
+        for (int i = 0; i < 8; ++i) {
+            double residual;
+            s = residual_at(result, &residual);
+            if (s != TAIYIN_STATUS_OK) return s;
+            if (residual >= 0.0) {
+                // Find the smallest right-side inverse in the tiny bracket,
+                // rather than retaining a fixed forward epsilon. This also
+                // handles plateaus introduced by civil-hour normalization.
+                if (have_lower) {
+                    for (int j = 0; j < 20; ++j) {
+                        const SplitJulianDate middle = lower + (result - lower) / 2.0;
+                        if (middle == lower || middle == result) break;
+                        s = residual_at(middle, &residual);
+                        if (s != TAIYIN_STATUS_OK) return s;
+                        if (residual >= 0.0) result = middle;
+                        else lower = middle;
+                    }
+                }
+                reached = true;
+                break;
+            }
+            lower = result;
+            have_lower = true;
             result += -residual + 1.0e-11;
         }
         if (!reached) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;

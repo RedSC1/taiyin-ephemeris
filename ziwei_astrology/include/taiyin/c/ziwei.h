@@ -17,6 +17,20 @@ typedef struct taiyin_ziwei_chart taiyin_ziwei_chart;
 typedef struct taiyin_ziwei_ruleset taiyin_ziwei_ruleset;
 typedef struct taiyin_ziwei_casting_chart taiyin_ziwei_casting_chart;
 
+/* Independent of lunar month structure. FixedOffset uses calendar offset;
+ * solar clocks use east-positive longitude in radians. No UTC/DST guessing. */
+enum {
+    TAIYIN_ZIWEI_CLOCK_FIXED_OFFSET = 0,
+    TAIYIN_ZIWEI_CLOCK_MEAN_SOLAR = 1,
+    TAIYIN_ZIWEI_CLOCK_APPARENT_SOLAR = 2
+};
+
+typedef struct taiyin_ziwei_chart_clock {
+    uint32_t struct_size;
+    int32_t mode; /* 0=fixed offset, 1=mean solar, 2=apparent solar */
+    double longitude_rad;
+} taiyin_ziwei_chart_clock;
+
 /* Calendar-free parameters; all integers are validated before narrowing. */
 typedef struct taiyin_ziwei_placement_input {
     uint32_t struct_size;
@@ -534,6 +548,47 @@ taiyin_ziwei_step_flow_day_target(
     int32_t direction,
     taiyin_split_julian_date* out_instant_utc,
     taiyin_calendar_datetime* out_virtual_time);
+
+/* Explicit-clock inputs and returned legacy instant_utc fields carry UT1.
+ * Reverse request start_virtual_time is ignored for this entry point. */
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create_at_ut1(
+    const taiyin_ziwei_context* context, const taiyin_chinese_calendar_context* calendar,
+    const taiyin_split_julian_date* instant_ut1, const taiyin_ziwei_chart_clock* clock,
+    int32_t gender, const taiyin_ziwei_birth_options* options,
+    taiyin_ziwei_chart** out_chart, taiyin_ephemeris_diagnostic* diagnostic);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow_at_ut1(
+    const taiyin_ziwei_context* context, const taiyin_chinese_calendar_context* calendar,
+    const taiyin_split_julian_date* instant_ut1, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_ziwei_flow_options* options, int32_t deepest_level,
+    taiyin_ziwei_chart* chart, taiyin_ziwei_flow_summary* out_summary,
+    taiyin_ephemeris_diagnostic* diagnostic);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1_at_ut1(
+    const taiyin_ziwei_context* context, const taiyin_chinese_calendar_context* calendar,
+    const taiyin_ziwei_reverse_request* request, const taiyin_ziwei_chart_clock* clock,
+    taiyin_ziwei_reverse_candidate* candidates, size_t capacity, size_t* out_count,
+    taiyin_ephemeris_diagnostic* diagnostic);
+/* Output civil time requires struct_size. Clock is mandatory; fixed offset
+ * ignores longitude. No calendar policy is modified. */
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_time_from_ut1(
+    const taiyin_chinese_calendar_context* calendar, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* instant_ut1, taiyin_calendar_datetime* out_time,
+    taiyin_ephemeris_diagnostic* diagnostic);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_time_to_ut1(
+    const taiyin_chinese_calendar_context* calendar, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_calendar_datetime* virtual_time, taiyin_split_julian_date* out_instant_ut1,
+    taiyin_ephemeris_diagnostic* diagnostic);
+/* Direction is +1/-1. Preserve virtual-clock phase and invert the destination
+ * through the supplied clock; apparent-solar steps need not be 3600/86400 s. */
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_hour_at_ut1(
+    const taiyin_chinese_calendar_context* calendar, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* instant_ut1, int32_t rat_hour_mode, int32_t direction,
+    taiyin_split_julian_date* out_instant_ut1, taiyin_calendar_datetime* out_time,
+    uint8_t* out_rat_hour_segment, taiyin_ephemeris_diagnostic* diagnostic);
+TAIYIN_C_ZIWEI_API taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_day_at_ut1(
+    const taiyin_chinese_calendar_context* calendar, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* instant_ut1, int32_t direction,
+    taiyin_split_julian_date* out_instant_ut1, taiyin_calendar_datetime* out_time,
+    taiyin_ephemeris_diagnostic* diagnostic);
 
 #ifdef __cplusplus
 }

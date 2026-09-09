@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 static int fail(const char* message) {
     fprintf(stderr, "test_ziwei_c_api: %s\n", message);
@@ -153,6 +154,91 @@ static int test_manual_natal(const taiyin_ziwei_context* context,
 done:
     taiyin_ziwei_chart_destroy(modified); taiyin_ziwei_chart_destroy(shifted); taiyin_ziwei_chart_destroy(restored);
     return rc;
+}
+
+static int test_clock_api(const taiyin_ziwei_context* context,
+                          const taiyin_chinese_calendar_context* calendar) {
+    int mode;
+    for (mode = 0; mode < 3; ++mode) {
+        taiyin_ziwei_chart_clock clock = {sizeof(taiyin_ziwei_chart_clock), 0, 2.0696369923};
+        taiyin_calendar_datetime wall, mapped, step;
+        taiyin_split_julian_date instant, roundtrip, next;
+        taiyin_ziwei_chart* chart = NULL;
+        taiyin_ziwei_birth_options birth;
+        taiyin_ziwei_flow_options flow;
+        taiyin_ziwei_flow_summary summary;
+        taiyin_ziwei_reverse_request request;
+        taiyin_ziwei_reverse_candidate* candidates;
+        uint8_t segment, position;
+        uint16_t star;
+        size_t count = 0, actual = 0;
+        clock.mode = mode;
+        taiyin_calendar_datetime_init(&wall);
+        taiyin_calendar_datetime_init(&mapped);
+        taiyin_calendar_datetime_init(&step);
+        wall.year = 2003; wall.month = 3; wall.day = 13; wall.hour = 22;
+        taiyin_ziwei_birth_options_init(&birth);
+        birth.rat_hour_mode = 1;
+        taiyin_ziwei_flow_options_init(&flow);
+        flow.rat_hour_mode = 1;
+        taiyin_ziwei_flow_summary_init(&summary);
+        if (taiyin_ziwei_chart_time_to_ut1(calendar, &clock, &wall, &instant, NULL) < 0
+            || taiyin_ziwei_chart_time_from_ut1(calendar, &clock, &instant, &mapped, NULL) < 0
+            || mapped.year != 2003 || mapped.month != 3 || mapped.day != 13 || mapped.hour != 22
+            || taiyin_ziwei_chart_time_to_ut1(calendar, &clock, &mapped, &roundtrip, NULL) < 0
+            || fabs((roundtrip.day_number-instant.day_number) + roundtrip.day_fraction-instant.day_fraction) > 1e-9
+            || taiyin_ziwei_step_flow_hour_at_ut1(calendar, &clock, &instant, 1, 1, &next, &step, &segment, NULL) < 0
+            || step.hour != 23 || step.minute != 0 || fabs(step.second) > 1e-4
+            || taiyin_ziwei_chart_create_at_ut1(context, calendar, &instant, &clock, 0, &birth, &chart, NULL) < 0
+            || taiyin_ziwei_chart_set_flow_at_ut1(context, calendar, &next, &clock, &flow,
+                TAIYIN_ZIWEI_FLOW_HOUR, chart, &summary, NULL) < 0
+            || taiyin_ziwei_step_flow_day_at_ut1(calendar, &clock, &instant, 1, &next, &step, NULL) < 0
+            || step.day != 14 || step.hour != 22) return 1;
+        if (taiyin_ziwei_find_star(context, "lucun", &star) < 0
+            || taiyin_ziwei_chart_get_star_position(chart, star, &position) < 0) return 1;
+        taiyin_ziwei_reverse_request_init(&request);
+        request.start_instant_utc = instant;
+        if (taiyin_add_seconds_to_split_jd(&instant, 7200, &request.end_instant_utc) < 0) return 1;
+        request.birth_options = birth;
+        request.gender = 0;
+        request.query.lucun_branch = position;
+        /* This field is intentionally invalid: the UT1 entry derives it. */
+        request.start_virtual_time.struct_size = 0;
+        if (taiyin_ziwei_reverse_lookup_tier1_at_ut1(context, calendar, &request,
+                &clock, NULL, 0, &count, NULL) < 0 || count < 2) return 1;
+        candidates = (taiyin_ziwei_reverse_candidate*)calloc(count, sizeof(*candidates));
+        if (!candidates) return 1;
+        for (actual = 0; actual < count; ++actual) taiyin_ziwei_reverse_candidate_init(candidates + actual);
+        candidates[count - 1].struct_size = 0;
+        candidates[0].lunar_year = 123456;
+        if (taiyin_call_result_status(taiyin_ziwei_reverse_lookup_tier1_at_ut1(context, calendar,
+                &request, &clock, candidates, count, &actual, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || actual != 0 || candidates[0].lunar_year != 123456) return 1;
+        candidates[count - 1].struct_size = sizeof(*candidates) - 1;
+        if (taiyin_call_result_status(taiyin_ziwei_reverse_lookup_tier1_at_ut1(context, calendar,
+                &request, &clock, candidates, count, &actual, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT
+            || actual != 0 || candidates[0].lunar_year != 123456) return 1;
+        candidates[count - 1].struct_size = sizeof(*candidates);
+        if (taiyin_ziwei_reverse_lookup_tier1_at_ut1(context, calendar, &request,
+                &clock, candidates, count, &actual, NULL) < 0 || actual != count) return 1;
+        free(candidates);
+        taiyin_ziwei_chart_destroy(chart);
+        if (mode == TAIYIN_ZIWEI_CLOCK_APPARENT_SOLAR) {
+            wall.day = 14; wall.hour = 0; wall.second = 8e-9;
+            if (taiyin_ziwei_chart_time_to_ut1(calendar, &clock, &wall, &next, NULL) < 0
+                || taiyin_ziwei_chart_time_from_ut1(calendar, &clock, &next, &mapped, NULL) < 0
+                || mapped.day != 14 || mapped.hour != 0) return 1;
+        }
+        clock.mode = 99;
+        if (taiyin_call_result_status(taiyin_ziwei_chart_time_from_ut1(calendar, &clock,
+                &instant, &mapped, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) return 1;
+        clock.mode = 1; clock.longitude_rad = NAN;
+        if (taiyin_call_result_status(taiyin_ziwei_chart_time_to_ut1(calendar, &clock,
+                &wall, &next, NULL)) != TAIYIN_ERROR_INVALID_ARGUMENT) return 1;
+        clock.mode = 0; /* Unused longitude must not reject fixed clocks. */
+        if (taiyin_ziwei_chart_time_to_ut1(calendar, &clock, &wall, &next, NULL) < 0) return 1;
+    }
+    return 0;
 }
 
 int main(int argc, char** argv) {
@@ -550,6 +636,7 @@ int main(int argc, char** argv) {
     }
 
     if(test_casting(context,alternate_context)) return fail("manual/random casting C ABI");
+    if(test_clock_api(context,calendar)) return fail("explicit chart clock C ABI");
     if(test_manual_natal(context,calendar,chart)) return fail("natal edits preserve flow calendar and root");
     taiyin_ziwei_chart_destroy(chart);
     taiyin_ziwei_context_destroy(custom_context);

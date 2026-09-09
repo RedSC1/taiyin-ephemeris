@@ -57,16 +57,22 @@ endpoints carry UT1 when used with these new entry points; reverse-request
 `start_virtual_time` is ignored. Keep the same clock configuration throughout
 a chart's lifetime; chart values do not retain or enforce this policy.
 
-At an exact virtual-hour boundary, the inverse verifies the forward result
+For every apparent-solar inverse, the solver verifies the forward result
 and returns the new-slot side within a few microseconds (the underlying solar
 inverse has a sub-microsecond convergence tolerance). This is not a global
 snapping tolerance for arbitrary physical input. Evaluation/coverage failures
 are returned, not replaced by a fixed-offset fallback.
 
 The older dual-time adapters remain fixed-offset advanced interfaces. They do
-not infer a solar clock from a pair of times. The new clock-aware interfaces
-are currently C++ only; the existing C ABI/Python/Dart interfaces have not yet
-been extended with this clock configuration.
+not infer a solar clock from a pair of times. The C ABI now exposes these
+operations via `taiyin_ziwei_chart_clock` (set `struct_size`, `mode` and
+`longitude_rad`), `taiyin_ziwei_chart_create_at_ut1`,
+`taiyin_ziwei_chart_set_flow_at_ut1`, `taiyin_ziwei_reverse_lookup_tier1_at_ut1`,
+`taiyin_ziwei_chart_time_from_ut1`, `taiyin_ziwei_chart_time_to_ut1`, and
+`taiyin_ziwei_step_flow_hour_at_ut1` / `taiyin_ziwei_step_flow_day_at_ut1`.
+They return packed status/result flags and accept an optional diagnostic.
+Initialize output datetime/summary/candidate struct sizes as with existing C
+APIs. Python/Dart must use matching new bindings and native builds.
 
 中文说明：反查现在逐个访问实际时辰边界及干支引擎使用的节界，避免漏掉
 区间尾部的半个时辰，或时辰内部因节气切换而改变的盘。历史“节后第几天”
@@ -86,9 +92,10 @@ been extended with this clock configuration.
 UTC 输入先经现有时间尺度转换层处理 EOP/估算策略。复用结构内旧名称
 `instant_utc` 在新入口下实际承载 UT1；反查的 `start_virtual_time` 不再使用。
 同一张盘应始终使用同一时钟配置，底层无状态盘不会替用户锁定这项策略。
-精确整点反解会正向复核，确保落在新时辰一侧，误差限制在数微秒以内；不会
+真太阳时反解会正向复核，并在微小括区内精修到目标时钟一侧，误差限制在数微秒以内；不会
 对任意输入扩大整点吸附范围，太阳时求值失败也不会偷偷回退固定偏移。
-旧双时间接口保留原语义。目前新配置仅接入 C++，C ABI、Python、Dart 尚待绑定。
+旧双时间接口保留原语义。C ABI 已通过 `taiyin_ziwei_chart_clock` 和上述七个
+新入口贯通；绑定需配套重建。未发布旧产物不会自动获得新符号。
 
 ```cpp
 taiyin::ziwei::ChartClock clock;

@@ -11,12 +11,15 @@ not consume the C++ API. Include the umbrella header:
 
 The installed shared library is named `taiyin` on platforms with versioned
 SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). Windows includes the ABI in the
-runtime and import-library name, for example `taiyin-10.dll` and
-`taiyin-10.lib`.
+runtime and import-library name, for example `taiyin-11.dll` and
+`taiyin-11.lib`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
 the independent semantic library version; the current beta is
-`1.0.0-beta.10`. `taiyin_get_library_codename()` reports the major-release codename;
+`1.0.0-beta.11` (C ABI 11). Rebuild bindings and optional modules together with
+the core when upgrading from ABI 10. This release exposes the explicit Ziwei
+chart-clock conversion, flow navigation and reverse-search C entry points.
+`taiyin_get_library_codename()` reports the major-release codename;
 Taiyin `1.x.x` is **Singularity**. The returned version and codename strings
 have static library lifetime and must not be freed. `taiyin_get_capabilities()`
 reports the functional modules and feature-level extensions present in the

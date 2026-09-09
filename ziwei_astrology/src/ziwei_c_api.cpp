@@ -5,6 +5,7 @@
 #include "taiyin/ziwei/ziweicore.h"
 
 #include <cstring>
+#include <cmath>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -40,6 +41,18 @@ struct taiyin_ziwei_chart {
 struct taiyin_ziwei_casting_chart { taiyin::ziwei::CastingChart value; };
 
 namespace {
+
+bool valid_clock(const taiyin_ziwei_chart_clock* clock) {
+    return taiyin_c_internal::valid_struct(clock) && clock->mode >= 0 && clock->mode <= 2
+        && (clock->mode == 0 || (std::isfinite(clock->longitude_rad)
+            && std::fabs(clock->longitude_rad) <= 3.14159265358979323846));
+}
+taiyin::ziwei::ChartClock cpp_clock(const taiyin_ziwei_chart_clock& clock) {
+    taiyin::ziwei::ChartClock result;
+    result.mode = static_cast<taiyin::ziwei::ChartClockMode>(clock.mode);
+    result.longitude_rad = clock.longitude_rad;
+    return result;
+}
 
 template <typename T>
 void init_struct(T* value) noexcept {
@@ -849,7 +862,7 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_star_is_natal(
     }
 }
 
-taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
+static taiyin_call_result chart_create_impl(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* instant_utc,
@@ -857,12 +870,13 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
     int32_t gender,
     const taiyin_ziwei_birth_options* options,
     taiyin_ziwei_chart** out_chart,
-    taiyin_ephemeris_diagnostic* diagnostic
+    taiyin_ephemeris_diagnostic* diagnostic,
+    const taiyin_ziwei_chart_clock* clock
 ) {
     if (out_chart) *out_chart = NULL;
     if (!context || !calendar_context
         || !taiyin_c_internal::valid_split_jd(instant_utc)
-        || !taiyin_c_internal::valid_struct(virtual_time)
+        || (clock ? !valid_clock(clock) : !taiyin_c_internal::valid_struct(virtual_time))
         || !taiyin_c_internal::valid_struct(options)
         || !valid_birth_option_values(*options)
         || gender < TAIYIN_ZIWEI_GENDER_MALE
@@ -872,13 +886,17 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
         return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
     }
     try {
-        taiyin_ziwei_chart* created = new taiyin_ziwei_chart();
+        std::unique_ptr<taiyin_ziwei_chart> created(new taiyin_ziwei_chart());
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         const taiyin::ziwei::BirthResolutionOptions cpp_options =
             to_cpp_birth_options(*options);
         created->anchor_options = cpp_options.anchor_options;
         taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
-        taiyin::Status status = taiyin::ziwei::resolve_birth_from_calendar(
+        taiyin::Status status = clock ? taiyin::ziwei::resolve_birth_at_ut1(
+            &tracked.value, taiyin_c_internal::to_cpp_split_jd(*instant_utc),
+            cpp_clock(*clock), static_cast<taiyin::ziwei::Gender>(gender), cpp_options,
+            &created->birth, diagnostic ? &cpp_diagnostic : NULL)
+            : taiyin::ziwei::resolve_birth_from_calendar(
             &tracked.value,
             taiyin_c_internal::to_cpp_split_jd(*instant_utc),
             taiyin_c_internal::to_cpp_datetime(*virtual_time),
@@ -899,12 +917,11 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
             taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
         }
         if (status != TAIYIN_STATUS_OK) {
-            delete created;
             return taiyin_c_internal::pack_call_result(status, tracked.flags);
         }
         created->registry_fingerprint =
             context->value.compiled_tables().registry_fingerprint;
-        *out_chart = created;
+        *out_chart = created.release();
         return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK, tracked.flags);
     } catch (...) {
         return taiyin_c_internal::pack_call_result(exception_status());
@@ -915,21 +932,22 @@ void TAIYIN_C_CALL taiyin_ziwei_chart_destroy(taiyin_ziwei_chart* chart) {
     delete chart;
 }
 
-taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
+static taiyin_call_result reverse_lookup_impl(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_ziwei_reverse_request* request,
     taiyin_ziwei_reverse_candidate* out_candidates,
     size_t capacity,
     size_t* out_count,
-    taiyin_ephemeris_diagnostic* diagnostic
+    taiyin_ephemeris_diagnostic* diagnostic,
+    const taiyin_ziwei_chart_clock* clock
 ) {
     if (out_count) *out_count = 0u;
     if (!context || !calendar_context || !request || !out_count
         || !taiyin_c_internal::valid_struct(request)
         || !taiyin_c_internal::valid_split_jd(&request->start_instant_utc)
         || !taiyin_c_internal::valid_split_jd(&request->end_instant_utc)
-        || !taiyin_c_internal::valid_struct(&request->start_virtual_time)
+        || (clock ? !valid_clock(clock) : !taiyin_c_internal::valid_struct(&request->start_virtual_time))
         || !taiyin_c_internal::valid_struct(&request->birth_options)
         || !valid_birth_option_values(request->birth_options)
         || !taiyin_c_internal::valid_struct(&request->query)
@@ -945,7 +963,7 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
             request->start_instant_utc);
         cpp_request.end_instant_utc = taiyin_c_internal::to_cpp_split_jd(
             request->end_instant_utc);
-        cpp_request.start_virtual_time = taiyin_c_internal::to_cpp_datetime(
+        if (!clock) cpp_request.start_virtual_time = taiyin_c_internal::to_cpp_datetime(
             request->start_virtual_time);
         cpp_request.gender = static_cast<taiyin::ziwei::Gender>(request->gender);
         cpp_request.birth_options = to_cpp_birth_options(request->birth_options);
@@ -954,7 +972,11 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
         taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
         taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
         const taiyin::Status status =
-            taiyin::ziwei::reverse_lookup_tier1_from_calendar(
+            clock ? taiyin::ziwei::reverse_lookup_tier1_at_ut1(
+                &tracked.value, cpp_request, cpp_clock(*clock),
+                context->value.compiled_tables(), context->value.star_registry(),
+                &candidates, diagnostic ? &cpp_diagnostic : NULL)
+            : taiyin::ziwei::reverse_lookup_tier1_from_calendar(
                 &tracked.value, cpp_request,
                 context->value.compiled_tables(), context->value.star_registry(),
                 &candidates, diagnostic ? &cpp_diagnostic : NULL);
@@ -965,6 +987,14 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
         *out_count = candidates.size();
         if (!out_candidates) return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK, tracked.flags);
         if (capacity < candidates.size()) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY, tracked.flags);
+        // Validate every slot before writing any candidate: an invalid later
+        // slot must not leave a partially populated output array.
+        for (std::size_t i = 0u; i < candidates.size(); ++i) {
+            if (!taiyin_c_internal::valid_struct(&out_candidates[i])) {
+                *out_count = 0u;
+                return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT, tracked.flags);
+            }
+        }
         for (std::size_t i = 0u; i < candidates.size(); ++i) {
             copy_reverse_candidate(candidates[i], &out_candidates[i]);
         }
@@ -1162,7 +1192,7 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_get_palace_stars(
     return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK);
 }
 
-taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
+static taiyin_call_result chart_set_flow_impl(
     const taiyin_ziwei_context* context,
     const taiyin_chinese_calendar_context* calendar_context,
     const taiyin_split_julian_date* target_instant_utc,
@@ -1171,11 +1201,12 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
     int32_t deepest_level,
     taiyin_ziwei_chart* chart,
     taiyin_ziwei_flow_summary* out_summary,
-    taiyin_ephemeris_diagnostic* diagnostic
+    taiyin_ephemeris_diagnostic* diagnostic,
+    const taiyin_ziwei_chart_clock* clock
 ) {
     if (!context || !calendar_context
         || !taiyin_c_internal::valid_split_jd(target_instant_utc)
-        || !taiyin_c_internal::valid_struct(target_virtual_time)
+        || (clock ? !valid_clock(clock) : !taiyin_c_internal::valid_struct(target_virtual_time))
         || !taiyin_c_internal::valid_struct(options)
         || !valid_flow_option_values(*options)
         || !valid_level(deepest_level)
@@ -1186,9 +1217,15 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
     }
     taiyin::ziwei::ResolvedFlow resolved;
     taiyin::runtime::EphemerisEvalDiagnostic cpp_diagnostic;
+    taiyin_c_internal::TrackedCalendarContext tracked(calendar_context->value);
     const taiyin::Status status =
-        taiyin::ziwei::set_flow_stack_through_from_calendar(
-            &calendar_context->value,
+        clock ? taiyin::ziwei::set_flow_stack_through_at_ut1(
+            &tracked.value, chart->birth, taiyin_c_internal::to_cpp_split_jd(*target_instant_utc),
+            cpp_clock(*clock), to_cpp_flow_options(*options),
+            static_cast<taiyin::ziwei::FlowLevel>(deepest_level), context->value.compiled_tables(),
+            &chart->value, &resolved, diagnostic ? &cpp_diagnostic : NULL)
+        : taiyin::ziwei::set_flow_stack_through_from_calendar(
+            &tracked.value,
             chart->birth,
             taiyin_c_internal::to_cpp_split_jd(*target_instant_utc),
             taiyin_c_internal::to_cpp_datetime(*target_virtual_time),
@@ -1202,7 +1239,7 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
         taiyin_c_internal::from_cpp_diagnostic(cpp_diagnostic, diagnostic);
     }
     if (status == TAIYIN_STATUS_OK) copy_flow_summary(resolved, out_summary);
-    return taiyin_c_internal::pack_call_result(status);
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
 }
 
 taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_truncate_flow(
@@ -1361,6 +1398,119 @@ taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_day_target(
         taiyin_c_internal::from_cpp_datetime(cpp_time, out_virtual_time);
     }
     return taiyin_c_internal::pack_call_result(status);
+}
+
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create(
+    const taiyin_ziwei_context* c, const taiyin_chinese_calendar_context* cal,
+    const taiyin_split_julian_date* jd, const taiyin_calendar_datetime* t, int32_t gender,
+    const taiyin_ziwei_birth_options* o, taiyin_ziwei_chart** out, taiyin_ephemeris_diagnostic* d) {
+    return chart_create_impl(c, cal, jd, t, gender, o, out, d, NULL);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_create_at_ut1(
+    const taiyin_ziwei_context* c, const taiyin_chinese_calendar_context* cal,
+    const taiyin_split_julian_date* jd, const taiyin_ziwei_chart_clock* clock, int32_t gender,
+    const taiyin_ziwei_birth_options* o, taiyin_ziwei_chart** out, taiyin_ephemeris_diagnostic* d) {
+    if (!clock) { if (out) *out = NULL; return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT); }
+    return chart_create_impl(c, cal, jd, NULL, gender, o, out, d, clock);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow(
+    const taiyin_ziwei_context* c, const taiyin_chinese_calendar_context* cal,
+    const taiyin_split_julian_date* jd, const taiyin_calendar_datetime* t,
+    const taiyin_ziwei_flow_options* o, int32_t level, taiyin_ziwei_chart* chart,
+    taiyin_ziwei_flow_summary* out, taiyin_ephemeris_diagnostic* d) {
+    return chart_set_flow_impl(c, cal, jd, t, o, level, chart, out, d, NULL);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_set_flow_at_ut1(
+    const taiyin_ziwei_context* c, const taiyin_chinese_calendar_context* cal,
+    const taiyin_split_julian_date* jd, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_ziwei_flow_options* o, int32_t level, taiyin_ziwei_chart* chart,
+    taiyin_ziwei_flow_summary* out, taiyin_ephemeris_diagnostic* d) {
+    if (!clock) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    return chart_set_flow_impl(c, cal, jd, NULL, o, level, chart, out, d, clock);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1(
+    const taiyin_ziwei_context* c, const taiyin_chinese_calendar_context* cal,
+    const taiyin_ziwei_reverse_request* r, taiyin_ziwei_reverse_candidate* out,
+    size_t cap, size_t* count, taiyin_ephemeris_diagnostic* d) {
+    return reverse_lookup_impl(c, cal, r, out, cap, count, d, NULL);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_reverse_lookup_tier1_at_ut1(
+    const taiyin_ziwei_context* c, const taiyin_chinese_calendar_context* cal,
+    const taiyin_ziwei_reverse_request* r, const taiyin_ziwei_chart_clock* clock,
+    taiyin_ziwei_reverse_candidate* out, size_t cap, size_t* count, taiyin_ephemeris_diagnostic* d) {
+    if (!clock) { if (count) *count = 0; return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT); }
+    return reverse_lookup_impl(c, cal, r, out, cap, count, d, clock);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_time_from_ut1(
+    const taiyin_chinese_calendar_context* cal, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* jd, taiyin_calendar_datetime* out, taiyin_ephemeris_diagnostic* d) {
+    if (!cal || !valid_clock(clock) || !taiyin_c_internal::valid_split_jd(jd)
+        || !taiyin_c_internal::valid_struct(out) || (d && !taiyin_c_internal::valid_struct(d)))
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    taiyin_c_internal::TrackedCalendarContext tracked(cal->value);
+    taiyin::CalendarDateTime result;
+    taiyin::runtime::EphemerisEvalDiagnostic diag;
+    const auto status = taiyin::ziwei::chart_time_from_ut1(&tracked.value, cpp_clock(*clock),
+        taiyin_c_internal::to_cpp_split_jd(*jd), &result, d ? &diag : NULL);
+    if (status == TAIYIN_STATUS_OK) taiyin_c_internal::from_cpp_datetime(result, out);
+    if (d) taiyin_c_internal::from_cpp_diagnostic(diag, d);
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_chart_time_to_ut1(
+    const taiyin_chinese_calendar_context* cal, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_calendar_datetime* t, taiyin_split_julian_date* out, taiyin_ephemeris_diagnostic* d) {
+    if (!cal || !valid_clock(clock) || !taiyin_c_internal::valid_struct(t) || !out
+        || (d && !taiyin_c_internal::valid_struct(d)))
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    taiyin_c_internal::TrackedCalendarContext tracked(cal->value);
+    taiyin::SplitJulianDate result;
+    taiyin::runtime::EphemerisEvalDiagnostic diag;
+    const auto status = taiyin::ziwei::chart_time_to_ut1(&tracked.value, cpp_clock(*clock),
+        taiyin_c_internal::to_cpp_datetime(*t), &result, d ? &diag : NULL);
+    if (status == TAIYIN_STATUS_OK) taiyin_c_internal::from_cpp_split_jd(result, out);
+    if (d) taiyin_c_internal::from_cpp_diagnostic(diag, d);
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
+}
+static taiyin_call_result step_clock_target(
+    const taiyin_chinese_calendar_context* cal, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* jd, int32_t rat, int32_t direction,
+    taiyin_split_julian_date* out_jd, taiyin_calendar_datetime* out_time,
+    uint8_t* out_segment, taiyin_ephemeris_diagnostic* d, bool hourly) {
+    if (!cal || !valid_clock(clock) || !taiyin_c_internal::valid_split_jd(jd)
+        || !out_jd || !taiyin_c_internal::valid_struct(out_time) || (hourly && !out_segment)
+        || (d && !taiyin_c_internal::valid_struct(d)))
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    taiyin_c_internal::TrackedCalendarContext tracked(cal->value);
+    taiyin::SplitJulianDate result;
+    taiyin::CalendarDateTime time;
+    taiyin::ziwei::RatHourSegment segment;
+    taiyin::runtime::EphemerisEvalDiagnostic diag;
+    const auto status = hourly ? taiyin::ziwei::step_flow_hour_at_ut1(&tracked.value,
+        taiyin_c_internal::to_cpp_split_jd(*jd), cpp_clock(*clock), rat, direction,
+        &result, &time, &segment, d ? &diag : NULL)
+        : taiyin::ziwei::step_flow_day_at_ut1(&tracked.value,
+        taiyin_c_internal::to_cpp_split_jd(*jd), cpp_clock(*clock), direction,
+        &result, &time, d ? &diag : NULL);
+    if (status == TAIYIN_STATUS_OK) {
+        taiyin_c_internal::from_cpp_split_jd(result, out_jd);
+        taiyin_c_internal::from_cpp_datetime(time, out_time);
+        if (hourly) *out_segment = taiyin::ziwei::to_index(segment);
+    }
+    if (d) taiyin_c_internal::from_cpp_diagnostic(diag, d);
+    return taiyin_c_internal::pack_call_result(status, tracked.flags);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_hour_at_ut1(
+    const taiyin_chinese_calendar_context* cal, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* jd, int32_t rat, int32_t direction,
+    taiyin_split_julian_date* out, taiyin_calendar_datetime* time, uint8_t* segment,
+    taiyin_ephemeris_diagnostic* d) {
+    return step_clock_target(cal, clock, jd, rat, direction, out, time, segment, d, true);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_ziwei_step_flow_day_at_ut1(
+    const taiyin_chinese_calendar_context* cal, const taiyin_ziwei_chart_clock* clock,
+    const taiyin_split_julian_date* jd, int32_t direction,
+    taiyin_split_julian_date* out, taiyin_calendar_datetime* time, taiyin_ephemeris_diagnostic* d) {
+    return step_clock_target(cal, clock, jd, 0, direction, out, time, NULL, d, false);
 }
 
 }  // extern "C"
