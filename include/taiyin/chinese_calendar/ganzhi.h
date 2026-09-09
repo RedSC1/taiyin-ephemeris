@@ -52,6 +52,21 @@ struct TAIYIN_GANZHI_SHARED_API GanzhiFourPillars {
     GanzhiFourPillars() noexcept;
 };
 
+// The same effective Jie boundary used by the pillar engine. Historical
+// terms use their assigned UTC+08 civil midnight, otherwise the precise UT
+// instant. The astronomical event itself is never rewritten.
+TAIYIN_GANZHI_SHARED_API Status pillar_term_boundary(
+    const ChineseCalendarContext* context, const SolarTermEvent& term,
+    SplitJulianDate* out_boundary) noexcept;
+TAIYIN_GANZHI_SHARED_API Status previous_pillar_jie(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept;
+TAIYIN_GANZHI_SHARED_API Status next_pillar_jie(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept;
+
 // Normalizes the resolved virtual clock used by Chinese metaphysics.  This
 // recognizes only the exact scalar/split-JD spellings of a civil-hour
 // boundary and canonicalizes its calendar fields, preventing a JD round trip

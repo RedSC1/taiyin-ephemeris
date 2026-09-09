@@ -109,17 +109,10 @@ RatHourSegment rat_hour_segment(
         ? RatHourSegment::Late : RatHourSegment::Early;
 }
 
-bool encode_virtual_time(
-    const CalendarDateTime& value,
-    SplitJulianDate* out
-) noexcept {
-    return out != NULL && julian_day_split(value, out);
-}
-
 Status shift_target_by_local_days(
     const SplitJulianDate& current_instant_utc,
     const CalendarDateTime& current_virtual_time,
-    double local_days,
+    int local_days,
     SplitJulianDate* out_instant_utc,
     CalendarDateTime* out_virtual_time
 ) noexcept {
@@ -127,22 +120,13 @@ Status shift_target_by_local_days(
         || !split_julian_date_is_finite(current_instant_utc)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    SplitJulianDate current_local;
-    SplitJulianDate next_local;
     SplitJulianDate next_instant;
-    if (!encode_virtual_time(current_virtual_time, &current_local)
-        || !add_days_to_split_jd(current_local, local_days, &next_local)
-        || !add_days_to_split_jd(current_instant_utc, local_days, &next_instant)
-        || !reverse_julian_day_split(next_local, out_virtual_time)) {
+    if (!add_days_to_split_jd(current_instant_utc, local_days, &next_instant)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
-    // The reverse conversion is only used to advance the civil date.  Its
-    // floating-point decomposition can otherwise turn 23:30:00 into
-    // 23:29:59.999999..., even though stepping a flow day promises to retain
-    // the caller's wall-clock fields exactly.
-    out_virtual_time->hour = current_virtual_time.hour;
-    out_virtual_time->minute = current_virtual_time.minute;
-    out_virtual_time->second = current_virtual_time.second;
+    const Status status = detail::shift_virtual_hours(current_virtual_time,
+        local_days * 24, out_virtual_time);
+    if (status != TAIYIN_STATUS_OK) return status;
     *out_instant_utc = next_instant;
     return TAIYIN_STATUS_OK;
 }
@@ -368,7 +352,7 @@ FlowResolutionOptions default_flow_resolution_options() noexcept {
     return result;
 }
 
-Status resolve_flow_from_calendar(
+static Status resolve_flow_impl(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const ResolvedBirth& birth,
     const NatalChart& natal,
@@ -376,7 +360,8 @@ Status resolve_flow_from_calendar(
     const CalendarDateTime& target_virtual_time,
     const FlowResolutionOptions& options,
     ResolvedFlow* out,
-    runtime::EphemerisEvalDiagnostic* diagnostic
+    runtime::EphemerisEvalDiagnostic* diagnostic,
+    const ChartClock* clock
 ) noexcept {
     if (calendar == NULL
         || out == NULL
@@ -463,7 +448,7 @@ Status resolve_flow_from_calendar(
             normalized_target_virtual_time,
             options.rat_hour_mode,
             &solar_day,
-            diagnostic);
+            diagnostic, clock);
         if (status != TAIYIN_STATUS_OK) return status;
         if (solar_day > kMaxFlowDayIndex) return TAIYIN_ERROR_INTERNAL;
         result.target_day = static_cast<uint8_t>(solar_day);
@@ -552,6 +537,67 @@ Status resolve_flow_from_calendar(
     return TAIYIN_STATUS_OK;
 }
 
+Status resolve_flow_from_calendar(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ResolvedBirth& birth, const NatalChart& natal,
+    const SplitJulianDate& instant, const CalendarDateTime& virtual_time,
+    const FlowResolutionOptions& options, ResolvedFlow* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return resolve_flow_impl(calendar, birth, natal, instant, virtual_time,
+        options, out, diagnostic, NULL);
+}
+
+Status resolve_flow_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ResolvedBirth& birth, const NatalChart& natal,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock,
+    const FlowResolutionOptions& options, ResolvedFlow* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    CalendarDateTime virtual_time;
+    const Status status = chart_time_from_ut1(calendar, clock, jd_ut1, &virtual_time, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    return resolve_flow_impl(calendar, birth, natal, jd_ut1, virtual_time,
+        options, out, diagnostic, &clock);
+}
+
+Status step_flow_hour_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock,
+    int32_t rat_hour_mode, int direction, SplitJulianDate* out_jd_ut1,
+    CalendarDateTime* out_virtual_time, RatHourSegment* out_segment,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    if (!out_jd_ut1 || !out_virtual_time || !out_segment) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    CalendarDateTime current, target;
+    SplitJulianDate mapped;
+    RatHourSegment segment;
+    Status s = chart_time_from_ut1(calendar, clock, jd_ut1, &current, diagnostic);
+    if (s != TAIYIN_STATUS_OK) return s;
+    s = step_flow_hour_target(jd_ut1, current, rat_hour_mode, direction, &mapped, &target, &segment);
+    if (s != TAIYIN_STATUS_OK) return s;
+    s = chart_time_to_ut1(calendar, clock, target, &mapped, diagnostic);
+    if (s != TAIYIN_STATUS_OK) return s;
+    *out_jd_ut1 = mapped; *out_virtual_time = target; *out_segment = segment;
+    return TAIYIN_STATUS_OK;
+}
+
+Status step_flow_day_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock,
+    int direction, SplitJulianDate* out_jd_ut1, CalendarDateTime* out_virtual_time,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    if (!out_jd_ut1 || !out_virtual_time) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    CalendarDateTime current, target;
+    SplitJulianDate mapped;
+    Status s = chart_time_from_ut1(calendar, clock, jd_ut1, &current, diagnostic);
+    if (s != TAIYIN_STATUS_OK) return s;
+    s = step_flow_day_target(jd_ut1, current, direction, &mapped, &target);
+    if (s != TAIYIN_STATUS_OK) return s;
+    s = chart_time_to_ut1(calendar, clock, target, &mapped, diagnostic);
+    if (s != TAIYIN_STATUS_OK) return s;
+    *out_jd_ut1 = mapped; *out_virtual_time = target;
+    return TAIYIN_STATUS_OK;
+}
+
 Status set_flow_stack_from_calendar(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const ResolvedBirth& birth,
@@ -576,7 +622,7 @@ Status set_flow_stack_from_calendar(
         diagnostic);
 }
 
-Status set_flow_stack_through_from_calendar(
+static Status set_flow_stack_impl(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const ResolvedBirth& birth,
     const SplitJulianDate& target_instant_utc,
@@ -586,13 +632,14 @@ Status set_flow_stack_through_from_calendar(
     const CompiledRules& rules,
     Chart* chart,
     ResolvedFlow* out_resolution,
-    runtime::EphemerisEvalDiagnostic* diagnostic
+    runtime::EphemerisEvalDiagnostic* diagnostic,
+    const ChartClock* clock
 ) noexcept {
     if (chart == NULL || !is_valid(deepest_level)) {
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     ResolvedFlow resolved;
-    Status status = resolve_flow_from_calendar(
+    Status status = resolve_flow_impl(
         calendar,
         birth,
         chart->natal,
@@ -600,7 +647,7 @@ Status set_flow_stack_through_from_calendar(
         target_virtual_time,
         options,
         &resolved,
-        diagnostic);
+        diagnostic, clock);
     if (status != TAIYIN_STATUS_OK) return status;
 
     try {
@@ -629,6 +676,29 @@ Status set_flow_stack_through_from_calendar(
     }
 }
 
+Status set_flow_stack_through_from_calendar(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ResolvedBirth& birth, const SplitJulianDate& instant,
+    const CalendarDateTime& virtual_time, const FlowResolutionOptions& options,
+    FlowLevel level, const CompiledRules& rules, Chart* chart,
+    ResolvedFlow* out, runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return set_flow_stack_impl(calendar, birth, instant, virtual_time, options,
+        level, rules, chart, out, diagnostic, NULL);
+}
+
+Status set_flow_stack_through_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ResolvedBirth& birth, const SplitJulianDate& jd_ut1,
+    const ChartClock& clock, const FlowResolutionOptions& options,
+    FlowLevel level, const CompiledRules& rules, Chart* chart,
+    ResolvedFlow* out, runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    CalendarDateTime virtual_time;
+    const Status status = chart_time_from_ut1(calendar, clock, jd_ut1, &virtual_time, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    return set_flow_stack_impl(calendar, birth, jd_ut1, virtual_time, options,
+        level, rules, chart, out, diagnostic, &clock);
+}
+
 Status step_flow_hour_target(
     const SplitJulianDate& current_instant_utc,
     const CalendarDateTime& current_virtual_time,
@@ -649,11 +719,6 @@ Status step_flow_hour_target(
     Status status = chinese_calendar::normalize_chart_virtual_time(
         current_virtual_time, &normalized_current_virtual_time);
     if (status != TAIYIN_STATUS_OK) return status;
-    SplitJulianDate current_local;
-    if (!encode_virtual_time(
-            normalized_current_virtual_time, &current_local)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
-    }
 
     const bool split_rat = rat_hour_mode
         != chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT;
@@ -665,23 +730,10 @@ Status step_flow_hour_target(
                 || normalized_current_virtual_time.hour < 2);
     const double step_seconds = static_cast<double>(direction)
         * (one_hour_step ? 3600.0 : 7200.0);
-    SplitJulianDate target_local;
     CalendarDateTime target_clock;
-    if (!add_seconds_to_split_jd(
-            current_local, step_seconds, &target_local)
-        || !reverse_julian_day_split(target_local, &target_clock)) {
-        return TAIYIN_ERROR_INVALID_ARGUMENT;
-    }
-    // Navigation preserves the position inside the current hour. The reverse
-    // conversion is used only for the carried calendar date; retain the exact
-    // virtual-clock fields so mean/apparent solar time drives the transition
-    // without binary-JD decomposition noise.
-    target_clock.hour = normalized(
-        static_cast<int64_t>(normalized_current_virtual_time.hour)
-            + (one_hour_step ? direction : 2 * direction),
-        24);
-    target_clock.minute = normalized_current_virtual_time.minute;
-    target_clock.second = normalized_current_virtual_time.second;
+    status = detail::shift_virtual_hours(normalized_current_virtual_time,
+        one_hour_step ? direction : 2 * direction, &target_clock);
+    if (status != TAIYIN_STATUS_OK) return status;
     SplitJulianDate target_instant;
     if (!add_seconds_to_split_jd(
             current_instant_utc, step_seconds, &target_instant)) {
@@ -713,7 +765,7 @@ Status step_flow_day_target(
     return shift_target_by_local_days(
         current_instant_utc,
         normalized_current_virtual_time,
-        static_cast<double>(direction),
+        direction,
         out_instant_utc,
         out_virtual_time);
 }

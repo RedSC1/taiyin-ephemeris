@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <initializer_list>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -170,6 +171,27 @@ void add_input(std::vector<RuleInputSource>* result, RuleInputSource source) {
     result->push_back(source);
 }
 
+void check_keys(const JsonValue::ObjectValue& object,
+    std::initializer_list<const char*> allowed, const std::string& path) {
+    for (JsonValue::ObjectValue::const_iterator it = object.begin(); it != object.end(); ++it) {
+        bool known = false;
+        for (const char* key : allowed) if (it->first == key) known = true;
+        if (!known) throw RuleLoadError("unknown " + path + " field '" + it->first + "'");
+    }
+}
+
+std::string lookup_key(RuleInputSource source, uint8_t value);
+
+void check_lookup_keys(const JsonValue::ObjectValue& table, RuleInputSource input) {
+    for (JsonValue::ObjectValue::const_iterator it = table.begin(); it != table.end(); ++it) {
+        bool known = false;
+        for (std::size_t i = 0; i < rule_input_domain_size(input); ++i) {
+            if (it->first == lookup_key(input, static_cast<uint8_t>(i))) known = true;
+        }
+        if (!known) throw RuleLoadError("unknown lookup table key '" + it->first + "'");
+    }
+}
+
 void collect_inputs(
     const JsonValue& value,
     const std::string& inherited,
@@ -178,6 +200,12 @@ void collect_inputs(
     const JsonValue::ObjectValue& rule = require_object(value, "star rule");
     const std::string boundary = boundary_of(rule, inherited);
     const std::string type = optional_string(rule, "type", std::string());
+    if (type == "pipeline") check_keys(rule, {"type", "boundary", "_comment", "steps"}, "rule");
+    else if (type == "constant") check_keys(rule, {"type", "boundary", "_comment", "value"}, "rule");
+    else if (type == "anchor_offset") check_keys(rule, {"type", "boundary", "_comment", "anchor", "offset", "direction"}, "rule");
+    else if (type == "lookup") check_keys(rule, {"type", "boundary", "_comment", "anchor", "table", "offset", "direction"}, "rule");
+    else if (type == "lookup_offset") check_keys(rule, {"type", "boundary", "_comment", "anchor", "table", "shift_anchor", "offset", "direction"}, "rule");
+    else throw RuleLoadError("unsupported runtime rule type '" + type + "'");
     if (type == "pipeline") {
         const JsonValue* steps = find_value(rule, "steps");
         if (steps == NULL) throw RuleLoadError("pipeline.steps is required");
@@ -191,6 +219,12 @@ void collect_inputs(
     const JsonValue* anchor = find_value(rule, "anchor");
     if (anchor == NULL) throw RuleLoadError(type + ".anchor is required");
     add_input(result, source_for(require_string(*anchor, type + ".anchor"), boundary));
+    if (type == "lookup" || type == "lookup_offset") {
+        const JsonValue* table = find_value(rule, "table");
+        if (table == NULL) throw RuleLoadError("lookup.table is required");
+        check_lookup_keys(require_object(*table, "lookup.table"),
+            source_for(require_string(*anchor, "lookup.anchor"), boundary));
+    }
     if (type == "lookup_offset") {
         const JsonValue* shift = find_value(rule, "shift_anchor");
         if (shift == NULL) throw RuleLoadError("lookup_offset.shift_anchor is required");
@@ -395,6 +429,8 @@ RuleStarDefinition parse_star_definition(
     bool natal,
     std::size_t index
 ) {
+    if (natal) check_keys(star, {"key", "type", "category", "rule", "_comment"}, "natal star");
+    else check_keys(star, {"key", "type", "category", "rule", "_comment", "brightness"}, "flow star");
     const JsonValue* raw_key = find_value(star, "key");
     if (raw_key == NULL) throw RuleLoadError("star[" + std::to_string(index) + "].key is required");
     RuleStarDefinition result;
@@ -521,6 +557,7 @@ void parse_sihua(const std::string& source, ZiweiRuleModuleData* out) {
         if (!known) throw RuleLoadError("unknown sihua stem '" + it->first + "'");
         const JsonValue::ObjectValue& set = require_object(it->second,
             "sihua." + it->first);
+        check_keys(set, {"lu", "quan", "ke", "ji"}, "sihua." + it->first);
         RuleTransformPatch patch = {};
         bool any = false;
         for (std::size_t kind = 0u; kind < 4u; ++kind) {
@@ -544,6 +581,7 @@ void parse_master_table(
     std::array<RuleStarReference, kBranchCount>* out
 ) {
     const JsonValue::ObjectValue& rule = require_object(value, path);
+    check_keys(rule, {"boundary", "table", "_comment"}, path);
     const JsonValue* boundary = find_value(rule, "boundary");
     if (boundary == NULL) {
         *out_input = life ? MasterLookupSource::LifePalace
@@ -562,6 +600,11 @@ void parse_master_table(
     const JsonValue* raw_table = find_value(rule, "table");
     if (raw_table == NULL) throw RuleLoadError(path + ".table is required");
     const JsonValue::ObjectValue& table = require_object(*raw_table, path + ".table");
+    for (JsonValue::ObjectValue::const_iterator it = table.begin(); it != table.end(); ++it) {
+        bool known = false;
+        for (std::size_t i = 0; i < kBranchCount; ++i) if (it->first == std::to_string(i)) known = true;
+        if (!known) throw RuleLoadError("unknown master table key '" + it->first + "'");
+    }
     for (std::size_t branch = 0u; branch < kBranchCount; ++branch) {
         const std::string key = std::to_string(branch);
         const JsonValue::ObjectValue::const_iterator found = table.find(key);
@@ -574,6 +617,7 @@ void parse_masters(const std::string& source, ZiweiRuleModuleData* out) {
     if (source.empty()) return;
     const JsonValue root = detail::parse_json(source);
     const JsonValue::ObjectValue& object = require_object(root, "mastersJson");
+    check_keys(object, {"ming_zhu", "shen_zhu", "_comment"}, "mastersJson");
     const JsonValue* life = find_value(object, "ming_zhu");
     const JsonValue* body = find_value(object, "shen_zhu");
     if (life != NULL) {

@@ -5,6 +5,7 @@
 #include "taiyin/chinese_calendar/ganzhi.h"
 #include "taiyin/status.h"
 #include "taiyin/ziwei/chart.h"
+#include "taiyin/ziwei/clock.h"
 
 #include <cstdint>
 
@@ -38,6 +39,14 @@ Status resolve_birth_from_calendar(
     ResolvedBirth* out,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept;
+
+// Single physical-time source; virtual clock and each historical Jie clock
+// are independently resolved. Legacy instant_utc fields carry UT1 here.
+Status resolve_birth_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock, Gender gender,
+    const BirthResolutionOptions& options, ResolvedBirth* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic = NULL) noexcept;
 
 Status make_natal_chart_from_calendar(
     const chinese_calendar::ChineseCalendarContext* calendar,

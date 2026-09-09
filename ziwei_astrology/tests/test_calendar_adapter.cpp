@@ -6,12 +6,15 @@
 #include "taiyin/runtime/runtime.h"
 #include "taiyin/time.h"
 #include "taiyin/ziwei/calendar_adapter.h"
+#include "taiyin/ziwei/flow_calendar_adapter.h"
 #include "taiyin/ziwei/reverse_lookup.h"
 #include "taiyin/ziwei/rules_loader.h"
 
 #include <cstdlib>
+#include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -348,6 +351,421 @@ int main() {
         && offset_no_split_birth.facts.solar_term_pillars.month.branch
             == offset_context_birth.facts.solar_term_pillars.month.branch,
         "virtual clock controls the Ziwei logical lunar date", &failures);
+
+    // A search must visit hour boundaries, not preserve its initial minutes.
+    for (int scenario = 0; scenario < 6; ++scenario) {
+        const int mode = scenario % 3;
+        const bool use_apparent = scenario >= 3;
+        BirthResolutionOptions search_options = options;
+        search_options.rat_hour_mode = mode;
+        const int starts[] = {0, 10, 22, 23};
+        for (int h : starts) {
+            const CalendarDateTime start = {2026, 9, 9, h, 30, 0.0};
+            const CalendarDateTime finish = {2026, 9, h == 23 ? 10 : 9, (h + 1) % 24, 30, 0.0};
+            const CalendarDateTime wanted = {2026, 9, h == 23 ? 10 : 9, (h + 1) % 24, 5, 0.0};
+            SplitJulianDate wanted_jd;
+            encode_china_standard(wanted, &wanted_jd);
+            NatalChart wanted_chart;
+            expect(make_natal_chart_from_calendar(&calendar, wanted_jd, wanted,
+                Gender::Male, search_options, loaded.compiled, &wanted_chart, &diagnostic)
+                == TAIYIN_STATUS_OK, "build overlapping hour", &failures);
+            ReverseLookupRequest request;
+            request.birth_options = search_options;
+            request.start_virtual_time = start;
+            encode_china_standard(start, &request.start_instant_utc);
+            encode_china_standard(finish, &request.end_instant_utc);
+            request.query.wenchang_branch = star_branch(wanted_chart, loaded.registry, "wenchang");
+            std::vector<ReverseLookupCandidate> hits;
+            ChartClock clock;
+            clock.mode = ChartClockMode::ApparentSolar;
+            clock.longitude_rad = 2.07;
+            if (use_apparent) {
+                expect(chart_time_to_ut1(&calendar, clock, start, &request.start_instant_utc)
+                    == TAIYIN_STATUS_OK && chart_time_to_ut1(&calendar, clock, finish,
+                    &request.end_instant_utc) == TAIYIN_STATUS_OK,
+                    "invert reverse search endpoints", &failures);
+            }
+            const Status found = use_apparent
+                ? reverse_lookup_tier1_at_ut1(&calendar, request, clock, loaded.compiled,
+                    loaded.registry, &hits, &diagnostic)
+                : reverse_lookup_tier1_from_calendar(&calendar, request, loaded.compiled,
+                    loaded.registry, &hits, &diagnostic);
+            // No-split Zi is one logical slot across midnight; split Zi has two.
+            const bool unified_midnight = mode == 0 && h == 23;
+            const std::size_t expected = h == 23 && mode != 0 ? 2u : 1u;
+            bool correct_time = false;
+            if (!hits.empty()) {
+                CalendarDateTime expected_time = unified_midnight ? start : wanted;
+                if (!unified_midnight) expected_time.minute = 0;
+                SplitJulianDate a, b;
+                julian_day_split(expected_time, &a);
+                julian_day_split(hits.back().virtual_time, &b);
+                correct_time = std::fabs(a - b) * 86400 < 0.001;
+            }
+            expect(found == TAIYIN_STATUS_OK
+                && hits.size() == expected
+                && correct_time,
+                "partial hour interval is not skipped", &failures);
+        }
+    }
+
+    // Check the complete carried date, including the Gregorian calendar gap.
+    {
+        const CalendarDateTime evenings[] = {{100,1,1,23,30,0}, {2026,12,31,23,30,0},
+            {1984,2,29,23,30,0}, {1582,10,4,23,30,0}};
+        const CalendarDateTime mornings[] = {{100,1,2,0,0,0}, {2027,1,1,0,0,0},
+            {1984,3,1,0,0,0}, {1582,10,15,0,0,0}};
+        for (std::size_t i = 0; i < 4; ++i) {
+            const CalendarDateTime start = evenings[i];
+            const CalendarDateTime midnight = mornings[i];
+            SplitJulianDate jd, boundary;
+            encode_china_standard(start, &jd);
+            encode_china_standard(midnight, &boundary);
+            for (int mode = 0; mode <= 2; ++mode) {
+                BirthResolutionOptions opts = options; opts.rat_hour_mode = mode;
+                ResolvedBirth wanted;
+                expect(resolve_birth_from_calendar(&calendar, boundary, midnight,
+                    Gender::Male, opts, &wanted, &diagnostic) == TAIYIN_STATUS_OK,
+                    "resolve canonical next-day birth", &failures);
+                NatalChart natal;
+                make_natal_chart(wanted.facts, wanted.anchors, wanted.body_palace,
+                    opts.anchor_options.rules, loaded.compiled, &natal);
+                ReverseLookupRequest request;
+                request.start_instant_utc = jd;
+                request.end_instant_utc = boundary + 0.5 / 24;
+                request.start_virtual_time = start;
+                request.birth_options = opts;
+                request.query.wenchang_branch = star_branch(natal, loaded.registry, "wenchang");
+                for (int explicit_clock = 0; mode != 0 && explicit_clock < 2; ++explicit_clock) {
+                    std::vector<ReverseLookupCandidate> hits;
+                    ChartClock clock;
+                    const Status s = explicit_clock
+                        ? reverse_lookup_tier1_at_ut1(&calendar, request, clock, loaded.compiled,
+                            loaded.registry, &hits)
+                        : reverse_lookup_tier1_from_calendar(&calendar, request, loaded.compiled,
+                            loaded.registry, &hits, &diagnostic);
+                    expect(s == TAIYIN_STATUS_OK && hits.size() == 2u,
+                        "both split-rat slots survive midnight", &failures);
+                    if (hits.size() == 2u) {
+                        const auto& hit = hits.back();
+                        expect(hit.virtual_time.year == midnight.year
+                            && hit.virtual_time.month == midnight.month
+                            && hit.virtual_time.day == midnight.day
+                            && hit.virtual_time.hour == 0 && hit.virtual_time.minute == 0
+                            && hit.virtual_time.second == 0
+                            && std::fabs(hit.instant_utc - boundary) < 1e-12
+                            && hit.lunar_date.year == wanted.facts.lunar_date.year
+                            && hit.lunar_date.month == wanted.facts.lunar_date.month
+                            && hit.lunar_date.day == wanted.facts.lunar_date.day,
+                            "reverse candidate physical date and lunar date agree", &failures);
+                    }
+                }
+                CalendarDateTime at_23 = start; at_23.minute = 0;
+                SplitJulianDate before, next, back;
+                encode_china_standard(at_23, &before);
+                CalendarDateTime next_time, back_time;
+                RatHourSegment segment;
+                expect(step_flow_hour_target(before, at_23, mode, 1, &next, &next_time,
+                    &segment) == TAIYIN_STATUS_OK
+                    && next_time.year == midnight.year && next_time.month == midnight.month
+                    && next_time.day == midnight.day && next_time.hour == (mode == 0 ? 1 : 0),
+                    "hour navigation carries full date", &failures);
+                expect(step_flow_hour_target(next, next_time, mode, -1, &back, &back_time,
+                    &segment) == TAIYIN_STATUS_OK
+                    && back_time.year == at_23.year && back_time.month == at_23.month
+                    && back_time.day == at_23.day && back_time.hour == 23,
+                    "reverse hour navigation carries date backwards", &failures);
+            }
+            SplitJulianDate next;
+            CalendarDateTime next_time;
+            expect(step_flow_day_target(jd, start, 1, &next, &next_time) == TAIYIN_STATUS_OK
+                && next_time.year == midnight.year && next_time.month == midnight.month
+                && next_time.day == midnight.day && next_time.hour == 23 && next_time.minute == 30,
+                "day navigation preserves clock with full date carry", &failures);
+            SplitJulianDate back;
+            CalendarDateTime back_time;
+            expect(step_flow_day_target(next, next_time, -1, &back, &back_time) == TAIYIN_STATUS_OK
+                && back_time.year == start.year && back_time.month == start.month
+                && back_time.day == start.day && back_time.hour == 23 && back_time.minute == 30,
+                "day navigation carries backwards across calendar boundaries", &failures);
+        }
+    }
+
+    // Historical pillar midnight and the solar-day origin must be identical.
+    for (int policy = 0; policy < 3; ++policy) {
+        chinese_calendar::ChineseCalendarConfig config = calendar_config;
+        config.pillar_historical_mode = policy;
+        chinese_calendar::ChineseCalendarContext historical;
+        expect(chinese_calendar::initialize_context(&historical, &astronomy, &config)
+            == TAIYIN_STATUS_OK, "historical boundary context", &failures);
+        CalendarDateTime begin = {100, 1, 1, 12, 0, 0.0};
+        SplitJulianDate jd;
+        encode_china_standard(begin, &jd);
+        chinese_calendar::SolarTermEvent term;
+        expect(chinese_calendar::getNextJie(&historical, jd, &term, &diagnostic)
+            == TAIYIN_STATUS_OK, "historical next Jie", &failures);
+        SplitJulianDate boundary;
+        expect(chinese_calendar::pillar_term_boundary(&historical, term, &boundary)
+            == TAIYIN_STATUS_OK, "effective pillar boundary", &failures);
+        ResolvedBirth before, after;
+        CalendarDateTime pre, post;
+        reverse_julian_day_split(boundary - 1.0 / 86400 + 8.0 / 24, &pre);
+        reverse_julian_day_split(boundary + 1.0 / 86400 + 8.0 / 24, &post);
+        expect(resolve_birth_from_calendar(&historical, boundary - 1.0 / 86400,
+            pre, Gender::Male, options, &before, &diagnostic) == TAIYIN_STATUS_OK
+            && resolve_birth_from_calendar(&historical, boundary + 1.0 / 86400,
+            post, Gender::Male, options, &after, &diagnostic) == TAIYIN_STATUS_OK
+            && before.facts.solar_term_pillars.month.branch != after.facts.solar_term_pillars.month.branch
+            && after.facts.solar_day_from_previous_jie == 1u,
+            "solar day resets at the actual pillar boundary", &failures);
+
+        // A custom placement depending on solar month can change within an hour.
+        CompiledRules custom = loaded.compiled;
+        StarId wc;
+        loaded.registry.find("wenchang", &wc);
+        for (std::size_t i = 0; i < custom.placement.natal.size(); ++i) {
+            PlacementRule& rule = custom.placement.natal[i];
+            if (rule.star_id != wc) continue;
+            rule.inputs.assign(1, RuleInputSource::SolarMonthBranch);
+            rule.strides.assign(1, 1u);
+            rule.table.resize(12);
+            for (std::size_t j = 0; j < 12; ++j) rule.table[j] = static_cast<uint8_t>(j);
+        }
+        custom.registry_fingerprint = compiled_rules_fingerprint(custom, loaded.registry.fingerprint());
+        ReverseLookupRequest request;
+        request.start_instant_utc = boundary - 1.0 / 86400;
+        request.end_instant_utc = boundary + 1.0 / 86400;
+        request.start_virtual_time = pre;
+        request.query.wenchang_branch = to_index(after.facts.solar_term_pillars.month.branch);
+        std::vector<ReverseLookupCandidate> hits;
+        const Status reverse_status = reverse_lookup_tier1_from_calendar(&historical, request, custom,
+            loaded.registry, &hits, &diagnostic);
+        if (reverse_status != TAIYIN_STATUS_OK || hits.size() != 1u) {
+            std::cerr << "policy=" << policy << " reverse=" << reverse_status << " hits=" << hits.size() << '\n';
+        }
+        expect(reverse_status == TAIYIN_STATUS_OK && hits.size() == 1u,
+            "reverse visits a Jie inside the hour", &failures);
+        if (policy != chinese_calendar::TAIYIN_GANZHI_PILLAR_HISTORICAL_OFF) {
+            expect(boundary != term.jd_ut, "fixture uses an assigned historical day", &failures);
+            request.start_instant_utc = boundary - 4.0e-11;
+            request.end_instant_utc = boundary + 4.0e-11;
+            reverse_julian_day_split(request.start_instant_utc + 8.0 / 24,
+                &request.start_virtual_time);
+            chinese_calendar::SolarTermEvent unused;
+            SplitJulianDate next;
+            expect(chinese_calendar::next_pillar_jie(&historical,
+                request.start_instant_utc, &unused, &next, &diagnostic)
+                == TAIYIN_STATUS_OK && next == boundary,
+                "retain historical midnight only microseconds ahead", &failures);
+            expect(chinese_calendar::next_pillar_jie(&historical,
+                boundary, &unused, &next, &diagnostic)
+                == TAIYIN_STATUS_OK && next - boundary > 20.0,
+                "do not repeat an exact historical midnight", &failures);
+            hits.clear();
+            expect(reverse_lookup_tier1_from_calendar(&historical, request, custom,
+                loaded.registry, &hits, &diagnostic) == TAIYIN_STATUS_OK
+                && hits.size() == 1u && hits.front().instant_utc == boundary,
+                "short reverse interval retains historical month change", &failures);
+            ChartClock clock;
+            hits.clear();
+            expect(reverse_lookup_tier1_at_ut1(&historical, request, clock, custom,
+                loaded.registry, &hits, &diagnostic) == TAIYIN_STATUS_OK
+                && hits.size() == 1u && hits.front().instant_utc == boundary,
+                "explicit clock reverse retains historical month change", &failures);
+        }
+    }
+
+    LunarDateFacts later_nine = {-200, -200, 9, 16, 1,
+        chinese_calendar::TAIYIN_CHINESE_MONTH_NAME_LATER_NINE};
+    for (int strategy = 1; strategy <= 2; ++strategy) {
+        int32_t year = 0; uint8_t month = 0;
+        expect(resolve_effective_lunar_month(later_nine,
+            static_cast<LeapMonthStrategy>(strategy), &year, &month) == TAIYIN_STATUS_OK
+            && year == -199 && month == 10,
+            "advancing historical later-nine crosses into the next year", &failures);
+    }
+    {
+        later_nine.month_name = chinese_calendar::TAIYIN_CHINESE_MONTH_NAME_NORMAL;
+        int32_t year = 0; uint8_t month = 0;
+        expect(resolve_effective_lunar_month(later_nine, LeapMonthStrategy::AsNext,
+            &year, &month) == TAIYIN_STATUS_OK && year == -200 && month == 10,
+            "ordinary leap-nine does not advance the year", &failures);
+    }
+
+    {
+        CalendarDateTime begin = {2026, 9, 1, 12, 0, 0.0};
+        SplitJulianDate jd; encode_china_standard(begin, &jd);
+        chinese_calendar::SolarTermEvent term;
+        SplitJulianDate boundary;
+        expect(chinese_calendar::next_pillar_jie(&calendar, jd, &term, &boundary, &diagnostic)
+            == TAIYIN_STATUS_OK, "find modern intra-hour Jie", &failures);
+        ReverseLookupRequest request;
+        request.start_instant_utc = boundary - 1.0 / 86400;
+        request.end_instant_utc = boundary + 1.0 / 86400;
+        reverse_julian_day_split(request.start_instant_utc + 8.0 / 24, &request.start_virtual_time);
+        NatalChart base;
+        expect(make_natal_chart_from_calendar(&calendar, request.start_instant_utc,
+            request.start_virtual_time, Gender::Male, options, loaded.compiled, &base, &diagnostic)
+            == TAIYIN_STATUS_OK, "build unchanged pre-Jie chart", &failures);
+        request.query.wenchang_branch = star_branch(base, loaded.registry, "wenchang");
+        std::vector<ReverseLookupCandidate> hits;
+        expect(reverse_lookup_tier1_from_calendar(&calendar, request, loaded.compiled,
+            loaded.registry, &hits, &diagnostic) == TAIYIN_STATUS_OK && hits.size() == 1u,
+            "unchanged intra-hour Jie placement is not duplicated", &failures);
+        SplitJulianDate next;
+        expect(chinese_calendar::next_pillar_jie(&calendar, boundary, &term, &next, &diagnostic)
+            == TAIYIN_STATUS_OK && next - boundary > 20.0,
+            "next pillar Jie cannot repeat the previous numerical root", &failures);
+    }
+
+    // Explicit clocks must be evaluated at both endpoints, never carried as
+    // a constant equation-of-time offset from the birth epoch.
+    for (int clock_mode = 0; clock_mode < 3; ++clock_mode) {
+        ChartClock clock;
+        clock.mode = static_cast<ChartClockMode>(clock_mode);
+        clock.longitude_rad = 118.582 * 3.14159265358979323846 / 180.0;
+        const CalendarDateTime start = {2026, 9, 9, 22, 30, 0.0};
+        SplitJulianDate jd;
+        expect(chart_time_to_ut1(&calendar, clock, start, &jd) == TAIYIN_STATUS_OK,
+            "invert explicit chart clock", &failures);
+        CalendarDateTime roundtrip;
+        expect(chart_time_from_ut1(&calendar, clock, jd, &roundtrip) == TAIYIN_STATUS_OK,
+            "evaluate explicit chart clock", &failures);
+        SplitJulianDate expected, actual;
+        julian_day_split(start, &expected);
+        julian_day_split(roundtrip, &actual);
+        expect(std::fabs(actual - expected) * 86400 < 0.001,
+            "chart clock round trip within one millisecond", &failures);
+        SplitJulianDate tomorrow;
+        CalendarDateTime tomorrow_time;
+        expect(step_flow_day_at_ut1(&calendar, jd, clock, 1, &tomorrow,
+            &tomorrow_time) == TAIYIN_STATUS_OK,
+            "step day through clock inverse", &failures);
+        expect(chart_time_from_ut1(&calendar, clock, tomorrow, &roundtrip) == TAIYIN_STATUS_OK,
+            "re-evaluate stepped day", &failures);
+        julian_day_split(roundtrip, &actual);
+        expect(std::fabs(actual - expected - 1.0) * 86400 < 0.001,
+            "day navigation preserves apparent clock", &failures);
+        if (clock_mode == 2)
+            expect(std::fabs(tomorrow - jd - 1.0) * 86400 > 1.0,
+                "apparent day is not a fixed 86400 seconds", &failures);
+        for (int mode = 0; mode < 3; ++mode) {
+            SplitJulianDate next;
+            CalendarDateTime next_time;
+            RatHourSegment segment;
+            expect(step_flow_hour_at_ut1(&calendar, jd, clock, mode, 1, &next,
+                &next_time, &segment) == TAIYIN_STATUS_OK,
+                "step apparent hour", &failures);
+            expect(chart_time_from_ut1(&calendar, clock, next, &roundtrip) == TAIYIN_STATUS_OK,
+                "re-evaluate stepped hour", &failures);
+            julian_day_split(roundtrip, &actual);
+            julian_day_split(next_time, &expected);
+            expect(std::fabs(actual - expected) * 86400 < 0.001,
+                "hour navigation returns a consistent physical instant", &failures);
+            BirthResolutionOptions opts = options;
+            opts.rat_hour_mode = mode;
+            ResolvedBirth birth;
+            expect(resolve_birth_at_ut1(&calendar, next, clock, Gender::Male,
+                opts, &birth) == TAIYIN_STATUS_OK, "clock-aware natal facts", &failures);
+            NatalChart natal;
+            expect(make_natal_chart(birth.facts, birth.anchors, birth.body_palace,
+                opts.anchor_options.rules, loaded.compiled, &natal)
+                == TAIYIN_STATUS_OK, "clock-aware natal chart", &failures);
+            ReverseLookupRequest request;
+            request.birth_options = opts;
+            request.start_instant_utc = jd;
+            request.end_instant_utc = next;
+            request.query.wenchang_branch = star_branch(natal, loaded.registry, "wenchang");
+            std::vector<ReverseLookupCandidate> hits;
+            expect(reverse_lookup_tier1_at_ut1(&calendar, request, clock,
+                loaded.compiled, loaded.registry, &hits) == TAIYIN_STATUS_OK && !hits.empty(),
+                "clock-aware reverse lookup crosses Rat boundary", &failures);
+        }
+    }
+
+    // Place the Jie almost at solar midnight. Its equation of time must be
+    // evaluated at the Jie itself, not borrowed from a later target epoch.
+    {
+        ChartClock clock;
+        clock.mode = ChartClockMode::ApparentSolar;
+        SplitJulianDate start;
+        encode_china_standard(CalendarDateTime{2026, 9, 1, 12, 0, 0.0}, &start);
+        chinese_calendar::SolarTermEvent term;
+        SplitJulianDate jie;
+        expect(chinese_calendar::next_pillar_jie(&calendar, start, &term, &jie, &diagnostic)
+            == TAIYIN_STATUS_OK, "clock test Jie", &failures);
+        CalendarDateTime greenwich;
+        expect(chart_time_from_ut1(&calendar, clock, jie, &greenwich) == TAIYIN_STATUS_OK,
+            "Jie apparent clock at Greenwich", &failures);
+        const double seconds = greenwich.hour * 3600.0 + greenwich.minute * 60.0 + greenwich.second;
+        double longitude = (1.0 - seconds) / 86400.0 * 6.2831853071795864769;
+        if (longitude < -3.14159265358979323846) longitude += 6.2831853071795864769;
+        clock.longitude_rad = longitude;
+        for (int mode = 0; mode < 3; ++mode) {
+            BirthResolutionOptions opts = options;
+            opts.rat_hour_mode = mode;
+            ResolvedBirth birth;
+            expect(resolve_birth_at_ut1(&calendar, jie + 10.0, clock, Gender::Male,
+                opts, &birth) == TAIYIN_STATUS_OK, "nonlinear Jie day natal", &failures);
+            CalendarDateTime term_time, target_time;
+            chart_time_from_ut1(&calendar, clock, jie, &term_time);
+            chart_time_from_ut1(&calendar, clock, jie + 10.0, &target_time);
+            SplitJulianDate a, b;
+            julian_day_split(term_time, &a); julian_day_split(target_time, &b);
+            if (mode == 0 && term_time.hour >= 23) a += 1.0 / 24;
+            if (mode == 0 && target_time.hour >= 23) b += 1.0 / 24;
+            const int64_t expected_day = (b + 0.5).day_number - (a + 0.5).day_number + 1;
+            expect(birth.facts.solar_day_from_previous_jie == expected_day,
+                "Jie and target independently assigned to solar days", &failures);
+            NatalChart natal;
+            make_natal_chart(birth.facts, birth.anchors, birth.body_palace,
+                opts.anchor_options.rules, loaded.compiled, &natal);
+            FlowResolutionOptions flow_options = default_flow_resolution_options();
+            flow_options.rat_hour_mode = mode;
+            flow_options.boundary = PillarBoundary::SolarTerm;
+            ResolvedFlow flow;
+            expect(resolve_flow_at_ut1(&calendar, birth, natal, jie + 10.0, clock,
+                flow_options, &flow) == TAIYIN_STATUS_OK && flow.target_day == expected_day,
+                "clock-aware flow resolution", &failures);
+            Chart chart;
+            chart.natal = natal;
+            expect(set_flow_stack_through_at_ut1(&calendar, birth, jie + 10.0, clock,
+                flow_options, FlowLevel::Hour, loaded.compiled, &chart, &flow)
+                == TAIYIN_STATUS_OK && chart.flow_stack.size() == 5u,
+                "clock-aware complete flow stack", &failures);
+        }
+        SplitJulianDate unchanged = start;
+        clock.mode = static_cast<ChartClockMode>(99);
+        expect(chart_time_to_ut1(&calendar, clock, greenwich, &unchanged)
+            == TAIYIN_ERROR_INVALID_ARGUMENT && unchanged == start,
+            "invalid clock preserves output", &failures);
+    }
+
+    {
+        const CalendarDateTime time = {2026, 9, 9, 12, 0, 0.0};
+        ChartClock clock;
+        SplitJulianDate expected;
+        expect(chart_time_to_ut1(&calendar, clock, time, &expected) == TAIYIN_STATUS_OK,
+            "fixed clock baseline", &failures);
+        const double longitudes[] = {std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity(), 4.0, -4.0};
+        for (double longitude : longitudes) {
+            clock.longitude_rad = longitude;
+            for (int mode = 0; mode < 3; ++mode) {
+                clock.mode = static_cast<ChartClockMode>(mode);
+                SplitJulianDate actual = expected;
+                CalendarDateTime decoded = time;
+                const Status wanted = mode == 0 ? TAIYIN_STATUS_OK : TAIYIN_ERROR_INVALID_ARGUMENT;
+                expect(chart_time_to_ut1(&calendar, clock, time, &actual) == wanted
+                    && actual == expected, "longitude only validated for solar inverse", &failures);
+                expect(chart_time_from_ut1(&calendar, clock, expected, &decoded) == wanted
+                    && decoded.year == time.year && decoded.month == time.month
+                    && decoded.day == time.day && decoded.hour == time.hour
+                    && decoded.minute == time.minute && decoded.second == time.second,
+                    "longitude only validated for solar forward mapping", &failures);
+            }
+        }
+    }
 
     if (failures != 0) {
         std::cerr << failures << " Ziwei calendar-adapter checks failed\n";

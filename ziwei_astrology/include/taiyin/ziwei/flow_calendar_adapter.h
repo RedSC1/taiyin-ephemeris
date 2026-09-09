@@ -45,6 +45,35 @@ struct ResolvedFlow {
 
 FlowResolutionOptions default_flow_resolution_options() noexcept;
 
+Status resolve_flow_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ResolvedBirth& birth, const NatalChart& natal,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock,
+    const FlowResolutionOptions& options, ResolvedFlow* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic = NULL) noexcept;
+
+Status set_flow_stack_through_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ResolvedBirth& birth, const SplitJulianDate& jd_ut1,
+    const ChartClock& clock, const FlowResolutionOptions& options,
+    FlowLevel deepest_level, const CompiledRules& rules, Chart* chart,
+    ResolvedFlow* out_resolution,
+    runtime::EphemerisEvalDiagnostic* diagnostic = NULL) noexcept;
+
+// Derive the starting chart clock, step that clock, then independently invert
+// it to UT1. No constant equation-of-time approximation is used.
+Status step_flow_hour_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock,
+    int32_t rat_hour_mode, int direction, SplitJulianDate* out_jd_ut1,
+    CalendarDateTime* out_virtual_time, RatHourSegment* out_segment,
+    runtime::EphemerisEvalDiagnostic* diagnostic = NULL) noexcept;
+Status step_flow_day_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock,
+    int direction, SplitJulianDate* out_jd_ut1, CalendarDateTime* out_virtual_time,
+    runtime::EphemerisEvalDiagnostic* diagnostic = NULL) noexcept;
+
 // Resolves one physical target instant into the complete five-level limit
 // coordinate chain. Birth facts and natal must describe the same chart.
 Status resolve_flow_from_calendar(
@@ -91,8 +120,11 @@ Status set_flow_stack_through_from_calendar(
 // Moves a physical/virtual target to the adjacent logical hour while
 // preserving its minute/second phase. Split Rat-hour modes use one-hour steps
 // through Hai -> Late Zi -> next-day Early Zi -> Chou and two-hour steps
-// elsewhere. The supplied virtual clock (civil, mean solar, or apparent solar)
-// owns these boundary decisions. Both output clocks describe the same shift.
+// elsewhere. The supplied virtual clock owns these boundary decisions.
+// This low-level function advances both clocks by the same duration: it is
+// exact for fixed-offset civil/mean-solar clocks, not a new apparent-solar
+// time solution. For apparent solar time, the caller must invert the returned
+// virtual clock through its solar-time model before resolving the next flow.
 Status step_flow_hour_target(
     const SplitJulianDate& current_instant_utc,
     const CalendarDateTime& current_virtual_time,
@@ -104,6 +136,7 @@ Status step_flow_hour_target(
 ) noexcept;
 
 // Moves by one local civil day while preserving the virtual wall-clock time.
+// The same fixed-offset/apparent-solar limitation as hour stepping applies.
 Status step_flow_day_target(
     const SplitJulianDate& current_instant_utc,
     const CalendarDateTime& current_virtual_time,

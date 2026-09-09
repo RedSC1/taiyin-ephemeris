@@ -32,8 +32,9 @@ struct Tier1ReverseQuery {
 
 struct ReverseLookupRequest {
     // start_virtual_time describes the same event as start_instant_utc.  The
-    // library advances both together, so it never guesses a timezone or
-    // silently treats a local clock as UTC.
+    // library treats their difference as a fixed clock offset; no timezone
+    // or apparent-solar model can be inferred from this pair. For nonlinear
+    // clocks use reverse_lookup_tier1_at_ut1 with an explicit ChartClock.
     SplitJulianDate start_instant_utc;
     SplitJulianDate end_instant_utc;
     CalendarDateTime start_virtual_time;
@@ -55,6 +56,9 @@ struct ReverseLookupCandidate {
 // Enumerates the finite logical-hour candidates in [start, end] and accepts
 // only charts whose requested key-star placements match.  A result represents
 // a logical birth-time slot, not a fictitious minute-precise reconstruction.
+// Visits actual virtual-hour and effective pillar-Jie boundaries, including
+// a partially overlapping first/last hour. Unchanged intra-hour Jie probes
+// do not duplicate the preceding placement.
 // This deliberately uses resolve_birth_from_calendar()/make_natal_chart(),
 // rather than a second reverse-calendar implementation.
 Status reverse_lookup_tier1_from_calendar(
@@ -65,6 +69,15 @@ Status reverse_lookup_tier1_from_calendar(
     std::vector<ReverseLookupCandidate>* out,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept;
+
+// start/end fields use UT1; start_virtual_time is ignored and derived from
+// clock. The returned legacy instant_utc field likewise carries UT1.
+Status reverse_lookup_tier1_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ReverseLookupRequest& request, const ChartClock& clock,
+    const CompiledRules& rules, const StarRegistry& registry,
+    std::vector<ReverseLookupCandidate>* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic = NULL) noexcept;
 
 }  // namespace ziwei
 }  // namespace taiyin

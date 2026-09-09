@@ -93,14 +93,15 @@ BirthResolutionOptions default_birth_resolution_options() noexcept {
     return result;
 }
 
-Status resolve_birth_from_calendar(
+static Status resolve_birth_impl(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const SplitJulianDate& instant_utc,
     const CalendarDateTime& virtual_time,
     Gender gender,
     const BirthResolutionOptions& options,
     ResolvedBirth* out,
-    runtime::EphemerisEvalDiagnostic* diagnostic
+    runtime::EphemerisEvalDiagnostic* diagnostic,
+    const ChartClock* clock
 ) noexcept {
     if (calendar == NULL
         || out == NULL
@@ -169,7 +170,7 @@ Status resolve_birth_from_calendar(
         normalized_virtual_time,
         options.rat_hour_mode,
         &result.facts.solar_day_from_previous_jie,
-        diagnostic);
+        diagnostic, clock);
     if (status != TAIYIN_STATUS_OK) return status;
 
     status = compute_anchors(
@@ -180,6 +181,27 @@ Status resolve_birth_from_calendar(
     if (status != TAIYIN_STATUS_OK) return status;
     *out = result;
     return TAIYIN_STATUS_OK;
+}
+
+Status resolve_birth_from_calendar(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& instant_utc, const CalendarDateTime& virtual_time,
+    Gender gender, const BirthResolutionOptions& options, ResolvedBirth* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return resolve_birth_impl(calendar, instant_utc, virtual_time, gender,
+        options, out, diagnostic, NULL);
+}
+
+Status resolve_birth_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const SplitJulianDate& jd_ut1, const ChartClock& clock, Gender gender,
+    const BirthResolutionOptions& options, ResolvedBirth* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    CalendarDateTime virtual_time;
+    const Status status = chart_time_from_ut1(calendar, clock, jd_ut1, &virtual_time, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
+    return resolve_birth_impl(calendar, jd_ut1, virtual_time, gender,
+        options, out, diagnostic, &clock);
 }
 
 Status make_natal_chart_from_calendar(

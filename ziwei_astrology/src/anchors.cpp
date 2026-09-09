@@ -1,4 +1,5 @@
 #include "taiyin/ziwei/anchors.h"
+#include "taiyin/chinese_calendar/calendar.h"
 
 #include <limits>
 
@@ -115,6 +116,13 @@ Status resolve_effective_lunar_month(
                 && lunar_date.day > 15u);
     }
     if (advance) {
+        if (lunar_date.month_name
+            == chinese_calendar::TAIYIN_CHINESE_MONTH_NAME_LATER_NINE) {
+            if (year == std::numeric_limits<int32_t>::max()) {
+                return TAIYIN_ERROR_INVALID_ARGUMENT;
+            }
+            ++year;
+        }
         ++month;
         if (month > 12u) {
             month = 1u;

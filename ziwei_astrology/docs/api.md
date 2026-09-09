@@ -13,6 +13,94 @@ depends on the base `taiyin` runtime; aggregate builds include it in `taiyin`.
 
 ## TOML data and calculation contexts
 
+### Boundary and input-validation notes
+
+Calendar-backed reverse lookup visits virtual-hour boundaries rather than
+adding two hours to the starting minute. It also probes effective pillar-Jie
+boundaries, so solar-month-dependent custom placements are not missed inside
+an hour. An unchanged intra-hour placement is not emitted twice. Historical
+solar-day origins use the same assigned-day policy as the Ganzhi month pillar;
+precise astronomical Jie queries retain their original meaning.
+
+Reverse-search hour boundaries and hour/day navigation carry the date from
+an exact civil midnight with integer-day arithmetic. The complete date is
+advanced across month/year boundaries and the 1582 calendar transition before
+restoring clock fields; a near-midnight floating-point decomposition is not
+used as the new date.
+
+Advancing a historical later-nine month to the following tenth month advances
+its effective historical year as well (AsNext, or the latter half of
+SplitAfterFifteenth). Ordinary leap-nine months are unaffected.
+
+JSON rules reject unknown fields and lookup keys outside the selected input
+domain. A valid sibling key does not make a misspelled Si-Hua key acceptable.
+
+**Explicit chart clocks (C++):** `ChartClock` selects `FixedOffset`, `MeanSolar`,
+or `ApparentSolar`. The offset comes from the supplied calendar context;
+solar clocks use `longitude_rad` (east positive, −π through π). This controls
+the chart's virtual clock, not the calendar's independent new-moon/Jie day
+assignment policy. It does not mutate or own the calendar context.
+
+Use `chart_time_from_ut1` / `chart_time_to_ut1` for forward/inverse conversion,
+`resolve_birth_at_ut1` for natal facts, `resolve_flow_at_ut1` or
+`set_flow_stack_through_at_ut1` for flows, `step_flow_hour_at_ut1` /
+`step_flow_day_at_ut1` for navigation, and `reverse_lookup_tier1_at_ut1` for
+reverse lookup. Every apparent-solar endpoint is evaluated independently,
+including the preceding Jie used to count solar days. Physical Jie and
+year/month-pillar boundaries are not shifted to virtual time.
+
+These entry points take **UT1**, not UTC. FixedOffset means UT1 plus the
+configured offset; it is not a UTC/DST conversion service. Convert UTC through
+the runtime time-scale layer first, with its explicit EOP/estimation policy.
+Legacy `instant_utc` fields in returned facts/candidates and reverse-request
+endpoints carry UT1 when used with these new entry points; reverse-request
+`start_virtual_time` is ignored. Keep the same clock configuration throughout
+a chart's lifetime; chart values do not retain or enforce this policy.
+
+At an exact virtual-hour boundary, the inverse verifies the forward result
+and returns the new-slot side within a few microseconds (the underlying solar
+inverse has a sub-microsecond convergence tolerance). This is not a global
+snapping tolerance for arbitrary physical input. Evaluation/coverage failures
+are returned, not replaced by a fixed-offset fallback.
+
+The older dual-time adapters remain fixed-offset advanced interfaces. They do
+not infer a solar clock from a pair of times. The new clock-aware interfaces
+are currently C++ only; the existing C ABI/Python/Dart interfaces have not yet
+been extended with this clock configuration.
+
+中文说明：反查现在逐个访问实际时辰边界及干支引擎使用的节界，避免漏掉
+区间尾部的半个时辰，或时辰内部因节气切换而改变的盘。历史“节后第几天”
+与历史月柱共用节界；后九月按下月处理时同步跨到下一历史年。JSON 拼错键
+及超出输入域的键会报错，不再静默忽略。
+
+反查时辰边界及上下时辰/天导航从精确午夜按整数天进位，完整处理跨月、跨年
+和 1582 年历法切换，再恢复时分秒；不再从午夜附近的浮点解码结果取旧日期。
+
+新增 C++ `ChartClock` 显式选择固定偏移、平太阳时或真太阳时；固定偏移读取
+历法 context 的配置，太阳时另外指定东经为正的弧度经度。它只控制排盘用的
+虚拟时钟，不改变定气定朔日界、不修改 context，也不另建历法实例。
+`*_at_ut1` 新入口在排盘、流运、导航及反查时重新计算时钟；节后天数也分别
+计算节气时刻和目标时刻的虚拟日期，不再沿用出生时的一次均时差。
+
+新入口明确接收 UT1；固定偏移是 UT1 加配置偏移，不是 UTC 或夏令时服务。
+UTC 输入先经现有时间尺度转换层处理 EOP/估算策略。复用结构内旧名称
+`instant_utc` 在新入口下实际承载 UT1；反查的 `start_virtual_time` 不再使用。
+同一张盘应始终使用同一时钟配置，底层无状态盘不会替用户锁定这项策略。
+精确整点反解会正向复核，确保落在新时辰一侧，误差限制在数微秒以内；不会
+对任意输入扩大整点吸附范围，太阳时求值失败也不会偷偷回退固定偏移。
+旧双时间接口保留原语义。目前新配置仅接入 C++，C ABI、Python、Dart 尚待绑定。
+
+```cpp
+taiyin::ziwei::ChartClock clock;
+clock.mode = taiyin::ziwei::ChartClockMode::ApparentSolar;
+clock.longitude_rad = 118.582 * 3.14159265358979323846 / 180.0;
+taiyin::ziwei::ResolvedBirth birth;
+const taiyin::Status status = taiyin::ziwei::resolve_birth_at_ut1(
+    &calendar, jd_ut1, clock, taiyin::ziwei::Gender::Male,
+    taiyin::ziwei::default_birth_resolution_options(), &birth);
+// Check status before using birth; use this same clock for flow/navigation.
+```
+
 `ZiweiDataCatalog(profile_path)` parses a profile and all variants in its
 independent star, placement, twelve-life-stage, brightness, Si-Hua, and
 optional master resources.

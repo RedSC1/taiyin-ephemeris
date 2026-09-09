@@ -3,6 +3,7 @@ set(TAIYIN_ZIWEI_SOURCES
     src/chart.cpp
     src/placement.cpp
     src/calendar_adapter.cpp
+    src/clock.cpp
     src/calendar_adapter_internal.cpp
     src/debug_dump.cpp
     src/dynamic_bitset.cpp

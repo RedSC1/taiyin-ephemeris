@@ -105,11 +105,11 @@ Status calculate_year_pillar(
         out);
 }
 
-Status calculate_month_pillar(
+Status resolve_previous_pillar_jie(
     const ChineseCalendarContext& context,
     const SplitJulianDate& instant_utc,
-    uint8_t year_pillar,
-    uint8_t* out,
+    SolarTermEvent* out_term,
+    SplitJulianDate* out_boundary,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
     // Historical pillar mode judges by assigned-day granularity, so select
@@ -142,9 +142,27 @@ Status calculate_month_pillar(
         }
         status = getPrevJie(&context, step_back, &previous_jie, diagnostic);
         if (status != TAIYIN_STATUS_OK) return status;
-        SplitJulianDate ignored;
-        (void) historical_pillar_boundary(context, previous_jie, &ignored);
+        boundary = previous_jie.jd_ut;
+        (void) historical_pillar_boundary(context, previous_jie, &boundary);
     }
+
+    *out_term = previous_jie;
+    *out_boundary = boundary;
+    return TAIYIN_STATUS_OK;
+}
+
+Status calculate_month_pillar(
+    const ChineseCalendarContext& context,
+    const SplitJulianDate& instant_utc,
+    uint8_t year_pillar,
+    uint8_t* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic
+) noexcept {
+    SolarTermEvent previous_jie;
+    SplitJulianDate boundary;
+    const Status status = resolve_previous_pillar_jie(
+        context, instant_utc, &previous_jie, &boundary, diagnostic);
+    if (status != TAIYIN_STATUS_OK) return status;
 
     const uint8_t index = previous_jie.index_from_winter_solstice;
     if ((index & 1u) == 0u) return TAIYIN_ERROR_INTERNAL;
@@ -368,6 +386,59 @@ Status calculate_four_pillars(
     if (status != TAIYIN_STATUS_OK) return status;
     return calculate_day_and_hour_pillars(
         normalized_virtual_time, rat_hour_mode, &out->day, &out->hour);
+}
+
+Status pillar_term_boundary(
+    const ChineseCalendarContext* context, const SolarTermEvent& term,
+    SplitJulianDate* out_boundary) noexcept {
+    if (context == NULL || out_boundary == NULL
+        || !split_julian_date_is_finite(term.jd_ut)
+        || term.index_from_winter_solstice > 24u) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    *out_boundary = term.jd_ut;
+    (void) historical_pillar_boundary(*context, term, out_boundary);
+    return TAIYIN_STATUS_OK;
+}
+
+Status previous_pillar_jie(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    if (context == NULL || out_term == NULL || out_boundary == NULL
+        || !split_julian_date_is_finite(instant_utc)) {
+        return TAIYIN_ERROR_INVALID_ARGUMENT;
+    }
+    return resolve_previous_pillar_jie(
+        *context, instant_utc, out_term, out_boundary, diagnostic);
+}
+
+Status next_pillar_jie(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    if (context == NULL || out_term == NULL || out_boundary == NULL
+        || !split_julian_date_is_finite(instant_utc)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    // Start before the physical root so an assigned historical day that
+    // follows the root is not lost. Only precise roots need the solver's
+    // equality floor to avoid repeated roots. Assigned historical midnights
+    // are deterministic day boundaries and must be compared strictly.
+    SplitJulianDate query = instant_utc - 10.0;
+    for (int i = 0; i < 4; ++i) {
+        SolarTermEvent term;
+        Status status = getNextJie(context, query, &term, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+        SplitJulianDate boundary = term.jd_ut;
+        const bool assigned = historical_pillar_boundary(*context, term, &boundary);
+        const double tolerance = assigned ? 0.0 : internal::kSolarTermRootEqualityToleranceDays;
+        if (boundary - instant_utc > tolerance) {
+            *out_term = term;
+            *out_boundary = boundary;
+            return TAIYIN_STATUS_OK;
+        }
+        query = term.jd_ut + 1.0;
+    }
+    return TAIYIN_ERROR_INTERNAL;
 }
 
 }  // namespace chinese_calendar

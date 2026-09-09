@@ -4,12 +4,18 @@
 #include "taiyin/chinese_calendar/calendar.h"
 #include "taiyin/status.h"
 #include "taiyin/time.h"
+#include "taiyin/ziwei/clock.h"
 
 #include <cstdint>
 
 namespace taiyin {
 namespace ziwei {
 namespace detail {
+
+// Carry the date at exact midnight using integer days; preserve minute/second
+// fields instead of decoding a floating-point value near the next midnight.
+Status shift_virtual_hours(const CalendarDateTime& time, int hours,
+    CalendarDateTime* out) noexcept;
 
 Status resolve_logical_lunar_date(
     const chinese_calendar::ChineseCalendarContext* calendar,
@@ -25,7 +31,8 @@ Status calculate_solar_day_from_previous_jie(
     const CalendarDateTime& virtual_time,
     int32_t rat_hour_mode,
     uint16_t* out,
-    runtime::EphemerisEvalDiagnostic* diagnostic
+    runtime::EphemerisEvalDiagnostic* diagnostic,
+    const ChartClock* clock = NULL
 ) noexcept;
 
 }  // namespace detail

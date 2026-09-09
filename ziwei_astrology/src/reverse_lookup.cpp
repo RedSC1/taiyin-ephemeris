@@ -1,4 +1,5 @@
 #include "taiyin/ziwei/reverse_lookup.h"
+#include "calendar_adapter_internal.h"
 
 #include "taiyin/ziwei/flow_calendar_adapter.h"
 
@@ -78,6 +79,19 @@ bool request_has_constraint(const Tier1ReverseQuery& query) noexcept {
         || query.ziwei_branch != kReverseUnspecified;
 }
 
+bool same_placement(const NatalChart& a, const NatalChart& b) noexcept {
+    if (a.anchors.bureau != b.anchors.bureau
+        || a.anchors.ziwei != b.anchors.ziwei || a.anchors.tianfu != b.anchors.tianfu
+        || a.anchors.palace_positions != b.anchors.palace_positions
+        || a.body_palace != b.body_palace || a.life_master != b.life_master
+        || a.body_master != b.body_master || a.palace_stems != b.palace_stems
+        || a.transformations.marks_by_star != b.transformations.marks_by_star) return false;
+    for (std::size_t i = 0; i < kBranchCount; ++i) {
+        if (a.palaces[i].stars != b.palaces[i].stars) return false;
+    }
+    return true;
+}
+
 RatHourSegment segment_for_clock(
     const CalendarDateTime& value,
     int32_t rat_hour_mode
@@ -113,13 +127,14 @@ ReverseLookupRequest::ReverseLookupRequest() noexcept
       birth_options(default_birth_resolution_options()),
       query() {}
 
-Status reverse_lookup_tier1_from_calendar(
+static Status reverse_lookup_impl(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const ReverseLookupRequest& request,
     const CompiledRules& rules,
     const StarRegistry& registry,
     std::vector<ReverseLookupCandidate>* out,
-    runtime::EphemerisEvalDiagnostic* diagnostic
+    runtime::EphemerisEvalDiagnostic* diagnostic,
+    const ChartClock* clock
 ) noexcept {
     if (calendar == NULL || out == NULL
         || !split_julian_date_is_finite(request.start_instant_utc)
@@ -135,11 +150,21 @@ Status reverse_lookup_tier1_from_calendar(
         std::vector<ReverseLookupCandidate> result;
         SplitJulianDate instant = request.start_instant_utc;
         CalendarDateTime virtual_time = request.start_virtual_time;
+        if (clock) {
+            const Status s = chart_time_from_ut1(calendar, *clock, instant, &virtual_time, diagnostic);
+            if (s != TAIYIN_STATUS_OK) return s;
+        }
         RatHourSegment segment = segment_for_clock(
             virtual_time, request.birth_options.rat_hour_mode);
+        NatalChart previous_chart;
+        bool intra_hour_probe = false;
+        SplitJulianDate next_jie;
+        bool have_next_jie = false;
         while (days_between_split_jd(instant, request.end_instant_utc) >= 0.0) {
             ResolvedBirth birth;
-            Status status = resolve_birth_from_calendar(
+            Status status = clock ? resolve_birth_at_ut1(
+                calendar, instant, *clock, request.gender, request.birth_options, &birth, diagnostic)
+                : resolve_birth_from_calendar(
                 calendar, instant, virtual_time, request.gender,
                 request.birth_options, &birth, diagnostic);
             if (status != TAIYIN_STATUS_OK) return status;
@@ -148,7 +173,8 @@ Status reverse_lookup_tier1_from_calendar(
                 birth.facts, birth.anchors, birth.body_palace,
                 request.birth_options.anchor_options.rules, rules, &chart);
             if (status != TAIYIN_STATUS_OK) return status;
-            if (matches_query(chart, registry, request.query)) {
+            if ((!intra_hour_probe || !same_placement(previous_chart, chart))
+                && matches_query(chart, registry, request.query)) {
                 ReverseLookupCandidate candidate;
                 candidate.instant_utc = instant;
                 candidate.virtual_time = virtual_time;
@@ -158,19 +184,57 @@ Status reverse_lookup_tier1_from_calendar(
                 candidate.rat_hour_segment = segment;
                 result.push_back(candidate);
             }
+            previous_chart = std::move(chart);
+            if (instant == request.end_instant_utc) break;
             SplitJulianDate next_instant;
             CalendarDateTime next_virtual;
-            RatHourSegment next_segment = RatHourSegment::None;
-            status = step_flow_hour_target(
-                instant, virtual_time, request.birth_options.rat_hour_mode,
-                1, &next_instant, &next_virtual, &next_segment);
+            CalendarDateTime normalized;
+            status = chinese_calendar::normalize_chart_virtual_time(virtual_time, &normalized);
             if (status != TAIYIN_STATUS_OK) return status;
+            const bool split = request.birth_options.rat_hour_mode
+                != chinese_calendar::TAIYIN_GANZHI_RAT_HOUR_NO_SPLIT;
+            const int next_hour = split && normalized.hour == 23
+                ? 24 : ((normalized.hour + 1) / 2) * 2 + 1;
+            const double seconds = (next_hour - normalized.hour) * 3600.0
+                - normalized.minute * 60.0 - normalized.second;
+            SplitJulianDate local;
+            if (!julian_day_split(normalized, &local)
+                || !add_seconds_to_split_jd(instant, seconds, &next_instant)) {
+                return TAIYIN_ERROR_INVALID_ARGUMENT;
+            }
+            status = detail::shift_virtual_hours(normalized,
+                next_hour - normalized.hour, &next_virtual);
+            if (status != TAIYIN_STATUS_OK) return status;
+            next_virtual.minute = 0;
+            next_virtual.second = 0.0;
+            if (clock) {
+                status = chart_time_to_ut1(calendar, *clock, next_virtual, &next_instant, diagnostic);
+                if (status != TAIYIN_STATUS_OK) return status;
+            }
+            if (!have_next_jie) {
+                chinese_calendar::SolarTermEvent term;
+                status = chinese_calendar::next_pillar_jie(
+                    calendar, instant, &term, &next_jie, diagnostic);
+                if (status != TAIYIN_STATUS_OK) return status;
+                have_next_jie = true;
+            }
+            intra_hour_probe = next_jie < next_instant;
+            if (next_jie <= next_instant) {
+                next_instant = next_jie;
+                if (clock) {
+                    status = chart_time_from_ut1(calendar, *clock, next_instant, &next_virtual, diagnostic);
+                    if (status != TAIYIN_STATUS_OK) return status;
+                } else if (!reverse_julian_day_split(local + (next_instant - instant), &next_virtual)) {
+                    return TAIYIN_ERROR_INVALID_ARGUMENT;
+                }
+                have_next_jie = false;
+            }
             if (days_between_split_jd(instant, next_instant) <= 0.0) {
                 return TAIYIN_ERROR_INTERNAL;
             }
             instant = next_instant;
             virtual_time = next_virtual;
-            segment = next_segment;
+            segment = segment_for_clock(virtual_time, request.birth_options.rat_hour_mode);
         }
         *out = std::move(result);
         return TAIYIN_STATUS_OK;
@@ -179,6 +243,23 @@ Status reverse_lookup_tier1_from_calendar(
     } catch (...) {
         return TAIYIN_ERROR_INTERNAL;
     }
+}
+
+Status reverse_lookup_tier1_from_calendar(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ReverseLookupRequest& request, const CompiledRules& rules,
+    const StarRegistry& registry, std::vector<ReverseLookupCandidate>* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return reverse_lookup_impl(calendar, request, rules, registry, out, diagnostic, NULL);
+}
+
+Status reverse_lookup_tier1_at_ut1(
+    const chinese_calendar::ChineseCalendarContext* calendar,
+    const ReverseLookupRequest& request, const ChartClock& clock,
+    const CompiledRules& rules, const StarRegistry& registry,
+    std::vector<ReverseLookupCandidate>* out,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return reverse_lookup_impl(calendar, request, rules, registry, out, diagnostic, &clock);
 }
 
 }  // namespace ziwei

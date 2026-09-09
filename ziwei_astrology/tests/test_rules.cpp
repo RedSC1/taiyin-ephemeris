@@ -1058,6 +1058,29 @@ int main() {
             &failures);
     }
 
+    {
+        const char* bad_rules[] = {
+            "[{\"key\":\"wenchang\",\"rule\":{\"type\":\"constant\",\"value\":1,\"offest\":2}}]",
+            "[{\"key\":\"wenchang\",\"typo\":1,\"rule\":{\"type\":\"constant\",\"value\":1}}]",
+            "[{\"key\":\"wenchang\",\"rule\":{\"type\":\"lookup\",\"anchor\":\"hour\",\"table\":{\"12\":1}}}]",
+        };
+        for (const char* source : bad_rules) {
+            ZiweiJsonRuleModuleInput bad;
+            bad.label = "review-invalid";
+            bad.stars_json = source;
+            bool threw = false;
+            try { (void) ZiweiConfigLoader::compile_json(bad); }
+            catch (const RuleLoadError&) { threw = true; }
+            expect(threw, "JSON rejects unknown rule/star fields and out-of-domain table keys", &failures);
+        }
+        ZiweiJsonRuleModuleInput bad;
+        bad.label = "review-sihua";
+        bad.sihua_json = "{\"jia\":{\"lu\":\"lianzhen\",\"quna\":\"pojun\"}}";
+        bool threw = false;
+        try { (void) ZiweiConfigLoader::compile_json(bad); }
+        catch (const RuleLoadError&) { threw = true; }
+        expect(threw, "valid Si-Hua key does not conceal a misspelled sibling", &failures);
+    }
     if (failures != 0) {
         std::cerr << failures << " Ziwei rule compiler checks failed\n";
         return 1;

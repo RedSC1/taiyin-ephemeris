@@ -10,6 +10,25 @@ namespace taiyin {
 namespace ziwei {
 namespace detail {
 
+Status shift_virtual_hours(const CalendarDateTime& time, int hours,
+    CalendarDateTime* out) noexcept {
+    if (!out || time.hour < 0 || time.hour >= 24) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    const int64_t total = static_cast<int64_t>(time.hour) + hours;
+    const int64_t days = total >= 0 ? total / 24 : (total - 23) / 24;
+    CalendarDateTime midnight = time;
+    midnight.hour = 0; midnight.minute = 0; midnight.second = 0.0;
+    SplitJulianDate jd, shifted;
+    CalendarDateTime result;
+    if (!julian_day_split(midnight, &jd)
+        || !add_days_to_split_jd(jd, static_cast<double>(days), &shifted)
+        || !reverse_julian_day_split(shifted, &result)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    result.hour = static_cast<int>(total - days * 24);
+    result.minute = time.minute;
+    result.second = time.second;
+    *out = result;
+    return TAIYIN_STATUS_OK;
+}
+
 Status resolve_logical_lunar_date(
     const chinese_calendar::ChineseCalendarContext* calendar,
     const CalendarDateTime& virtual_time,
@@ -47,7 +66,8 @@ Status calculate_solar_day_from_previous_jie(
     const CalendarDateTime& virtual_time,
     int32_t rat_hour_mode,
     uint16_t* out,
-    runtime::EphemerisEvalDiagnostic* diagnostic
+    runtime::EphemerisEvalDiagnostic* diagnostic,
+    const ChartClock* clock
 ) noexcept {
     if (calendar == NULL || out == NULL) return TAIYIN_ERROR_INVALID_ARGUMENT;
     SplitJulianDate virtual_jd;
@@ -55,8 +75,9 @@ Status calculate_solar_day_from_previous_jie(
         return TAIYIN_ERROR_INVALID_ARGUMENT;
     }
     chinese_calendar::SolarTermEvent previous_jie;
-    const Status status = chinese_calendar::getPrevJie(
-        calendar, instant_utc, &previous_jie, diagnostic);
+    SplitJulianDate jie_boundary;
+    const Status status = chinese_calendar::previous_pillar_jie(
+        calendar, instant_utc, &previous_jie, &jie_boundary, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
 
     // Translate the Jie instant into the same wall/solar clock coordinate as
@@ -67,7 +88,14 @@ Status calculate_solar_day_from_previous_jie(
         && virtual_time.hour >= 23) {
         current_logical += 1.0 / 24.0;
     }
-    const SplitJulianDate jie_virtual = previous_jie.jd_ut + clock_offset;
+    SplitJulianDate jie_virtual = jie_boundary + clock_offset;
+    if (clock != NULL) {
+        CalendarDateTime term_clock;
+        const Status mapped = chart_time_from_ut1(calendar, *clock, jie_boundary,
+            &term_clock, diagnostic);
+        if (mapped != TAIYIN_STATUS_OK) return mapped;
+        if (!julian_day_split(term_clock, &jie_virtual)) return TAIYIN_ERROR_INTERNAL;
+    }
     SplitJulianDate jie_logical = jie_virtual;
     CalendarDateTime jie_clock;
     if (!reverse_julian_day_split(jie_virtual, &jie_clock)) {
