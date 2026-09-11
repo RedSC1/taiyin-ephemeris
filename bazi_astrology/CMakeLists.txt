@@ -1,6 +1,7 @@
 set(TAIYIN_BAZI_RULE_SOURCES
     src/bazi.cpp
     src/bazi_rules.cpp
+    src/shen_sha_catalog.cpp
 )
 
 if(TAIYIN_BUILD_MAINTAINER_TOOLS AND Python3_Interpreter_FOUND)
@@ -93,6 +94,11 @@ add_executable(test_bazi tests/test_bazi.cpp)
 target_link_libraries(test_bazi PRIVATE taiyin_bazi_extension)
 
 add_executable(benchmark_bazi_10000 tests/benchmark_bazi_10000.cpp)
+find_package(Threads REQUIRED)
+add_executable(test_shen_sha_catalog tests/test_shen_sha_catalog.cpp)
+target_link_libraries(test_shen_sha_catalog PRIVATE taiyin_bazi_extension Threads::Threads)
+set_target_properties(test_shen_sha_catalog PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED YES)
+add_test(NAME bazi_shen_sha_catalog COMMAND test_shen_sha_catalog)
 target_link_libraries(benchmark_bazi_10000 PRIVATE taiyin_bazi_extension)
 
 add_executable(qiyun_records_10000 tests/qiyun_records_10000.cpp)
