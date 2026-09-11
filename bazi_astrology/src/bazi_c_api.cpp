@@ -5,20 +5,35 @@
 
 #ifdef TAIYIN_C_HAS_BAZI_EXTENSION
 #include "taiyin/bazi/bazi.h"
+#include "taiyin/bazi/shen_sha_catalog.h"
 #endif
 
 #include <cstring>
 #include <limits>
 #include <new>
 #include <vector>
+#include <stdexcept>
 
 #ifdef TAIYIN_C_HAS_BAZI_EXTENSION
 struct taiyin_bazi_context {
     taiyin::bazi::BaziContext value;
 };
+struct taiyin_bazi_shen_sha_catalog { taiyin::bazi::BaziShenShaCatalog value; };
+struct taiyin_bazi_shen_sha_context { taiyin::bazi::BaziShenShaContext value; };
+struct taiyin_bazi_shen_sha_matches { std::vector<taiyin::bazi::BaziShenShaMatch> value; };
 #endif
 
 namespace {
+
+template<class Call> taiyin_call_result shen_sha_guard(Call call) noexcept {
+    try { call(); return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK); }
+    catch (const std::bad_alloc&) { return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY); }
+    catch (const std::invalid_argument&) { return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT); }
+    catch (...) { return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INTERNAL); }
+}
+void shen_sha_require(bool condition) {
+    if (!condition) throw std::invalid_argument("Invalid Shen Sha argument");
+}
 
 template <typename T>
 void init_struct(T* value) noexcept {
@@ -201,6 +216,82 @@ void copy_siling_result(
 }  // namespace
 
 extern "C" {
+
+#ifdef TAIYIN_C_HAS_BAZI_EXTENSION
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_create(taiyin_bazi_shen_sha_catalog** out) {
+    if (out) *out = nullptr;
+    return shen_sha_guard([&] { shen_sha_require(out != nullptr); *out = new taiyin_bazi_shen_sha_catalog; });
+}
+void TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_destroy(taiyin_bazi_shen_sha_catalog* value) { delete value; }
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_add_module(
+    const taiyin_bazi_shen_sha_catalog* catalog, const char* label,
+    const taiyin_bazi_shen_sha_rule* rules, size_t count, taiyin_bazi_shen_sha_catalog** out) {
+    if (out) *out = nullptr;
+    return shen_sha_guard([&] {
+        shen_sha_require(catalog && label && rules && count && out);
+        std::vector<taiyin::bazi::BaziShenShaRule> values;
+        for (size_t i = 0; i < count; ++i) {
+            shen_sha_require(taiyin_c_internal::valid_struct(&rules[i]) && rules[i].id && rules[i].name && rules[i].predicate);
+            const auto callback = rules[i].predicate;
+            void* const user_data = rules[i].user_data;
+            values.push_back({rules[i].id, rules[i].name, [callback, user_data](const taiyin::bazi::BaziShenShaInput& input) {
+                taiyin_ganzhi_four_pillars pillars = {};
+                pillars.struct_size = sizeof(pillars);
+                pillars.year = input.chart.pillars.year;
+                pillars.month = input.chart.pillars.month;
+                pillars.day = input.chart.pillars.day;
+                pillars.hour = input.chart.pillars.hour;
+                const int32_t result = callback(&pillars, input.target, input.target_kind, input.gender, user_data);
+                if (result == -1) throw std::runtime_error("Shen Sha callback failed");
+                shen_sha_require(result == 0 || result == 1);
+                return result == 1;
+            }});
+        }
+        const taiyin::bazi::BaziShenShaModule module(label, values);
+        *out = new taiyin_bazi_shen_sha_catalog{catalog->value.add_module(module)};
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_remove_module(
+    const taiyin_bazi_shen_sha_catalog* catalog, const char* label, taiyin_bazi_shen_sha_catalog** out) {
+    if (out) *out = nullptr;
+    return shen_sha_guard([&] {
+        shen_sha_require(catalog && label && out);
+        *out = new taiyin_bazi_shen_sha_catalog{catalog->value.remove_module(label)};
+    });
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_context_create(
+    const taiyin_bazi_shen_sha_catalog* catalog, const char* const* disabled_ids,
+    size_t count, taiyin_bazi_shen_sha_context** out) {
+    if (out) *out = nullptr;
+    return shen_sha_guard([&] {
+        shen_sha_require(catalog && out && (!count || disabled_ids));
+        taiyin::bazi::BaziShenShaSelection selection;
+        for (size_t i = 0; i < count; ++i) { shen_sha_require(disabled_ids[i] != nullptr); selection.disabled_ids.push_back(disabled_ids[i]); }
+        *out = new taiyin_bazi_shen_sha_context{catalog->value.create_context(selection)};
+    });
+}
+void TAIYIN_C_CALL taiyin_bazi_shen_sha_context_destroy(taiyin_bazi_shen_sha_context* value) { delete value; }
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_evaluate(
+    const taiyin_bazi_shen_sha_context* context, const taiyin_bazi_chart* chart,
+    taiyin_ganzhi target, int32_t target_kind, int32_t gender, taiyin_bazi_shen_sha_matches** out) {
+    if (out) *out = nullptr;
+    return shen_sha_guard([&] {
+        shen_sha_require(context && taiyin_c_internal::valid_struct(chart) && out);
+        const auto snapshot = context->value;
+        *out = new taiyin_bazi_shen_sha_matches{snapshot.evaluate(to_cpp_chart(*chart), target, target_kind, gender)};
+    });
+}
+void TAIYIN_C_CALL taiyin_bazi_shen_sha_matches_destroy(taiyin_bazi_shen_sha_matches* value) { delete value; }
+size_t TAIYIN_C_CALL taiyin_bazi_shen_sha_matches_count(const taiyin_bazi_shen_sha_matches* value) { return value ? value->value.size() : 0; }
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_matches_get(
+    const taiyin_bazi_shen_sha_matches* matches, size_t index, const char** id, const char** name, int32_t* builtin_id) {
+    return shen_sha_guard([&] {
+        shen_sha_require(matches && index < matches->value.size() && id && name && builtin_id);
+        const auto& match = matches->value[index];
+        *id = match.id.c_str(); *name = match.name.c_str(); *builtin_id = match.builtin_id;
+    });
+}
+#endif
 
 void TAIYIN_C_CALL taiyin_bazi_context_config_init(taiyin_bazi_context_config* value) {
     init_struct(value);

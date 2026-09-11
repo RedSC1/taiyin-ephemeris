@@ -1,8 +1,7 @@
-# Shen Sha user modules (C++ development API)
+# Shen Sha user modules
 
-This API follows Ziwei's immutable user-module pattern. It is currently a
-C++-only addition; C ABI, Python and Dart callback bridges are not yet exposed.
-It does not change the published ABI or the original 66-bit Shen Sha results.
+This API follows Ziwei's immutable user-module pattern. The new C ABI bridge
+is intended for beta12; it does not change the original 66-bit Shen Sha results.
 Include `<taiyin/bazi/shen_sha_catalog.h>` and link `taiyin_bazi_extension`.
 
 ```cpp
@@ -69,8 +68,32 @@ call. There is no global registry and no ephemeris ownership dependency.
 命身宫或流运目标；它返回新目录，已有上下文继续使用旧快照。删除不存在的
 模块、删除内置命名空间或重复添加模块均报错。
 
-当前仅实现 C++ BaZi 扩展。跨语言回调、异常及生命周期桥接尚未接入，因此
-不能把它当作 Python/Dart 已发布功能。原有默认神煞位集函数完全不受影响。
+新增 C ABI 和 Python/Dart 桥接正在为 beta12 准备，尚未发布。
+原有默认神煞位集函数完全不受影响。
 
 未指定性别时允许时柱未知（`0xff`），与原无性别接口一致；自定义回调需自行
 处理未知时辰。指定性别时仍要求有效时柱，年月日和目标干支始终需要有效。
+
+## C ABI ownership
+
+Include `<taiyin/c/bazi.h>` and link the BaZi shared module. Catalog and context
+handles are immutable snapshots. `taiyin_bazi_shen_sha_evaluate` returns an
+owned matches handle; count/get only read it and never evaluate rules again.
+Destroy every handle using its matching destroy function. Strings returned by
+matches_get remain borrowed until matches_destroy.
+
+Predicates receive borrowed four-pillar bytes, target, target kind and gender.
+Return 0/1 for false/true, or -1 to report a callback failure (mapped to
+TAIYIN_ERROR_INTERNAL). Other return values are invalid arguments. Exceptions
+must never cross the C boundary. On failure no partial matches are returned.
+
+The C caller owns callback code and user_data. Keep them alive until **all**
+derived catalog/context handles are destroyed, including snapshots made before
+removing a module. Do not destroy or assign handles during their own calls.
+Predicates run synchronously on the calling thread. C callers are responsible
+for callback thread safety; Python holds the GIL, and Dart uses isolate-local
+callbacks with explicit close and shared-callback reentry protection.
+
+C 调用方负责回调与 user_data 的生命周期；删除目录里的模块不代表旧上下文
+已经不再引用该回调。求值返回独立结果句柄，读取结果不会重新执行回调。
+Python 自动持有回调引用；Dart 应显式 close，不允许跨 isolate 共享回调句柄。

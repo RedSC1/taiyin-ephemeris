@@ -6,6 +6,55 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
+
+static int32_t TAIYIN_C_CALL custom_shen_sha(
+    const taiyin_ganzhi_four_pillars* pillars, taiyin_ganzhi target,
+    int32_t kind, int32_t gender, void* user_data) {
+    int* calls = (int*)user_data;
+    if (*calls < 0) return -1;
+    ++*calls;
+    return pillars->hour == 0xff && target == 0 && kind == 0 && gender == -1;
+}
+
+static int test_shen_sha_handles(void) {
+    taiyin_bazi_shen_sha_catalog *base = NULL, *added = NULL, *removed = NULL;
+    taiyin_bazi_shen_sha_context* snapshot = NULL;
+    taiyin_bazi_shen_sha_matches* matches = NULL;
+    taiyin_bazi_chart chart;
+    int calls = 0, found = 0;
+    size_t i;
+    taiyin_bazi_shen_sha_rule rule = {sizeof(rule), "custom", "Custom", custom_shen_sha, &calls};
+    taiyin_bazi_chart_init(&chart);
+    chart.year_pillar = chart.month_pillar = chart.day_pillar = 0;
+    chart.hour_pillar = 0xff;
+    if (taiyin_bazi_shen_sha_catalog_create(&base) < 0
+        || taiyin_bazi_shen_sha_catalog_add_module(base, "school", &rule, 1, &added) < 0
+        || taiyin_bazi_shen_sha_context_create(added, NULL, 0, &snapshot) < 0
+        || taiyin_bazi_shen_sha_catalog_remove_module(added, "school", &removed) < 0) return 1;
+    taiyin_bazi_shen_sha_catalog_destroy(base);
+    taiyin_bazi_shen_sha_catalog_destroy(added);
+    taiyin_bazi_shen_sha_catalog_destroy(removed);
+    if (taiyin_bazi_shen_sha_evaluate(snapshot, &chart, 0, 0, -1, &matches) < 0 || calls != 1) return 1;
+    for (i = 0; i < taiyin_bazi_shen_sha_matches_count(matches); ++i) {
+        const char *id = NULL, *name = NULL;
+        int32_t builtin = 0;
+        if (taiyin_bazi_shen_sha_matches_get(matches, i, &id, &name, &builtin) < 0) return 1;
+        if (!strcmp(id, "school:custom")) found = !strcmp(name, "Custom") && builtin == -1;
+    }
+    if (calls != 1) return 1; /* Result reads never invoke callbacks again. */
+    taiyin_bazi_shen_sha_matches_destroy(matches);
+    matches = NULL;
+    calls = -1;
+    if (taiyin_call_result_status(taiyin_bazi_shen_sha_evaluate(
+            snapshot, &chart, 0, 0, -1, &matches)) != TAIYIN_ERROR_INTERNAL
+        || matches != NULL) return 1;
+    if (taiyin_call_result_status(taiyin_bazi_shen_sha_evaluate(
+            snapshot, &chart, 0, 0, 1, &matches)) != TAIYIN_ERROR_INVALID_ARGUMENT
+        || matches != NULL) return 1;
+    taiyin_bazi_shen_sha_context_destroy(snapshot);
+    return !found;
+}
 
 static int fail(const char* message) {
     fprintf(stderr, "test_bazi_c_api: %s\n", message);
@@ -24,6 +73,8 @@ int main(int argc, char** argv) {
     taiyin_runtime_config runtime_config;
     char source_path[2048];
     const char* source_paths[1];
+
+    if (test_shen_sha_handles()) return fail("Shen Sha snapshot C ABI");
 
     if (argc != 2
         || snprintf(

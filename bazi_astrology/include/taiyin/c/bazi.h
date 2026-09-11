@@ -15,6 +15,52 @@ extern "C" {
 
 typedef struct taiyin_bazi_context taiyin_bazi_context;
 
+// Instance-local immutable Shen Sha additions. All handles are caller-owned.
+typedef struct taiyin_bazi_shen_sha_catalog taiyin_bazi_shen_sha_catalog;
+typedef struct taiyin_bazi_shen_sha_context taiyin_bazi_shen_sha_context;
+typedef struct taiyin_bazi_shen_sha_matches taiyin_bazi_shen_sha_matches;
+struct taiyin_bazi_chart;
+// Synchronous on the evaluating thread: 0=no match, 1=match, -1=callback error.
+// Other values are invalid. Never throw across C. Unknown hour can be 0xff
+// when gender=-1. Input pointers are borrowed only for this callback.
+typedef int32_t (TAIYIN_C_CALL *taiyin_bazi_shen_sha_predicate)(
+    const taiyin_ganzhi_four_pillars* pillars, taiyin_ganzhi target,
+    int32_t target_kind, int32_t gender, void* user_data);
+typedef struct taiyin_bazi_shen_sha_rule {
+    uint32_t struct_size;
+    const char* id;
+    const char* name;
+    taiyin_bazi_shen_sha_predicate predicate;
+    void* user_data;
+} taiyin_bazi_shen_sha_rule;
+
+// Strings are copied. Callback/user_data ownership stays with the caller and
+// must outlive EVERY derived catalog/context. Do not destroy/reassign a handle
+// during its own call. Concurrent evaluation requires thread-safe callbacks.
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_create(taiyin_bazi_shen_sha_catalog** out);
+TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_destroy(taiyin_bazi_shen_sha_catalog* catalog);
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_add_module(
+    const taiyin_bazi_shen_sha_catalog* catalog, const char* label,
+    const taiyin_bazi_shen_sha_rule* rules, size_t count, taiyin_bazi_shen_sha_catalog** out);
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_catalog_remove_module(
+    const taiyin_bazi_shen_sha_catalog* catalog, const char* label, taiyin_bazi_shen_sha_catalog** out);
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_context_create(
+    const taiyin_bazi_shen_sha_catalog* catalog, const char* const* disabled_ids,
+    size_t count, taiyin_bazi_shen_sha_context** out);
+TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_shen_sha_context_destroy(taiyin_bazi_shen_sha_context* context);
+// Evaluates exactly once, returning an owned result. Failure writes NULL to
+// out; callback failure maps to INTERNAL, invalid callback returns to INVALID_ARGUMENT.
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_evaluate(
+    const taiyin_bazi_shen_sha_context* context, const struct taiyin_bazi_chart* chart,
+    taiyin_ganzhi target, int32_t target_kind, int32_t gender, taiyin_bazi_shen_sha_matches** out);
+TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_shen_sha_matches_destroy(taiyin_bazi_shen_sha_matches* matches);
+TAIYIN_C_BAZI_API size_t TAIYIN_C_CALL taiyin_bazi_shen_sha_matches_count(const taiyin_bazi_shen_sha_matches* matches);
+// Borrowed UTF-8 strings live until matches_destroy. Bounds errors leave
+// outputs untouched. builtin_id=-1 for custom rules; built-in names are empty.
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_shen_sha_matches_get(
+    const taiyin_bazi_shen_sha_matches* matches, size_t index,
+    const char** id, const char** name, int32_t* builtin_id);
+
 enum taiyin_bazi_earth_palace_mode {
     TAIYIN_BAZI_EARTH_PALACE_FIRE_EARTH = 0,
     TAIYIN_BAZI_EARTH_PALACE_WATER_EARTH = 1
