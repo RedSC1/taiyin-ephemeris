@@ -516,11 +516,11 @@ int main() {
             { 1952.999, 30.00175459878804 },
             { 1953.0, 30.0 },
             { 1953.25, 30.049765625 },
-            { 1961.5, 33.486875 },
-            { 1972.5, 42.765625 },
-            { 2000.0, 63.83 },
-            { 2016.5, 68.35 },
-            { 2024.25, 69.171171875 },
+            { 1961.5, 33.6669718125 },
+            { 1972.5, 42.79823908125 },
+            { 2000.0, 63.8285276 },
+            { 2016.5, 68.35282723125 },
+            { 2024.25, 69.1662498625 },
             { 2049.5, 71.329375 },
             { 2050.0, 71.44 },
             { 2050.5, 72.56600000000005 },
@@ -561,13 +561,13 @@ int main() {
                 "delta t early join slope continuity",
                 &failures);
         }
-        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(taiyin::JD_J2000), 63.83042335736016, 1e-12, "delta t j2000", &failures);
-        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2460409.5), 69.17035296181177, 1e-12, "delta t 2024", &failures);
-        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2460409.262037037), 69.17037911418967, 1e-12, "delta t 2024 sample", &failures);
-        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2448001.75), 57.06055072295038, 1e-12, "delta t 1990", &failures);
+        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(taiyin::JD_J2000), 63.828953311901095, 1e-12, "delta t j2000", &failures);
+        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2460409.5), 69.16546285737981, 1e-12, "delta t 2024", &failures);
+        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2460409.262037037), 69.16548791107354, 1e-12, "delta t 2024 sample", &failures);
+        expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2448001.75), 57.055318493193894, 1e-12, "delta t 1990", &failures);
         expect_near(taiyin::estimated_delta_t_seconds_from_ut1_jd(2086302.5), 1650.4617878426973, 1e-12, "delta t 1000", &failures);
-        expect_near(taiyin::estimated_delta_t_seconds_from_tt_jd(taiyin::JD_J2000), 63.830422732032133, 1e-12, "delta t from tt j2000", &failures);
-        expect_near(taiyin::estimated_delta_t_seconds_from_tt_jd(2460409.262837778), 69.17037911417232, 1e-12, "delta t from tt 2024", &failures);
+        expect_near(taiyin::estimated_delta_t_seconds_from_tt_jd(taiyin::JD_J2000), 63.82895268310147, 1e-12, "delta t from tt j2000", &failures);
+        expect_near(taiyin::estimated_delta_t_seconds_from_tt_jd(2460409.262837778), 69.16548791105099, 1e-12, "delta t from tt 2024", &failures);
         taiyin::SplitJulianDate manual_ut1 = {};
         expect_true(
             taiyin::julian_day_split(

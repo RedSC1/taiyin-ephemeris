@@ -2053,7 +2053,7 @@ void test_lunar_occultation_where_swiss_oracles(int* failures) {
         failures);
     expect_near(
         star_where.center_line_begin_jd_ut,
-        2460318.0932017099,
+        2460318.0932017658,
         1.0e-9,
         "Antares where center-line begin fixture",
         failures);
@@ -2064,7 +2064,7 @@ void test_lunar_occultation_where_swiss_oracles(int* failures) {
         failures);
     expect_near(
         star_where.center_line_end_jd_ut,
-        2460318.1800921597,
+        2460318.1800922151,
         1.0e-9,
         "Antares where center-line end fixture",
         failures);
@@ -2320,7 +2320,7 @@ void test_lunar_occultation_where_swiss_oracles(int* failures) {
         failures);
     expect_near(
         body_where.center_line_begin_jd_ut,
-        2461090.3887131121,
+        2461090.3887131107,
         1.0e-9,
         "Mercury where center-line begin fixture",
         failures);

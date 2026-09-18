@@ -61,6 +61,138 @@ bool et_interval_contains_time(
     return *jd_tdb >= start_jd && *jd_tdb <= end_jd;
 }
 
+bool fixed_record_boundary_jd(
+    double init_et_seconds,
+    double interval_seconds,
+    int record_index,
+    SplitJulianDate* out
+) noexcept {
+    if (!out
+        || !std::isfinite(init_et_seconds)
+        || !std::isfinite(interval_seconds)
+        || interval_seconds <= 0.0
+        || record_index < 0) {
+        return false;
+    }
+    const double record_offset_seconds =
+        static_cast<double>(record_index) * interval_seconds;
+    SplitJulianDate initial_epoch;
+    return std::isfinite(record_offset_seconds)
+        && add_seconds_to_split_jd(
+            SPLIT_JD_J2000, init_et_seconds, &initial_epoch)
+        && add_seconds_to_split_jd(
+            initial_epoch, record_offset_seconds, out);
+}
+
+}  // namespace
+
+bool select_spk_fixed_record_index(
+    double init_et_seconds,
+    double interval_seconds,
+    int record_count,
+    double fallback_et_seconds,
+    const SplitJulianDate* jd_tdb,
+    int* out_record_index
+) noexcept {
+    if (!out_record_index
+        || !std::isfinite(init_et_seconds)
+        || !std::isfinite(interval_seconds)
+        || interval_seconds <= 0.0
+        || record_count <= 0
+        || !std::isfinite(fallback_et_seconds)
+        || (jd_tdb && !split_julian_date_is_finite(*jd_tdb))) {
+        return false;
+    }
+
+    const double raw_index = std::floor(
+        (fallback_et_seconds - init_et_seconds) / interval_seconds);
+    int record_index = 0;
+    if (raw_index >= static_cast<double>(record_count - 1)) {
+        record_index = record_count - 1;
+    } else if (raw_index > 0.0) {
+        record_index = static_cast<int>(raw_index);
+    }
+
+    if (!jd_tdb) {
+        *out_record_index = record_index;
+        return true;
+    }
+
+    // The scalar ET estimate can lose the fractional part at distant epochs.
+    // Correct it by comparing Split-JD values against exact record boundaries.
+    while (record_index > 0) {
+        SplitJulianDate record_start;
+        if (!fixed_record_boundary_jd(
+                init_et_seconds, interval_seconds, record_index,
+                &record_start)) {
+            return false;
+        }
+        if (*jd_tdb >= record_start) break;
+        --record_index;
+    }
+    while (record_index < record_count - 1) {
+        SplitJulianDate record_end;
+        if (!fixed_record_boundary_jd(
+                init_et_seconds, interval_seconds, record_index + 1,
+                &record_end)) {
+            return false;
+        }
+        if (*jd_tdb < record_end) break;
+        ++record_index;
+    }
+
+    *out_record_index = record_index;
+    return true;
+}
+
+bool spk_fixed_record_scaled_time(
+    double init_et_seconds,
+    double interval_seconds,
+    int record_index,
+    double fallback_et_seconds,
+    const SplitJulianDate* jd_tdb,
+    double* out_scaled_time
+) noexcept {
+    if (!out_scaled_time
+        || !std::isfinite(init_et_seconds)
+        || !std::isfinite(interval_seconds)
+        || interval_seconds <= 0.0
+        || record_index < 0
+        || !std::isfinite(fallback_et_seconds)
+        || (jd_tdb && !split_julian_date_is_finite(*jd_tdb))) {
+        return false;
+    }
+
+    const double midpoint_offset_seconds =
+        (static_cast<double>(record_index) + 0.5) * interval_seconds;
+    const double radius_seconds = 0.5 * interval_seconds;
+    double offset_seconds = 0.0;
+    if (jd_tdb) {
+        SplitJulianDate initial_epoch;
+        SplitJulianDate midpoint;
+        if (!std::isfinite(midpoint_offset_seconds)
+            || !add_seconds_to_split_jd(
+                SPLIT_JD_J2000, init_et_seconds, &initial_epoch)
+            || !add_seconds_to_split_jd(
+                initial_epoch, midpoint_offset_seconds, &midpoint)) {
+            return false;
+        }
+        offset_seconds = days_between_split_jd(
+            midpoint, *jd_tdb) * SECONDS_PER_DAY;
+    } else {
+        const double midpoint_et_seconds =
+            init_et_seconds + midpoint_offset_seconds;
+        offset_seconds = fallback_et_seconds - midpoint_et_seconds;
+    }
+
+    const double scaled_time = offset_seconds / radius_seconds;
+    if (!std::isfinite(scaled_time)) return false;
+    *out_scaled_time = scaled_time;
+    return true;
+}
+
+namespace {
+
 struct SpkChebyshevDirectory {
     double init_et_seconds;
     double interval_seconds;
@@ -622,13 +754,17 @@ bool eval_type20_record(
         return false;
     }
 
-    const double midpoint_et_seconds =
-        directory.init_et_seconds
-        + (static_cast<double>(record_index) + 0.5) * directory.interval_seconds;
     const double radius_seconds = 0.5 * directory.interval_seconds;
-    const double scaled_time = precise_et_offset_seconds(
-        jd_tdb, midpoint_et_seconds, et_seconds) / radius_seconds;
-    if (!std::isfinite(scaled_time) || scaled_time < -1.0 - 1e-12 || scaled_time > 1.0 + 1e-12) {
+    double scaled_time = 0.0;
+    if (!spk_fixed_record_scaled_time(
+            directory.init_et_seconds,
+            directory.interval_seconds,
+            record_index,
+            et_seconds,
+            jd_tdb,
+            &scaled_time)
+        || scaled_time < -1.0 - 1e-12
+        || scaled_time > 1.0 + 1e-12) {
         return false;
     }
 
@@ -1236,6 +1372,10 @@ bool select_fixed_record_window(
     int last = static_cast<int>(std::floor((end_et_seconds - init_et_seconds) / interval_seconds));
     first = clamp_int(first, 0, record_count - 1);
     last = clamp_int(last, 0, record_count - 1);
+    // Preserve adjacent records so an exact Split-JD evaluation at a compiled
+    // window edge can correct a scalar-ET record estimate in either direction.
+    if (first > 0) --first;
+    if (last < record_count - 1) ++last;
     if (last < first) {
         return false;
     }
@@ -1287,10 +1427,8 @@ bool compile_spk_segment_type2_or_3(
     }
 
     SpkCompiledSegment compiled;
-    compiled.start_et_seconds = directory.init_et_seconds
-        + static_cast<double>(first_record_index) * directory.interval_seconds;
-    compiled.end_et_seconds = directory.init_et_seconds
-        + static_cast<double>(first_record_index + selected_record_count) * directory.interval_seconds;
+    compiled.start_et_seconds = start_et_seconds;
+    compiled.end_et_seconds = end_et_seconds;
     compiled.target_id = segment.target_id;
     compiled.center_id = segment.center_id;
     compiled.frame_id = segment.frame_id;
@@ -1343,10 +1481,8 @@ bool compile_spk_segment_type20(
     }
 
     SpkCompiledSegment compiled;
-    compiled.start_et_seconds = directory.init_et_seconds
-        + static_cast<double>(first_record_index) * directory.interval_seconds;
-    compiled.end_et_seconds = directory.init_et_seconds
-        + static_cast<double>(first_record_index + selected_record_count) * directory.interval_seconds;
+    compiled.start_et_seconds = start_et_seconds;
+    compiled.end_et_seconds = end_et_seconds;
     compiled.target_id = segment.target_id;
     compiled.center_id = segment.center_id;
     compiled.frame_id = segment.frame_id;
@@ -1607,8 +1743,21 @@ bool eval_compiled_spk_segment(
         return false;
     }
 
-    int record_index = static_cast<int>(std::floor((et_seconds - segment.init_et_seconds) / segment.interval_seconds));
-    record_index = clamp_int(record_index, segment.first_record_index, segment.first_record_index + segment.record_count - 1);
+    int record_index = 0;
+    const int total_record_count = segment.first_record_index + segment.record_count;
+    if (!select_spk_fixed_record_index(
+            segment.init_et_seconds,
+            segment.interval_seconds,
+            total_record_count,
+            et_seconds,
+            jd_tdb,
+            &record_index)) {
+        return false;
+    }
+    record_index = clamp_int(
+        record_index,
+        segment.first_record_index,
+        segment.first_record_index + segment.record_count - 1);
     const int local_index = record_index - segment.first_record_index;
     const size_t record_offset =
         segment.record_offset + static_cast<size_t>(local_index) * static_cast<size_t>(segment.record_size_doubles);
@@ -2572,8 +2721,16 @@ bool eval_spk_segment(
             return false;
         }
 
-        int record_index = static_cast<int>(std::floor((et_seconds - directory.init_et_seconds) / directory.interval_seconds));
-        record_index = clamp_int(record_index, 0, directory.record_count - 1);
+        int record_index = 0;
+        if (!select_spk_fixed_record_index(
+                directory.init_et_seconds,
+                directory.interval_seconds,
+                directory.record_count,
+                et_seconds,
+                jd_tdb,
+                &record_index)) {
+            return false;
+        }
         const int record_start_address = segment.start_address + record_index * directory.record_size_doubles;
         const uint64_t record_offset = static_cast<uint64_t>(record_start_address - 1) * 8u;
         const size_t record_byte_count = static_cast<size_t>(directory.record_size_doubles) * 8u;
@@ -2606,8 +2763,16 @@ bool eval_spk_segment(
         return false;
     }
 
-    int record_index = static_cast<int>(std::floor((et_seconds - directory.init_et_seconds) / directory.interval_seconds));
-    record_index = clamp_int(record_index, 0, directory.record_count - 1);
+    int record_index = 0;
+    if (!select_spk_fixed_record_index(
+            directory.init_et_seconds,
+            directory.interval_seconds,
+            directory.record_count,
+            et_seconds,
+            jd_tdb,
+            &record_index)) {
+        return false;
+    }
     const int record_start_address = segment.start_address + record_index * directory.record_size_doubles;
     const uint64_t record_offset = static_cast<uint64_t>(record_start_address - 1) * 8u;
     const size_t record_byte_count = static_cast<size_t>(directory.record_size_doubles) * 8u;

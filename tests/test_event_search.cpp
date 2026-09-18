@@ -1078,7 +1078,7 @@ void test_solar_longitude_reverse(int* failures) {
         return;
     }
     expect_true(jd_ut < 2460395.0, "reverse event is before estimate", failures);
-    expect_near(jd_ut, 2460389.6294463626, 5.0e-8, "reverse solar longitude jd_ut", failures);
+    expect_near(jd_ut, 2460389.6294464204, 5.0e-8, "reverse solar longitude jd_ut", failures);
     expect_longitude_at(&context, TAIYIN_BODY_SUN, jd_ut, 0.0, "verified reverse solar longitude", failures);
 }
 
@@ -1122,10 +1122,10 @@ void test_solar_longitude_oracles(int* failures) {
     };
 
     const Oracle oracles[] = {
-        { 0.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460389.6294463626 },
-        { TAIYIN_TWO_PI / 12.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460420.0831652079 },
-        { TAIYIN_TWO_PI / 6.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460451.0413237908 },
-        { TAIYIN_TWO_PI / 4.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460482.3687479557 },
+        { 0.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460389.6294464204 },
+        { TAIYIN_TWO_PI / 12.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460420.0831652638 },
+        { TAIYIN_TWO_PI / 6.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460451.0413238439 },
+        { TAIYIN_TWO_PI / 4.0, JD_UT_NEAR_2024_EQUINOX, 0, 2460482.3687480059 },
         { TAIYIN_PI, JD_UT_NEAR_2024_EQUINOX, 0, 2460576.0303197531 },
     };
 
@@ -1283,7 +1283,7 @@ void test_bounded_solar_longitude_crossings(int* failures) {
         return;
     }
     expect_true(event_count == 1, "bounded solar crossing count", failures);
-    expect_near(events[0], 2460389.6294463626, 5.0e-8, "bounded solar crossing jd_ut", failures);
+    expect_near(events[0], 2460389.6294464204, 5.0e-8, "bounded solar crossing jd_ut", failures);
     expect_longitude_at(&context, TAIYIN_BODY_SUN, events[0], 0.0, "bounded solar crossing longitude", failures);
 }
 

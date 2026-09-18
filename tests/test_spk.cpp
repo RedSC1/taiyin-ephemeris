@@ -256,6 +256,75 @@ void check_split_jd_segment_boundary_selection() {
         "split JD selects the segment after a distant boundary");
 }
 
+void check_split_jd_record_boundary_selection() {
+    using taiyin::SplitJulianDate;
+    using taiyin::add_seconds_to_split_jd;
+    using taiyin::internal::spk_fixed_record_scaled_time;
+    using taiyin::internal::select_spk_fixed_record_index;
+
+    constexpr double init_et_seconds = 4.0e11;
+    constexpr double interval_seconds = 0.1;
+    constexpr int boundary_record_index = 37;
+    SplitJulianDate initial_epoch;
+    expect_true(
+        add_seconds_to_split_jd(
+            taiyin::SPLIT_JD_J2000, init_et_seconds, &initial_epoch),
+        "construct distant SPK record initial epoch");
+    SplitJulianDate boundary;
+    expect_true(
+        add_seconds_to_split_jd(
+            initial_epoch,
+            boundary_record_index * interval_seconds,
+            &boundary),
+        "construct distant SPK record boundary");
+    const SplitJulianDate just_before = boundary - 1.0e-10;
+    const SplitJulianDate just_after = boundary + 1.0e-10;
+    const double scalar_et_before = taiyin::days_between_split_jd(
+        taiyin::SPLIT_JD_J2000, just_before) * taiyin::SECONDS_PER_DAY;
+    const double scalar_et_after = taiyin::days_between_split_jd(
+        taiyin::SPLIT_JD_J2000, just_after) * taiyin::SECONDS_PER_DAY;
+    expect_true(
+        scalar_et_before == scalar_et_after,
+        "distant scalar ET loses the record boundary fraction");
+
+    int selected = -1;
+    expect_true(
+        select_spk_fixed_record_index(
+            init_et_seconds, interval_seconds, 100,
+            scalar_et_before, &just_before, &selected),
+        "select record before distant boundary");
+    expect_true(
+        selected == boundary_record_index - 1,
+        "Split JD selects record before distant boundary");
+    expect_true(
+        select_spk_fixed_record_index(
+            init_et_seconds, interval_seconds, 100,
+            scalar_et_after, &just_after, &selected),
+        "select record after distant boundary");
+    expect_true(
+        selected == boundary_record_index,
+        "Split JD selects record after distant boundary");
+    expect_true(
+        select_spk_fixed_record_index(
+            init_et_seconds, interval_seconds, 100,
+            scalar_et_after, &boundary, &selected),
+        "select record at distant boundary");
+    expect_true(
+        selected == boundary_record_index,
+        "exact shared boundary deterministically selects the right record");
+
+    double scaled_time = 0.0;
+    expect_true(
+        spk_fixed_record_scaled_time(
+            init_et_seconds, interval_seconds,
+            boundary_record_index, scalar_et_after,
+            &boundary, &scaled_time),
+        "evaluate type-20 scaled time at distant boundary");
+    expect_true(
+        std::fabs(scaled_time + 1.0) < 1e-8,
+        "type-20 right record starts at normalized time minus one");
+}
+
 void expect_less(double actual, double limit, const char* label) {
     if (!(actual < limit)) {
         std::fprintf(stderr, "%s too large: actual %.17g limit %.17g\n", label, actual, limit);
@@ -335,11 +404,14 @@ void expect_spk_catalog_candidate(
 void check_spk_ephemeris_block_range_gate() {
     using taiyin::CartesianState;
     using taiyin::internal::CompiledEphemerisBlock;
+    using taiyin::internal::SpkEphemerisData;
     using taiyin::internal::StorageEphemerisBlock;
+    using taiyin::internal::compile_spk_ephemeris_data_from_file;
     using taiyin::internal::compile_spk_ephemeris_block_from_file;
     using taiyin::internal::destroy_storage_ephemeris_block;
     using taiyin::internal::get_compiled_block_from_storage;
     using taiyin::internal::eval_compiled_ephemeris_block;
+    using taiyin::internal::spk_ephemeris_data_destroy;
 
     if (!file_exists(kDe441Path)) {
         std::printf("skipping SPK block range gate check; local DE441 is absent\n");
@@ -347,14 +419,37 @@ void check_spk_ephemeris_block_range_gate() {
     }
 
     const double jd = 2451600.0;
+    const double range_start_jd = tt_to_tdb_jd_fast(jd - 1.0);
+    const double range_end_jd = tt_to_tdb_jd_fast(jd + 1.0);
+    SpkEphemerisData* data = 0;
+    expect_true(
+        compile_spk_ephemeris_data_from_file(
+            kDe441Path, 2, 10,
+            range_start_jd, range_end_jd, &data),
+        "compile range-limited SPK data");
+    const double range_start_et =
+        (range_start_jd - taiyin::JD_J2000) * taiyin::SECONDS_PER_DAY;
+    const double range_end_et =
+        (range_end_jd - taiyin::JD_J2000) * taiyin::SECONDS_PER_DAY;
+    expect_true(!data->segments.empty(), "range-limited SPK data has segments");
+    for (size_t i = 0; i < data->segments.size(); ++i) {
+        expect_true(
+            data->segments[i].start_et_seconds >= range_start_et,
+            "guard records do not expand compiled coverage before request");
+        expect_true(
+            data->segments[i].end_et_seconds <= range_end_et,
+            "guard records do not expand compiled coverage after request");
+    }
+    spk_ephemeris_data_destroy(data);
+
     StorageEphemerisBlock storage;
     expect_true(
         compile_spk_ephemeris_block_from_file(
             kDe441Path,
             2,
             10,
-            tt_to_tdb_jd_fast(jd - 1.0),
-            tt_to_tdb_jd_fast(jd + 1.0),
+            range_start_jd,
+            range_end_jd,
             &storage),
         "compile range-limited SPK block");
     CompiledEphemerisBlock block;
@@ -866,6 +961,7 @@ void check_spk_discovery_catalog_routes() {
 int main() {
     const double jd = 2451600.0;
     check_split_jd_segment_boundary_selection();
+    check_split_jd_record_boundary_selection();
     check_spk_ephemeris_block_range_gate();
     check_de441_mars_baked_geometric_oracle();
     check_de441_mars_horizons_apparent_oracle();

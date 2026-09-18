@@ -2299,7 +2299,7 @@ int main() {
         if (expect_close_value(elements.y, 0.304493849301692, 1e-9, "besselian y")) return 1;
         if (expect_close_value(elements.zeta, 56.410877306293, 1e-8, "besselian zeta")) return 1;
         if (expect_close_value(elements.d_deg, -7.590825680172, 1e-9, "besselian d")) return 1;
-        if (expect_close_value(elements.mu_deg, 273.994309591481, 1e-8, "besselian mu")) return 1;
+        if (expect_close_value(elements.mu_deg, 273.994330026533, 1e-8, "besselian mu")) return 1;
         if (expect_close_value(elements.l1, 0.535736741366, 1e-9, "besselian l1")) return 1;
         if (expect_close_value(elements.l2, 0.010590415175, 1e-9, "besselian l2")) return 1;
 

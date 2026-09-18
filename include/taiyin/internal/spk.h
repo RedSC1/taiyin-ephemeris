@@ -238,6 +238,26 @@ bool calc_spk_state_void(
 void spk_ephemeris_data_destroy(SpkEphemerisData* data) noexcept;
 void spk_ephemeris_data_destroy_void(void* data) noexcept;
 
+// Selects a fixed-width SPK record without losing a Split-JD boundary
+// fraction at distant epochs. Exposed internally for boundary regression tests.
+bool select_spk_fixed_record_index(
+    double init_et_seconds,
+    double interval_seconds,
+    int record_count,
+    double fallback_et_seconds,
+    const SplitJulianDate* jd_tdb,
+    int* out_record_index
+) noexcept;
+
+bool spk_fixed_record_scaled_time(
+    double init_et_seconds,
+    double interval_seconds,
+    int record_index,
+    double fallback_et_seconds,
+    const SplitJulianDate* jd_tdb,
+    double* out_scaled_time
+) noexcept;
+
 const SpkSegment* find_spk_segment(
     const SpkKernel& kernel,
     int target_id,
