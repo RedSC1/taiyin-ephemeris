@@ -24,6 +24,8 @@ const taiyin::SplitJulianDate JD_UT(2460310, 0.5);
 const taiyin::CalendarDateTime UTC_SAMPLE = { 2024, 4, 8, 18, 17, 20.0 };
 const int TEST_TDB_MODEL_ID = 19001;
 const int TEST_PRECESSION_MODEL_ID = 19002;
+const int TEST_TOPOCENTRIC_IDENTITY_PRECESSION_MODEL_ID = 19003;
+const int TEST_TOPOCENTRIC_ROTATED_PRECESSION_MODEL_ID = 19004;
 
 double test_tdb_zero(
     const taiyin::SplitJulianDate&,
@@ -1537,6 +1539,123 @@ void test_precise_topocentric_observer_matches_erfa_baked_oracle(int* failures) 
     expect_near(context.apparent_options.observer_offset.position_au.z, expected_icrf_au[2], 5.0e-15, "ERFA ICRF observer z", failures);
 }
 
+void test_simple_topocentric_observer_uses_context_precession(int* failures) {
+    using namespace taiyin;
+    using namespace taiyin::runtime;
+
+    dispatch::register_precession_model(
+        TEST_TOPOCENTRIC_IDENTITY_PRECESSION_MODEL_ID,
+        test_identity_precession);
+    dispatch::register_precession_model(
+        TEST_TOPOCENTRIC_ROTATED_PRECESSION_MODEL_ID,
+        test_rotated_precession);
+
+    NativeCalcContext identity_context = make_geocentric_context();
+    identity_context.model_context.precession_model_id =
+        TEST_TOPOCENTRIC_IDENTITY_PRECESSION_MODEL_ID;
+    NativeCalcContext large_step_context = make_geocentric_context();
+    large_step_context.model_context.precession_model_id =
+        TEST_TOPOCENTRIC_IDENTITY_PRECESSION_MODEL_ID;
+    large_step_context.apparent_options.matrix_derivative_step_days = 0.9;
+    NativeCalcContext rotated_context = make_geocentric_context();
+    rotated_context.model_context.precession_model_id =
+        TEST_TOPOCENTRIC_ROTATED_PRECESSION_MODEL_ID;
+    const NativeObserverLocation observer =
+        native_observer_location_degrees(116.4074, 39.9042, 43.5);
+
+    expect_status(
+        native_context_set_simple_topocentric_observer(
+            &identity_context, observer, JD_UT, JD_UT),
+        TAIYIN_STATUS_OK,
+        "set simple observer with identity custom precession",
+        failures);
+    expect_status(
+        native_context_set_simple_topocentric_observer(
+            &large_step_context, observer, JD_UT, JD_UT),
+        TAIYIN_STATUS_OK,
+        "set simple observer with large slow-frame derivative step",
+        failures);
+    expect_status(
+        native_context_set_simple_topocentric_observer(
+            &rotated_context, observer, JD_UT, JD_UT),
+        TAIYIN_STATUS_OK,
+        "set simple observer with rotated custom precession",
+        failures);
+
+    const CartesianState& identity =
+        identity_context.apparent_options.observer_offset;
+    const CartesianState& large_step =
+        large_step_context.apparent_options.observer_offset;
+    const CartesianState& rotated =
+        rotated_context.apparent_options.observer_offset;
+    // The configurable finite-difference step applies only to the slow frame
+    // transform.  Even a deliberately huge step must not alias the daily
+    // Earth rotation used for observer velocity and acceleration.
+    expect_near(large_step.position_au.x, identity.position_au.x, 2.0e-18,
+        "simple observer large-step position x", failures);
+    expect_near(large_step.position_au.y, identity.position_au.y, 2.0e-18,
+        "simple observer large-step position y", failures);
+    expect_near(large_step.position_au.z, identity.position_au.z, 2.0e-18,
+        "simple observer large-step position z", failures);
+    expect_near(large_step.velocity_au_per_day.x, identity.velocity_au_per_day.x,
+        2.0e-12, "simple observer large-step velocity x", failures);
+    expect_near(large_step.velocity_au_per_day.y, identity.velocity_au_per_day.y,
+        2.0e-12, "simple observer large-step velocity y", failures);
+    expect_near(large_step.velocity_au_per_day.z, identity.velocity_au_per_day.z,
+        2.0e-12, "simple observer large-step velocity z", failures);
+    expect_near(
+        large_step.acceleration_au_per_day2.x,
+        identity.acceleration_au_per_day2.x,
+        2.0e-10,
+        "simple observer large-step acceleration x",
+        failures);
+    expect_near(
+        large_step.acceleration_au_per_day2.y,
+        identity.acceleration_au_per_day2.y,
+        2.0e-10,
+        "simple observer large-step acceleration y",
+        failures);
+    expect_near(
+        large_step.acceleration_au_per_day2.z,
+        identity.acceleration_au_per_day2.z,
+        2.0e-10,
+        "simple observer large-step acceleration z",
+        failures);
+    // The second model only rotates the equinox around the same pole.  Its
+    // model GMST must rotate by the opposite amount, leaving the observer's
+    // physical ICRF state unchanged.
+    expect_near(rotated.position_au.x, identity.position_au.x, 2.0e-18,
+        "simple observer equinox-invariant position x", failures);
+    expect_near(rotated.position_au.y, identity.position_au.y, 2.0e-18,
+        "simple observer equinox-invariant position y", failures);
+    expect_near(rotated.position_au.z, identity.position_au.z, 2.0e-18,
+        "simple observer equinox-invariant position z", failures);
+    expect_near(rotated.velocity_au_per_day.x, identity.velocity_au_per_day.x,
+        2.0e-15, "simple observer equinox-invariant velocity x", failures);
+    expect_near(rotated.velocity_au_per_day.y, identity.velocity_au_per_day.y,
+        2.0e-15, "simple observer equinox-invariant velocity y", failures);
+    expect_near(rotated.velocity_au_per_day.z, identity.velocity_au_per_day.z,
+        2.0e-15, "simple observer equinox-invariant velocity z", failures);
+    expect_near(
+        rotated.acceleration_au_per_day2.x,
+        identity.acceleration_au_per_day2.x,
+        2.0e-12,
+        "simple observer equinox-invariant acceleration x",
+        failures);
+    expect_near(
+        rotated.acceleration_au_per_day2.y,
+        identity.acceleration_au_per_day2.y,
+        2.0e-12,
+        "simple observer equinox-invariant acceleration y",
+        failures);
+    expect_near(
+        rotated.acceleration_au_per_day2.z,
+        identity.acceleration_au_per_day2.z,
+        2.0e-12,
+        "simple observer equinox-invariant acceleration z",
+        failures);
+}
+
 void test_horizontal_formula_matches_erfa_baked_oracle(int* failures) {
     using namespace taiyin;
 
@@ -1725,6 +1844,7 @@ int main() {
         test_calc_position_utc_cirs_uses_eop_cpo(&failures);
         test_calc_position_utc_matches_manual_precise_scales_and_cpo(&failures);
         test_precise_topocentric_observer_matches_erfa_baked_oracle(&failures);
+        test_simple_topocentric_observer_uses_context_precession(&failures);
         test_horizontal_formula_matches_erfa_baked_oracle(&failures);
         test_observed_utc_refraction_requires_atmosphere_fields(&failures);
         test_non_earth_topocentric_is_unsupported(&failures);

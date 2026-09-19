@@ -29,7 +29,11 @@ void register_builtin_precession_wrappers() {
         register_precession_model(PRECESSION_NEWCOMB1895, newcomb1895),
         true);
     static bool prioritized = []() -> bool {
-        const int order[] = { PRECESSION_IAU2006, PRECESSION_VONDRAK2011 };
+        // The default runtime supports epochs far outside the intended
+        // polynomial span of IAU 2006.  Prefer the coherent long-term
+        // equator/ecliptic model; callers that require the IAU standard can
+        // continue to select PRECESSION_IAU2006 explicitly.
+        const int order[] = { PRECESSION_VONDRAK2011, PRECESSION_IAU2006 };
         return set_precession_priority_order(order, sizeof(order) / sizeof(order[0]));
     }();
     (void)registered;

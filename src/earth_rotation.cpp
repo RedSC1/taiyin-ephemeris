@@ -16,7 +16,7 @@ bool eval_model_nutation_angles(
     const SplitJulianDate& jd_tt,
     NutationAngles* out
 ) noexcept {
-    if (!out) {
+    if (!out || !split_julian_date_is_finite(jd_tt)) {
         return false;
     }
     Matrix3x3 precession;
@@ -54,6 +54,65 @@ double gmst_minus_era_rad(const SplitJulianDate& jd_tt) noexcept {
     return polynomial_arcsec * TAIYIN_ARCSEC_TO_RAD;
 }
 
+bool gmst_minus_era_model_rad(
+    int precession_model_id,
+    const SplitJulianDate& jd_tt,
+    double* out
+) noexcept {
+    if (!out || !split_julian_date_is_finite(jd_tt)) {
+        return false;
+    }
+
+    dispatch::PrecessionModelEntry selected;
+    if (!dispatch::select_precession_model(precession_model_id, &selected)) {
+        return false;
+    }
+    if (selected.model_id == dispatch::PRECESSION_IAU2006) {
+        *out = gmst_minus_era_rad(jd_tt);
+        return true;
+    }
+
+    Matrix3x3 reference_precession;
+    Matrix3x3 selected_precession;
+    if (!dispatch::eval_precession(
+            dispatch::PRECESSION_IAU2006,
+            jd_tt,
+            nullptr,
+            &reference_precession)
+        || !dispatch::eval_precession(
+            selected.model_id,
+            jd_tt,
+            nullptr,
+            &selected_precession)) {
+        return false;
+    }
+
+    // ERA is independent of the equinox.  The IAU 2006 polynomial locates
+    // the conventional mean equinox relative to ERA; carry that same
+    // physical Greenwich meridian through ICRF into the selected mean frame.
+    // This keeps a custom rotation of the equinox from rotating the Earth or
+    // changing a topocentric observer's physical ICRF position.
+    const double reference_angle = gmst_minus_era_rad(jd_tt);
+    const Vector3 reference_meridian = {
+        std::cos(reference_angle),
+        std::sin(reference_angle),
+        0.0,
+    };
+    const Vector3 meridian_icrf = matrix3x3_multiply_vector(
+        matrix3x3_transpose(reference_precession),
+        reference_meridian);
+    const Vector3 selected_meridian = matrix3x3_multiply_vector(
+        selected_precession,
+        meridian_icrf);
+    if (!std::isfinite(selected_meridian.x)
+        || !std::isfinite(selected_meridian.y)
+        || !(std::hypot(selected_meridian.x, selected_meridian.y) > 0.0)) {
+        return false;
+    }
+    *out = std::atan2(selected_meridian.y, selected_meridian.x);
+    return true;
+}
+
 double gmst_minus_era_rate_rad_per_day(const SplitJulianDate& jd_tt) noexcept {
     const double t = julian_centuries_from_j2000(jd_tt);
     const double t2 = t * t;
@@ -80,6 +139,24 @@ double gmst_minus_era_acceleration_rad_per_day2(const SplitJulianDate& jd_tt) no
 
 double gmst_rad(const SplitJulianDate& jd_ut1, const SplitJulianDate& jd_tt) noexcept {
     return normalize_radians(earth_rotation_angle_rad(jd_ut1) + gmst_minus_era_rad(jd_tt));
+}
+
+bool gmst_model_rad(
+    int precession_model_id,
+    const SplitJulianDate& jd_ut1,
+    const SplitJulianDate& jd_tt,
+    double* out
+) noexcept {
+    if (!out || !split_julian_date_is_finite(jd_ut1)
+        || !split_julian_date_is_finite(jd_tt)) {
+        return false;
+    }
+    double offset = 0.0;
+    if (!gmst_minus_era_model_rad(precession_model_id, jd_tt, &offset)) {
+        return false;
+    }
+    *out = normalize_radians(earth_rotation_angle_rad(jd_ut1) + offset);
+    return true;
 }
 
 double gmst_rate_rad_per_day(const SplitJulianDate& jd_tt, double dut1_rate_seconds_per_day, double lod_seconds) noexcept {
@@ -189,11 +266,15 @@ bool gast_model_rad(
     if (!out) {
         return false;
     }
+    double mean_sidereal = 0.0;
     double equation = 0.0;
-    if (!equation_of_equinoxes_model_rad(precession_model_id, nutation_model_id, jd_tt, &equation)) {
+    if (!gmst_model_rad(
+            precession_model_id, jd_ut1, jd_tt, &mean_sidereal)
+        || !equation_of_equinoxes_model_rad(
+            precession_model_id, nutation_model_id, jd_tt, &equation)) {
         return false;
     }
-    *out = normalize_radians(gmst_rad(jd_ut1, jd_tt) + equation);
+    *out = normalize_radians(mean_sidereal + equation);
     return true;
 }
 
@@ -217,16 +298,38 @@ bool gast_rate_model_rad_per_day(
     if (!out) {
         return false;
     }
-    double equation_rate = 0.0;
-    if (!equation_of_equinoxes_rate_model_rad_per_day(
-            precession_model_id,
-            nutation_model_id,
-            jd_tt,
-            equation_step_days,
-            &equation_rate)) {
+    if (!(equation_step_days > 0.0)) {
         return false;
     }
-    *out = gmst_rate_rad_per_day(jd_tt, dut1_rate_seconds_per_day, lod_seconds) + equation_rate;
+    SplitJulianDate previous_jd;
+    SplitJulianDate next_jd;
+    double previous_offset = 0.0;
+    double next_offset = 0.0;
+    double previous_equation = 0.0;
+    double next_equation = 0.0;
+    if (!add_days_to_split_jd(jd_tt, -equation_step_days, &previous_jd)
+        || !add_days_to_split_jd(jd_tt, equation_step_days, &next_jd)
+        || !gmst_minus_era_model_rad(
+            precession_model_id, previous_jd, &previous_offset)
+        || !gmst_minus_era_model_rad(
+            precession_model_id, next_jd, &next_offset)
+        || !equation_of_equinoxes_model_rad(
+            precession_model_id, nutation_model_id,
+            previous_jd, &previous_equation)
+        || !equation_of_equinoxes_model_rad(
+            precession_model_id, nutation_model_id,
+            next_jd, &next_equation)) {
+        return false;
+    }
+    const double frame_rate = normalize_signed_radians(
+        (next_offset + next_equation)
+        - (previous_offset + previous_equation))
+        / (2.0 * equation_step_days);
+    const double ut1_rate_days_per_day = 1.0
+        + dut1_rate_seconds_per_day / SECONDS_PER_DAY
+        - lod_seconds / SECONDS_PER_DAY;
+    *out = TAIYIN_EARTH_ROTATION_RATE_RAD_PER_DAY
+        * ut1_rate_days_per_day + frame_rate;
     return true;
 }
 

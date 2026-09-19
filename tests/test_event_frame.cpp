@@ -201,6 +201,21 @@ void test_mean_j2000_and_icrf_frames_do_not_call_nutation(int* failures) {
         failures);
     expect_near(angles.dpsi_rad, 0.0, 0.0, "mean ecliptic dpsi is zero", failures);
     expect_near(angles.deps_rad, 0.0, 0.0, "mean ecliptic deps is zero", failures);
+    expect_near(
+        angles.mean_obliquity_rad, 0.4, 0.0,
+        "mean ecliptic keeps custom precession obliquity", failures);
+    const taiyin::Matrix3x3 expected_mean_ecliptic =
+        taiyin::rotation_x_matrix(0.4);
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            expect_near(
+                matrix.m[row][column],
+                expected_mean_ecliptic.m[row][column],
+                0.0,
+                "mean ecliptic uses custom precession obliquity",
+                failures);
+        }
+    }
 
     expect_true(
         taiyin::internal::eval_event_output_frame_matrix(

@@ -1,5 +1,6 @@
 #include "taiyin/angle.h"
 #include "taiyin/coordinates.h"
+#include "taiyin/dispatch.h"
 #include "taiyin/earth_rotation.h"
 #include "taiyin/observer.h"
 #include "taiyin/time.h"
@@ -7,6 +8,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 // ERFA wrappers declared in internal header, forward-declare here for testing
 namespace taiyin { namespace internal {
@@ -203,6 +205,20 @@ const MatrixOracle VONDRAK_ORACLES[] = {
     } },
 };
 
+struct ObliquityOracle {
+    double julian_epoch;
+    double radians;
+};
+
+// ERFA/SOFA ltpequ+ltpecl: angle between the Vondrak long-term mean
+// equator pole and mean ecliptic pole at the given Julian epoch.
+const ObliquityOracle VONDRAK_OBLIQUITY_ORACLES[] = {
+    { 2000.0, 0.4090926006054314 },
+    { 4000.0, 0.4046283409925916 },
+    { 6000.0, 0.40061263372508044 },
+    { 10000.0, 0.39544753492652196 },
+};
+
 struct CirsOracle {
     double jd_tt;
     double dpsi_rad;
@@ -241,10 +257,55 @@ const CirsOracle CIRS_ORACLES[] = {
 int main() {
     int failures = 0;
 
+    {
+        const taiyin::SplitJulianDate finite = split_jd(taiyin::JD_J2000);
+        const taiyin::SplitJulianDate invalid = {
+            2451545,
+            std::numeric_limits<double>::quiet_NaN(),
+        };
+        double sidereal_angle = 0.0;
+        expect_true(
+            !taiyin::gmst_model_rad(
+                taiyin::dispatch::PRECESSION_IAU2006,
+                invalid,
+                finite,
+                &sidereal_angle),
+            "model GMST rejects non-finite UT1",
+            &failures);
+        expect_true(
+            !taiyin::gmst_model_rad(
+                taiyin::dispatch::PRECESSION_IAU2006,
+                finite,
+                invalid,
+                &sidereal_angle),
+            "model GMST rejects non-finite TT",
+            &failures);
+    }
+
     for (int i = 0; i < static_cast<int>(sizeof(VONDRAK_ORACLES) / sizeof(VONDRAK_ORACLES[0])); ++i) {
         taiyin::Matrix3x3 actual;
         expect_true(taiyin::vondrak2011_precession_matrix(split_jd(VONDRAK_ORACLES[i].jd_tt), &actual), "vondrak succeeds", &failures);
         expect_matrix_near(actual, VONDRAK_ORACLES[i].values, 2e-14, "vondrak matrix oracle", &failures);
+    }
+
+    for (int i = 0; i < static_cast<int>(sizeof(VONDRAK_OBLIQUITY_ORACLES)
+            / sizeof(VONDRAK_OBLIQUITY_ORACLES[0])); ++i) {
+        const ObliquityOracle& oracle = VONDRAK_OBLIQUITY_ORACLES[i];
+        const double jd_tt = taiyin::JD_J2000
+            + (oracle.julian_epoch - 2000.0) * taiyin::DAYS_PER_JULIAN_YEAR;
+        taiyin::Matrix3x3 matrix;
+        double obliquity = 0.0;
+        expect_true(
+            taiyin::vondrak2011_precession_matrix(
+                split_jd(jd_tt), &matrix, &obliquity),
+            "vondrak obliquity succeeds",
+            &failures);
+        expect_near(
+            obliquity,
+            oracle.radians,
+            5e-14,
+            "vondrak long-term obliquity oracle",
+            &failures);
     }
 
     // IAU2006 precession vs ERFA pfw06+fw2m

@@ -7,6 +7,10 @@ namespace {
 
 const int CUSTOM_NUTATION = taiyin::dispatch::NUTATION_CUSTOM_START + 101;
 const int CUSTOM_PRECESSION = taiyin::dispatch::PRECESSION_CUSTOM_START + 101;
+const int CUSTOM_INCOMPLETE_PRECESSION =
+    taiyin::dispatch::PRECESSION_CUSTOM_START + 102;
+const int CUSTOM_NONFINITE_OBLIQUITY_PRECESSION =
+    taiyin::dispatch::PRECESSION_CUSTOM_START + 103;
 const int CUSTOM_DELTA_T_CORRECTION = taiyin::dispatch::DELTA_T_EPHEMERIS_CORRECTION_CUSTOM_START + 101;
 const int CUSTOM_DELTA_T_MODEL = taiyin::dispatch::DELTA_T_CUSTOM_START + 101;
 const int CUSTOM_DELTA_T_MODEL_FOR_COMBINED = taiyin::dispatch::DELTA_T_CUSTOM_START + 102;
@@ -85,6 +89,30 @@ bool custom_precession(
     return true;
 }
 
+bool incomplete_custom_precession(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    taiyin::Matrix3x3* out,
+    double* out_mean_obliquity_rad
+) {
+    if (!out) return false;
+    out->m[0][0] = 1.0;
+    if (out_mean_obliquity_rad) *out_mean_obliquity_rad = 0.4;
+    return true;
+}
+
+bool nonfinite_obliquity_custom_precession(
+    const taiyin::SplitJulianDate&,
+    const void*,
+    taiyin::Matrix3x3* out,
+    double* out_mean_obliquity_rad
+) {
+    if (!out) return false;
+    *out = taiyin::matrix3x3_identity();
+    if (out_mean_obliquity_rad) *out_mean_obliquity_rad = NAN;
+    return true;
+}
+
 double custom_delta_t_model(const taiyin::SplitJulianDate& jd_ut_split, const void*) {
     const double jd_ut = scalar_jd(jd_ut_split);
     return 100.0 + jd_ut * 1.0e-5;
@@ -117,7 +145,7 @@ void test_builtin_find_and_default_selection(int* failures) {
     expect_int(nutation.model_id, NUTATION_IAU2000B, "default nutation priority", failures);
 
     expect_true(select_precession_model(MODEL_SELECTION_DEFAULT, &precession), "select default precession", failures);
-    expect_int(precession.model_id, PRECESSION_IAU2006, "default precession priority", failures);
+    expect_int(precession.model_id, PRECESSION_VONDRAK2011, "default precession priority", failures);
 
     expect_true(select_nutation_model(NUTATION_IAU2000B, &nutation), "select explicit zero-valued nutation id", failures);
     expect_int(nutation.model_id, NUTATION_IAU2000B, "explicit zero-valued nutation id", failures);
@@ -169,6 +197,37 @@ void test_custom_model_add_and_priority_selection(int* failures) {
         failures);
     expect_near(precession.m[0][0], 123.0, 0.0, "custom precession matrix", failures);
     expect_near(mean_obliquity, 0.5, 0.0, "custom precession mean obliquity", failures);
+
+    expect_true(
+        add_precession_model(PrecessionModelEntry(
+            CUSTOM_INCOMPLETE_PRECESSION,
+            &incomplete_custom_precession)),
+        "add incomplete custom precession",
+        failures);
+    expect_false(
+        eval_precession(
+            CUSTOM_INCOMPLETE_PRECESSION,
+            split_jd(123.0),
+            0,
+            &precession,
+            &mean_obliquity),
+        "reject incomplete custom precession matrix",
+        failures);
+    expect_true(
+        add_precession_model(PrecessionModelEntry(
+            CUSTOM_NONFINITE_OBLIQUITY_PRECESSION,
+            &nonfinite_obliquity_custom_precession)),
+        "add nonfinite-obliquity custom precession",
+        failures);
+    expect_false(
+        eval_precession(
+            CUSTOM_NONFINITE_OBLIQUITY_PRECESSION,
+            split_jd(123.0),
+            0,
+            &precession,
+            &mean_obliquity),
+        "reject nonfinite custom precession obliquity",
+        failures);
 }
 
 void test_priority_order_mutation(int* failures) {

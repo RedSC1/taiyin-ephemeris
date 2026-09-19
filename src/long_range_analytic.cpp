@@ -277,6 +277,8 @@ const Matrix3x3& j2000_ecliptic_to_icrf_matrix() noexcept {
     // The generated theory-frame matrix ends in Taiyin's fixed mean-J2000
     // ecliptic frame.  Its exact inverse to ICRF includes the Vondrak 2011
     // J2000 precession/frame-bias matrix as well as the IAU 2006 obliquity.
+    // This is the fixed frame in which the generated coefficients were fitted,
+    // not an of-date precession/obliquity pair selected by a runtime context.
     // A plain obliquity rotation is close, but its residual frame bias grows
     // into a visible Cartesian error for the outer planets.
     static const Matrix3x3 matrix = []() noexcept {

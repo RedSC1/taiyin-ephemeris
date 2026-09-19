@@ -2,7 +2,7 @@
 
 [中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
-> **Pre-release notice:** The current `1.0.0-rc.2` version is a release
+> **Pre-release notice:** The current `1.0.0-rc.3` version is a release
 > candidate, not a final production release. Public APIs,
 > packaged data boundaries, documentation, and the planned language bindings
 > may still change before the first stable release.

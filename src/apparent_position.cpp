@@ -227,14 +227,27 @@ Matrix3x3 true_ecliptic_matrix(
     return matrix3x3_multiply(rotation_x_matrix(nutation.true_obliquity_rad), true_equator_matrix(precession, nutation));
 }
 
-Matrix3x3 cirs_equinox_matrix(
+bool cirs_equinox_matrix(
     const SplitJulianDate& jd_tt,
+    int precession_model_id,
     const Matrix3x3& precession,
-    const NutationAngles& nutation
+    const NutationAngles& nutation,
+    Matrix3x3* out
 ) noexcept {
-    const double equation_of_origins = -(gmst_minus_era_rad(jd_tt)
+    if (!out) {
+        return false;
+    }
+    double mean_sidereal_offset = 0.0;
+    if (!gmst_minus_era_model_rad(
+            precession_model_id, jd_tt, &mean_sidereal_offset)) {
+        return false;
+    }
+    const double equation_of_origins = -(mean_sidereal_offset
         + nutation.dpsi_rad * std::cos(nutation.true_obliquity_rad));
-    return matrix3x3_multiply(rotation_z_matrix(-equation_of_origins), true_equator_matrix(precession, nutation));
+    *out = matrix3x3_multiply(
+        rotation_z_matrix(-equation_of_origins),
+        true_equator_matrix(precession, nutation));
+    return true;
 }
 
 bool build_output_matrix(
@@ -364,7 +377,14 @@ bool build_output_matrix(
         const double dy_rad = celestial_pole_offset_dy_rad
             + celestial_pole_offset_dy_rate_rad_per_day * dt_days;
         if (frame_route_id == dispatch::FRAME_ROUTE_EQUINOX) {
-            *out_output = cirs_equinox_matrix(jd_tt, precession, nutation);
+            if (!cirs_equinox_matrix(
+                    jd_tt,
+                    precession_model_id,
+                    precession,
+                    nutation,
+                    out_output)) {
+                return false;
+            }
         } else {
             dispatch::FrameRouteDispatchData frame_data;
             frame_data.xp_rad = 0.0;

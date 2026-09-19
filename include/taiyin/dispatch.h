@@ -249,6 +249,10 @@ bool eval_heliacal_visibility(int id, const void* input, void* output) noexcept;
 
 // --- Precession ---
 
+// Returns the ICRF-to-mean-equator/equinox-of-date matrix together with the
+// mean obliquity belonging to the same precession model.  Ecliptic frame,
+// sidereal, house and Earth-rotation consumers deliberately use this paired
+// value; custom models must not return an obliquity from a different model.
 typedef bool (*PrecessionFn)(const SplitJulianDate& jd_tt, const void* data, Matrix3x3* out, double* out_mean_obliquity_rad);
 
 struct PrecessionModelEntry {

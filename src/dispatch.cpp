@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstddef>
+#include <limits>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -465,10 +467,30 @@ bool select_precession_model(int requested_id, PrecessionModelEntry* out) noexce
 
 bool eval_precession(int id, const SplitJulianDate& jd_tt, const void* data, Matrix3x3* out, double* out_mean_obliquity_rad) {
     PrecessionModelEntry model;
-    if (!select_precession_model(id, &model) || !model.eval) {
+    if (!out || !select_precession_model(id, &model) || !model.eval) {
         return false;
     }
-    return model.eval(jd_tt, data, out, out_mean_obliquity_rad);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            out->m[row][column] = nan;
+        }
+    }
+    if (out_mean_obliquity_rad) {
+        *out_mean_obliquity_rad = nan;
+    }
+    if (!model.eval(jd_tt, data, out, out_mean_obliquity_rad)) {
+        return false;
+    }
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            if (!std::isfinite(out->m[row][column])) {
+                return false;
+            }
+        }
+    }
+    return !out_mean_obliquity_rad
+        || std::isfinite(*out_mean_obliquity_rad);
 }
 
 bool eval_selected_precession(int requested_id, const SplitJulianDate& jd_tt, const void* data, Matrix3x3* out, double* out_mean_obliquity_rad) {

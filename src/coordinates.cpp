@@ -361,7 +361,14 @@ bool vondrak2011_precession_matrix(const SplitJulianDate& jd_tt, Matrix3x3* out,
     }};
     *out = matrix3x3_multiply(rp, vondrak_frame_bias_matrix());
     if (out_mean_obliquity_rad) {
-        *out_mean_obliquity_rad = mean_obliquity_iau2006(jd_tt);
+        // Vondrak et al. provide both the long-term mean ecliptic pole
+        // and the long-term mean equator pole.  Their separation is the
+        // model's own mean obliquity.  Mixing the IAU 2006 polynomial with
+        // this long-term frame is only harmless near J2000 and produces an
+        // increasingly inconsistent mean-ecliptic frame at remote epochs.
+        const double pole_dot = std::fmax(-1.0, std::fmin(
+            1.0, vector3_dot(equator_pole, ecliptic_pole)));
+        *out_mean_obliquity_rad = std::acos(pole_dot);
     }
     return true;
 }

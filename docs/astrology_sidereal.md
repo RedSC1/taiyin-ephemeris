@@ -12,6 +12,13 @@ sidereal longitude = normalize(tropical longitude - ayanamsha)
 It is not an ephemeris route, a nutation model, or a replacement for the
 precession model selected by `NativeCalcContext`.
 
+The selected precession model supplies both its equator/equinox matrix and its
+matching mean obliquity. Consequently, tropical ecliptic coordinates and the
+ayanamsha transformation stay in one model-defined frame. A custom precession
+callback must return that pair coherently; mixing a custom matrix with an IAU
+2006 obliquity violates the callback contract. Missing or non-finite matrix and
+obliquity outputs are rejected at the dispatch boundary.
+
 ## Built-In Models
 
 The `ayanamsha_id` argument currently accepts:

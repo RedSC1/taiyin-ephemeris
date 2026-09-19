@@ -8,8 +8,10 @@
 #include "taiyin/coordinates.h"
 #include "taiyin/corrections.h"
 #include "taiyin/dispatch.h"
+#include "taiyin/earth_rotation.h"
 #include "taiyin/internal/eop.h"
 #include "taiyin/observer.h"
+#include "taiyin/physical_constants.h"
 
 #include <cmath>
 #include <limits>
@@ -69,20 +71,72 @@ struct CirsToIcrfMatrixEvalData {
     double celestial_pole_offset_dy_rad;
 };
 
-bool simple_topocentric_to_icrf_matrix(const SplitJulianDate& jd_tt, Matrix3x3* out_matrix) noexcept {
-    if (!out_matrix) {
+struct SimpleTopocentricToIcrfMatrixEvalData {
+    int precession_model_id;
+};
+
+bool simple_topocentric_slow_to_icrf_matrix_eval(
+    const SplitJulianDate& jd_tt,
+    const void* data,
+    Matrix3x3* out_matrix
+) noexcept {
+    const SimpleTopocentricToIcrfMatrixEvalData* eval_data =
+        static_cast<const SimpleTopocentricToIcrfMatrixEvalData*>(data);
+    if (!eval_data || !out_matrix) {
         return false;
     }
     Matrix3x3 precession;
-    if (!dispatch::eval_selected_precession(dispatch::MODEL_SELECTION_DEFAULT, jd_tt, 0, &precession)) {
+    double mean_sidereal_offset = 0.0;
+    if (!dispatch::eval_precession(
+            eval_data->precession_model_id, jd_tt, nullptr, &precession)
+        || !gmst_minus_era_model_rad(
+            eval_data->precession_model_id,
+            jd_tt,
+            &mean_sidereal_offset)) {
         return false;
     }
-    *out_matrix = matrix3x3_transpose(precession);
+    *out_matrix = matrix3x3_multiply(
+        matrix3x3_transpose(precession),
+        earth_rotation_matrix(mean_sidereal_offset));
     return true;
 }
 
-bool simple_topocentric_to_icrf_matrix_eval(const SplitJulianDate& jd_tt, const void*, Matrix3x3* out_matrix) noexcept {
-    return simple_topocentric_to_icrf_matrix(jd_tt, out_matrix);
+void earth_rotation_matrix_derivatives(
+    double angle_rad,
+    double angular_rate_rad_per_day,
+    double angular_acceleration_rad_per_day2,
+    Matrix3x3* out_matrix,
+    Matrix3x3* out_matrix_dot,
+    Matrix3x3* out_matrix_ddot
+) noexcept {
+    const double cosine = std::cos(angle_rad);
+    const double sine = std::sin(angle_rad);
+    const Matrix3x3 derivative_by_angle = {{
+        { -sine, -cosine, 0.0 },
+        { cosine, -sine, 0.0 },
+        { 0.0, 0.0, 0.0 },
+    }};
+    const Matrix3x3 second_derivative_by_angle = {{
+        { -cosine, sine, 0.0 },
+        { -sine, -cosine, 0.0 },
+        { 0.0, 0.0, 0.0 },
+    }};
+    if (out_matrix) {
+        *out_matrix = earth_rotation_matrix(angle_rad);
+    }
+    if (out_matrix_dot) {
+        *out_matrix_dot = matrix3x3_scale(
+            derivative_by_angle, angular_rate_rad_per_day);
+    }
+    if (out_matrix_ddot) {
+        *out_matrix_ddot = matrix3x3_add(
+            matrix3x3_scale(
+                second_derivative_by_angle,
+                angular_rate_rad_per_day * angular_rate_rad_per_day),
+            matrix3x3_scale(
+                derivative_by_angle,
+                angular_acceleration_rad_per_day2));
+    }
 }
 
 bool cirs_to_icrf_matrix_eval(const SplitJulianDate& jd_tt, const void* data, Matrix3x3* out_matrix) noexcept {
@@ -160,17 +214,6 @@ bool transform_topocentric_offset_to_icrf(
         }
     }
     return true;
-}
-
-bool transform_simple_topocentric_offset_to_icrf(
-    const SplitJulianDate& jd_tt,
-    CartesianState* offset
-) noexcept {
-    return transform_topocentric_offset_to_icrf(
-        jd_tt,
-        &simple_topocentric_to_icrf_matrix_eval,
-        0,
-        offset);
 }
 
 bool transform_cirs_topocentric_offset_to_icrf(
@@ -836,30 +879,67 @@ Status native_context_set_simple_topocentric_observer(
     if (context->observer_id != TAIYIN_BODY_EARTH) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
-    CartesianState offset;
-    offset.position_au = observer_geocentric_simple_position_au(
-        location.longitude_rad,
-        location.latitude_rad,
-        location.height_m,
-        jd_ut1,
-        jd_tt);
-    if (!observer_geocentric_simple_velocity_au_per_day(
-            location.longitude_rad,
-            location.latitude_rad,
-            location.height_m,
-            jd_ut1,
+    const SimpleTopocentricToIcrfMatrixEvalData eval_data = {
+        context->model_context.precession_model_id,
+    };
+    Matrix3x3 slow_to_icrf;
+    Matrix3x3 slow_to_icrf_dot;
+    Matrix3x3 slow_to_icrf_ddot;
+    const double derivative_step_days =
+        context->apparent_options.matrix_derivative_step_days;
+    if (!simple_topocentric_slow_to_icrf_matrix_eval(
+            jd_tt, &eval_data, &slow_to_icrf)
+        || !matrix_derivative_central(
+            &simple_topocentric_slow_to_icrf_matrix_eval,
+            &eval_data,
             jd_tt,
-            &offset.velocity_au_per_day)
-        || !observer_geocentric_simple_acceleration_au_per_day2(
-            location.longitude_rad,
-            location.latitude_rad,
-            location.height_m,
-            jd_ut1,
+            derivative_step_days,
+            &slow_to_icrf_dot)
+        || !matrix_second_derivative_central(
+            &simple_topocentric_slow_to_icrf_matrix_eval,
+            &eval_data,
             jd_tt,
-            &offset.acceleration_au_per_day2)
-        || !transform_simple_topocentric_offset_to_icrf(jd_tt, &offset)) {
+            derivative_step_days,
+            &slow_to_icrf_ddot)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
+    const Vector3 ecef_au = vector3_scale(
+        geodetic_to_ecef_m(
+            location.longitude_rad,
+            location.latitude_rad,
+            location.height_m),
+        1.0 / TAIYIN_AU_M);
+    Matrix3x3 earth_rotation;
+    Matrix3x3 earth_rotation_dot;
+    Matrix3x3 earth_rotation_ddot;
+    earth_rotation_matrix_derivatives(
+        earth_rotation_angle_rad(jd_ut1),
+        TAIYIN_EARTH_ROTATION_RATE_RAD_PER_DAY,
+        0.0,
+        &earth_rotation,
+        &earth_rotation_dot,
+        &earth_rotation_ddot);
+    const Vector3 rotating_position = matrix3x3_multiply_vector(
+        earth_rotation, ecef_au);
+    const Vector3 rotating_velocity = matrix3x3_multiply_vector(
+        earth_rotation_dot, ecef_au);
+    const Vector3 rotating_acceleration = matrix3x3_multiply_vector(
+        earth_rotation_ddot, ecef_au);
+    CartesianState offset;
+    offset.position_au = matrix3x3_multiply_vector(
+        slow_to_icrf, rotating_position);
+    offset.velocity_au_per_day = transform_velocity_with_matrix(
+        rotating_position,
+        rotating_velocity,
+        slow_to_icrf,
+        slow_to_icrf_dot);
+    offset.acceleration_au_per_day2 = transform_acceleration_with_matrix(
+        rotating_position,
+        rotating_velocity,
+        rotating_acceleration,
+        slow_to_icrf,
+        slow_to_icrf_dot,
+        slow_to_icrf_ddot);
     const Status status = native_context_set_topocentric_observer_offset(context, offset);
     if (status == TAIYIN_STATUS_OK) {
         context->topocentric_observer_model = TAIYIN_NATIVE_TOPOCENTRIC_OBSERVER_SIMPLE;

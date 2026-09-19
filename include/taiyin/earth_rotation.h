@@ -7,9 +7,20 @@ namespace taiyin {
 
 double earth_rotation_angle_rad(const SplitJulianDate& jd_ut1) noexcept;
 double gmst_minus_era_rad(const SplitJulianDate& jd_tt) noexcept;
+bool gmst_minus_era_model_rad(
+    int precession_model_id,
+    const SplitJulianDate& jd_tt,
+    double* out
+) noexcept;
 double gmst_minus_era_rate_rad_per_day(const SplitJulianDate& jd_tt) noexcept;
 double gmst_minus_era_acceleration_rad_per_day2(const SplitJulianDate& jd_tt) noexcept;
 double gmst_rad(const SplitJulianDate& jd_ut1, const SplitJulianDate& jd_tt) noexcept;
+bool gmst_model_rad(
+    int precession_model_id,
+    const SplitJulianDate& jd_ut1,
+    const SplitJulianDate& jd_tt,
+    double* out
+) noexcept;
 double gmst_rate_rad_per_day(const SplitJulianDate& jd_tt, double dut1_rate_seconds_per_day, double lod_seconds) noexcept;
 double gmst_acceleration_rad_per_day2(const SplitJulianDate& jd_tt, double lod_rate_seconds_per_day) noexcept;
 bool equation_of_equinoxes_model_rad(

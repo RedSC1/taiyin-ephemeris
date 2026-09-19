@@ -217,6 +217,15 @@ individual fields. Topocentric state and deflectors use dedicated setters and
 are preserved when `taiyin_context_set_apparent_config()` changes the remaining
 apparent options.
 
+Automatic precession selection prefers the Vondrák-Capitaine-Wallace 2011
+long-term model, which supplies a coherent mean equator, mean ecliptic, and
+mean obliquity over the library's long-range epochs. Select
+`TAIYIN_PRECESSION_IAU_2006` explicitly when an IAU 2006 equinox result is
+required. The selected model is used consistently by ecliptic output,
+sidereal/house calculations, model GAST, event frames, and simple topocentric
+observer conversion; those paths do not silently substitute an IAU 2006
+obliquity or equinox.
+
 A newly created context, and a `taiyin_apparent_config` initialized with
 `taiyin_apparent_config_init()`, use light-time, annual aberration, and
 gravitational deflection by the Sun. The context's built-in deflector list

@@ -2732,7 +2732,7 @@ void test_lunar_occultation_local_visibility_summary(int* failures) {
     // summary products.
     expect_near(
         star_occultation.jd_ut,
-        2460318.1365588373,
+        2460318.1365589174,
         1.0e-7,
         "Antares local search maximum fixture",
         failures);
@@ -2847,7 +2847,7 @@ void test_lunar_occultation_local_visibility_summary(int* failures) {
         failures);
     expect_near(
         star_visibility.maximum.sun_altitude_rad,
-        0.59290925946054329,
+        0.59290985886835934,
         kDerivedAltitudeFixtureToleranceRad,
         "Antares local maximum Sun altitude fixture",
         failures);

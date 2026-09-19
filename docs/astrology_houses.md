@@ -30,6 +30,11 @@ For `calc_houses_ut()` and `calc_houses_tt()`, the result uses the context's
 selected precession and nutation models. `calc_houses_from_armc()` instead uses
 the caller-supplied ARMC and true obliquity directly:
 
+The time-based entry points also carry the conventional IAU Earth-rotation
+angle into the selected precession frame before forming GAST. This matters for
+long-term and custom precession models: changing only the model's equinox does
+not spuriously rotate the physical observer or the local meridian.
+
 - `armc_rad` is local apparent sidereal time.
 - `ascendant_rad`, `midheaven_rad`, `vertex_rad`, `east_point_rad`, and every
   cusp are tropical longitudes on the true ecliptic of date.

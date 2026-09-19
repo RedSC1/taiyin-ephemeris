@@ -13,6 +13,7 @@
 #include "taiyin/earth_rotation.h"
 #include "taiyin/internal/body_disc_radius.h"
 #include "taiyin/observer.h"
+#include "taiyin/physical_constants.h"
 #include "taiyin/runtime/native_position.h"
 #include "taiyin/runtime/observed_position.h"
 
@@ -22,6 +23,19 @@
 namespace taiyin {
 namespace runtime {
 namespace {
+
+Vector3 observer_true_equator_position_au(
+    double longitude_rad,
+    double latitude_rad,
+    double height_m,
+    double greenwich_apparent_sidereal_rad
+) noexcept {
+    return rotate_z(
+        vector3_scale(
+            geodetic_to_ecef_m(longitude_rad, latitude_rad, height_m),
+            1.0 / TAIYIN_AU_M),
+        greenwich_apparent_sidereal_rad);
+}
 
 bool split_tdb_from_tt(
     const SplitJulianDate& jd_tt,
@@ -279,12 +293,11 @@ Status sample_solar_rise_set_fast2_no_window(
             &gast)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
-    const Vector3 observer = observer_geocentric_simple_position_au(
+    const Vector3 observer = observer_true_equator_position_au(
         lon_rad,
         lat_rad,
         height_m,
-        jd_ut,
-        jd_tt);
+        gast);
     const Vector3 topocentric = topocentric_position_au(sun.position_au, observer);
     const double ra = std::atan2(topocentric.y, topocentric.x);
     const double dec = std::atan2(topocentric.z, std::hypot(topocentric.x, topocentric.y));
@@ -513,12 +526,11 @@ Status sample_solar_horizontal_tt(
             &gast)) {
         return TAIYIN_ERROR_UNSUPPORTED;
     }
-    const Vector3 observer = observer_geocentric_simple_position_au(
+    const Vector3 observer = observer_true_equator_position_au(
         longitude_rad,
         latitude_rad,
         height_m,
-        jd_ut,
-        jd_tt);
+        gast);
     const Vector3 topocentric = topocentric_position_au(sun.position_au, observer);
     const double ra = std::atan2(topocentric.y, topocentric.x);
     const double hour_angle = normalize_signed_radians(gast + longitude_rad - ra);
@@ -1201,12 +1213,11 @@ Status compute_solar_rise_set_fast_tt(
                 &gast)) {
             return TAIYIN_ERROR_UNSUPPORTED;
         }
-        const Vector3 observer = observer_geocentric_simple_position_au(
+        const Vector3 observer = observer_true_equator_position_au(
             lon_rad,
             lat_rad,
             height_m,
-            jd_ut,
-            jd_tt);
+            gast);
         const Vector3 topocentric = topocentric_position_au(sun.position_au, observer);
         const double altitude = topocentric_altitude_rad(topocentric, normalize_radians(gast + lon_rad), lat_rad);
         if (!std::isfinite(altitude)) return TAIYIN_EPHEMERIS_ERROR_EVAL_FAILED;
