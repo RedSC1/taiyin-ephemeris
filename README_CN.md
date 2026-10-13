@@ -2,13 +2,14 @@
 
 [English README](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
-> **预发布说明：** 当前的 `1.0.0-rc.3` 是候选发布版本，并非最终稳定发布。
-> 公开 API、随包数据边界、文档和计划中的语言绑定在首个稳定版发布前仍可能调整。
+**1.0.0 是首个稳定版本。** 版本化 C99 API 使用 **C ABI 11**；兼容的 1.x
+版本保留已有 C symbol、flag 和结构体约定。C++ API 属于实现层，不承诺稳定二进制
+ABI。详见[兼容性策略](doc_cn/c_api.md#兼容性策略)。
 
 Taiyin Ephemeris 是一个可嵌入的天文库，用于计算太阳系天体位置、观测坐标、
 可见性、天文事件、日月食、掩星、固定星、历法和真太阳时。它使用 C++ 编写，
 并为应用程序和 FFI 绑定提供带版本号的 C99 ABI。
-预发布的 [Python](https://github.com/RedSC1/py-ephemeris) 与
+[Python](https://github.com/RedSC1/py-ephemeris) 与
 [Dart](https://github.com/RedSC1/dart-ephemeris) 包已经可用；JavaScript wrapper
 仍在开发中。
 
@@ -51,8 +52,9 @@ SPK 数据。这里的“当前”是指采用与 DE441 时代数据相配套的
 处理路线。Taiyin 没有实现 DE431 年代历史星历表所用的潮汐加速度补偿参数，因此
 不应将它宣传为复现 DE431 历史星历的实现。
 
-在没有更高优先级 SPK 或 OPM2 数据时，内置半解析 fallback 可覆盖约公历
-**-3000 至 +3000**。其模型和验证细节见
+在没有更高优先级 SPK 或 OPM2 数据时，内置 Taiyin 半解析星历提供太阳、主要行星、
+地球本体、月球、EMB 和冥王星，覆盖约天文年份 **-6000 至 +10000**。
+卫星和形心修正仍有各自较窄的覆盖区间。模型和验证细节见
 [`doc_cn/semi_analytic_ephemeris.md`](doc_cn/semi_analytic_ephemeris.md)。
 
 ### 内置卫星 fallback 的范围
@@ -82,7 +84,7 @@ SPK 数据。这里的“当前”是指采用与 DE441 时代数据相配套的
 - **历法和占星扩展：** 中国历法 primitive、恒星黄道、ayanamsha、宫位、
   月球交点/远地点，以及可选的 BaZi/Ganzhi 支持。
 - **应用集成：** 带 opaque context、diagnostic、capability 查询和 FFI 友好
-  ownership 规则的版本化 C99 API。C ABI version 10 是应用和绑定的兼容边界；
+  ownership 规则的版本化 C99 API。C ABI version 11 是应用和绑定的兼容边界；
   C++ API 不承诺稳定二进制 ABI。
 
 ### 1.0 观测者范围

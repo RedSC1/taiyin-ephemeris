@@ -1,7 +1,7 @@
 # Ephemeris Data Packages
 
 Status: Current  
-Last reviewed: 2026-08-24
+Last reviewed: 2026-10-13
 
 Taiyin keeps large ephemeris products outside the native library and language
 bindings. Small products used by ordinary contemporary calculations remain in
@@ -12,10 +12,16 @@ Release assets.
 
 | Product | Delivery | Common coverage | Intended use |
 | --- | --- | --- | --- |
-| DE441-derived 600-year OPM2 | Repository and wrapper data bundle | 1800-01-01 through 2400-01-01 | Contemporary compatibility |
-| DE442-derived OPM2 | Repository and wrapper data bundle | Approximately 1550 through 2650 | Default contemporary major-body source |
+| DE441-derived 600-year OPM2 | C++ repository | 1800-01-01 through 2400-01-01 | Contemporary compatibility |
+| DE442-derived OPM2 | C++ repository and Python wheel | Approximately 1550 through 2650 | Default contemporary major-body source |
 | Full-range DE441-derived OPM2 | Optional GitHub Release asset | JD `-3096455.499990447` through `7996074.500009106` | Long-range calculations and historical stress tests |
 | Raw NASA/JPL SPK | User-supplied | Depends on the kernel | Direct JPL reference data or targets absent from an OPM2 package |
+
+Python bundles DE442-derived major-body data, selected asteroids, COB data,
+Kepler files, and the lite star catalog; it does not bundle the DE441 600-year
+product. Dart bundles the lite star catalog and native semi-analytical models,
+but no OPM2 solar-system dataset. Dart users can register these external OPM2
+products or raw SPK files explicitly.
 
 The full-range archive is named `taiyin-opm2-de441-full-v1.zip`. It is about
 85.3 MiB and expands to 87.98 MiB of OPM2 payload plus manifests and the OPC

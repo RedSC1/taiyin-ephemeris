@@ -10,15 +10,15 @@ not consume the C++ API. Include the umbrella header:
 ```
 
 The installed shared library is named `taiyin` on platforms with versioned
-SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). Windows includes the ABI in the
-runtime and import-library name, for example `taiyin-11.dll` and
-`taiyin-11.lib`.
+SONAMEs (`libtaiyin.so` or `libtaiyin.dylib`). The legacy aggregate Windows
+build includes the ABI in its name (`taiyin-11.dll` and `taiyin-11.lib`);
+the modular Windows build uses `taiyin.dll`.
 Query `taiyin_get_c_abi_version()` before
 using a dynamically discovered library. `taiyin_get_library_version()` reports
-the independent semantic library version; the current beta is
-`1.0.0-beta.11` (C ABI 11). Rebuild bindings and optional modules together with
-the core when upgrading from ABI 10. This release exposes the explicit Ziwei
-chart-clock conversion, flow navigation and reverse-search C entry points.
+the independent semantic library version, currently `1.0.0` (C ABI 11).
+Rebuild bindings and optional modules together with the core when upgrading
+from ABI 10. ABI 11 includes the explicit Ziwei chart-clock conversion, flow
+navigation and reverse-search C entry points.
 `taiyin_get_library_codename()` reports the major-release codename;
 Taiyin `1.x.x` is **Singularity**. The returned version and codename strings
 have static library lifetime and must not be freed. `taiyin_get_capabilities()`
@@ -66,9 +66,10 @@ cmake --install build-modular --prefix /your/prefix
 
 The modular install always contains `taiyin`, which bundles the core,
 astrology, Chinese-calendar, and Ganzhi APIs and native implementation.
-Enabling BaZi adds the only optional shared library, `taiyin_bazi`. A BaZi
-deployment therefore contains exactly two shared libraries: `taiyin` and
-`taiyin_bazi`.
+Enabling BaZi adds `taiyin_bazi`; enabling Ziwei adds `taiyin_ziwei`.
+Both extensions are independently optional and require
+`TAIYIN_BUILD_CHINESE_METAPHYSICS_EXTENSIONS=ON` plus their respective
+`TAIYIN_BUILD_BAZI_EXTENSION` / `TAIYIN_BUILD_ZIWEI_EXTENSION` option.
 All enabled runtime dependencies are installed beside the facades, with
 relocatable loader paths on macOS and ELF platforms. Windows installs the DLLs
 and import libraries in the normal CMake runtime/archive destinations.
@@ -96,7 +97,7 @@ The install and CPack binary archives deliberately do not include OPM2, TSC1,
 TLL1, or other runtime data packs. Deploy a selected data root beside the
 application, or register separately distributed data files at runtime.
 
-The C ABI version is `10`. Version 3 replaced scalar Julian-day arguments and
+The C ABI version is `11`. Version 3 replaced scalar Julian-day arguments and
 time-bearing result fields with `taiyin_split_julian_date`. Version 5 enlarged
 `taiyin_bazi_context_config` for qi-yun and da-yun policy. Version 7 adds the
 planet-transit flag word and establishes the low-position/high-option layering
@@ -105,16 +106,35 @@ an explicit UTC out-of-range estimate flag; `*_ut` entry points now have fixed
 UT1 semantics. Version 9 returns `taiyin_call_result` (packed status plus
 result flags) from every status-returning function. Version 10 adds historical
 calendar-year metadata and the effective/physical Ziwei flow-month fields.
+Version 11 establishes the explicit Ziwei chart-clock and calendar-adapter
+contracts used by the 1.0 bindings.
 Callers compiled against an earlier ABI must be rebuilt. Taiyin follows semantic versioning
 for the library: compatible additions retain the ABI major, while removing or
 changing an existing C symbol or structure contract requires a new ABI major.
 Shared-library physical filenames use `ABI.0.0` independently of the package
 semantic version, so installing a new ABI does not overwrite the binary behind
 an older SONAME. Windows, which does not encode `VERSION` in DLL filenames,
-uses `taiyin-<ABI>` as the output name instead.
+uses `taiyin-<ABI>` for the legacy aggregate build; modular DLLs keep their
+module names and must be deployed as a matched build.
 The C++ API is an implementation-facing interface and is not promised as a
 stable binary ABI. A codename identifies a semantic-version major release and
 does not participate in version ordering or ABI compatibility checks.
+
+## Compatibility Policy
+
+Version 1.0.0 establishes C ABI 11 as the stable application boundary.
+Compatible 1.x releases preserve existing symbols, flag meanings, structure
+layouts, ownership rules, and the packed status/result-flag return convention.
+Structure extensions must follow each API's `struct_size` contract. A breaking
+C ABI change requires a new ABI major and a new semantic-version major.
+
+Numerical bug fixes and model/data updates can change calculated values in
+patch or minor releases; stability does not mean bit-for-bit numerical identity.
+Pin the library, source data, route policy, and model IDs for reproducible work.
+The known model and platform limits remain part of the supported scope.
+
+Optional native modules use internal C++ linkage and must come from the same
+core build. That linkage and the C++ headers are not a public binary ABI.
 
 ## Lifetime And Ownership
 

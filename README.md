@@ -2,16 +2,16 @@
 
 [中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
-> **Pre-release notice:** The current `1.0.0-rc.3` version is a release
-> candidate, not a final production release. Public APIs,
-> packaged data boundaries, documentation, and the planned language bindings
-> may still change before the first stable release.
+**Version 1.0.0** is the first stable release. The versioned C99 API uses
+**C ABI 11**; compatible 1.x releases preserve existing C symbols, flags, and
+structure contracts. The C++ API remains implementation-facing and does not
+promise a stable binary ABI. See the [compatibility policy](docs/c_api.md#compatibility-policy).
 
 Taiyin Ephemeris is an embeddable astronomy library for computing Solar System
 positions, observer coordinates, visibility, astronomical events, eclipses,
 occultations, fixed-star positions, calendars, and local solar time. It is
 written in C++ and also provides a versioned C99 ABI for applications and FFI
-bindings. Pre-release [Python](https://github.com/RedSC1/py-ephemeris) and
+bindings. [Python](https://github.com/RedSC1/py-ephemeris) and
 [Dart](https://github.com/RedSC1/dart-ephemeris) packages are available;
 the JavaScript wrapper remains under development.
 
@@ -106,7 +106,7 @@ requested physical planet unless the caller explicitly enables that fallback.
   BaZi/Ganzhi support.
 - **Application integration:** a versioned C99 API with opaque contexts,
   diagnostics, capability queries, and FFI-friendly ownership rules. C ABI
-  version 8 is the application compatibility boundary; the C++ API is not a
+  version 11 is the application compatibility boundary; the C++ API is not a
   stable binary ABI.
 
 ### Observer Scope in 1.0

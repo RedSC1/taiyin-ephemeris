@@ -1,7 +1,7 @@
 # Current Capabilities And Known Limits
 
 Status: Current
-Last reviewed: 2026-08-07
+Last reviewed: 2026-10-13
 
 This document summarizes what Taiyin can currently do, what limits remain, and which work areas are suitable for future versions. Specific API details are documented in the corresponding topic documents and headers:
 
@@ -166,7 +166,7 @@ Solar and lunar searches support limb selection, refraction, fixed disc size, an
 
 The versioned C99 ABI is the binding and application compatibility boundary
 from library version `1.0.0` onward. Existing C symbols and structure contracts
-must remain source- and binary-compatible within ABI major 10. New fields use
+must remain source- and binary-compatible within ABI major 11. New fields use
 the documented `struct_size` convention.
 
 The C++ headers remain implementation-facing. They may evolve between minor

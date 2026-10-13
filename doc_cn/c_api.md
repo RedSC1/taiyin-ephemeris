@@ -11,10 +11,11 @@ Rust 等绑定层使用。统一入口为：
 
 在支持版本化 SONAME 的平台，安装后的动态库名为 `taiyin`（Linux 为
 `libtaiyin.so`，macOS 为 `libtaiyin.dylib`）。Windows 的 DLL 和 import
-library 名称带 ABI 号，例如 `taiyin-11.dll` 和 `taiyin-11.lib`。动态加载时先检查
+library 在 legacy aggregate 构建中带 ABI 号，例如 `taiyin-11.dll` 和
+`taiyin-11.lib`；模块化 Windows 构建使用 `taiyin.dll`。动态加载时先检查
 `taiyin_get_c_abi_version()`；`taiyin_get_library_version()` 返回与 ABI
-版本独立的库语义版本，当前预发布版本为 `1.0.0-beta.11`（C ABI 11）。
-本版新增紫微显式排盘时钟转换、流运导航和反查 C 接口；从 ABI 10 升级时，
+版本独立的库语义版本，当前为 `1.0.0`（C ABI 11）。
+ABI 11 包含紫微显式排盘时钟转换、流运导航和反查 C 接口；从 ABI 10 升级时，
 绑定与可选模块必须和内核一起重新构建。
 `taiyin_get_library_codename()` 返回大版本代号，Taiyin `1.x.x` 的代号为
 **Singularity**。版本和代号字符串拥有静态库生命周期，调用方不得释放；
@@ -59,9 +60,10 @@ cmake --install build-modular --prefix /your/prefix
 ```
 
 模块化安装始终包含 `taiyin`，其中合并了 core、astrology、Chinese calendar 与
-Ganzhi 的 C API 和 native 实现。启用 BaZi 时才会额外安装唯一可选的
-`taiyin_bazi`；因此 BaZi 发布包恰好包含两个 shared library：`taiyin` 和
-`taiyin_bazi`。所有启用依赖都会安装在同一目录；macOS 与 ELF 平台使用可重定位
+Ganzhi 的 C API 和 native 实现。启用 BaZi 时增加 `taiyin_bazi`，启用 Ziwei
+时增加 `taiyin_ziwei`，二者独立可选；需要打开术数 policy gate 和各自的
+`TAIYIN_BUILD_BAZI_EXTENSION` / `TAIYIN_BUILD_ZIWEI_EXTENSION`。
+所有启用依赖都会安装在同一目录；macOS 与 ELF 平台使用可重定位
 loader path，Windows 按 CMake 常规 runtime/archive 目录安装 DLL 与 import library。
 
 模块化调用方应先加载 `taiyin`，再加载扩展库；同一进程不要把 legacy aggregate
@@ -82,20 +84,36 @@ cmake --install build --prefix /your/prefix
 安装结果和 CPack 二进制压缩包有意不携带 OPM2、TSC1、TLL1 或其他 runtime 数据包。
 部署时应把选定的数据根目录放在应用旁，或在运行时注册单独分发的数据文件。
 
-C ABI 当前版本为 `10`。版本 3 将标量儒略日参数和结果时间字段替换为
+C ABI 当前版本为 `11`。版本 3 将标量儒略日参数和结果时间字段替换为
 `taiyin_split_julian_date`；版本 5 扩展了 `taiyin_bazi_context_config`，加入
 起运与大运策略；版本 7 为行星中天搜索加入 flags 参数，并确立 observed flags
 “低 32 位 position / 高 32 位 option”的分层。版本 8 将三态时间尺度策略替换为
 显式 UTC 超范围估算开关，并将 `*_ut` 入口固定为 UT1 语义。版本 9 将返回状态的
 函数统一为打包 status 与 result flags 的 `taiyin_call_result`；版本 10 增加
-历史历法归属年以及紫微流月的物理/有效月份字段。使用更早 ABI 头文件构建的调用方必须
+历史历法归属年以及紫微流月的物理/有效月份字段；版本 11 确立了 1.0 绑定使用的
+显式紫微排盘时钟和历法适配器约定。使用更早 ABI 头文件构建的调用方必须
 重新编译。库版本遵循语义化版本：兼容性新增不改变 ABI major；
 删除或改变已有 C symbol / struct contract 时必须提升 ABI major。
 共享库实体文件独立使用 `ABI.0.0` 版本号，避免安装新 ABI 时覆盖旧 SONAME
 指向的二进制；Windows 不把 `VERSION` 编入 DLL 文件名，因此改用
-`taiyin-<ABI>` 输出名。包的语义版本不受此规则影响。C++ API
+legacy aggregate 使用 `taiyin-<ABI>` 输出名；模块化 DLL 保留模块名称，必须成套部署。
+包的语义版本不受此规则影响。C++ API
 属于实现层接口，不承诺稳定的二进制 ABI。代号只标识语义版本的大版本，
 不参与版本比较或 ABI 兼容性判断。
+
+## 兼容性策略
+
+1.0.0 将 C ABI 11 确立为稳定的应用边界。兼容的 1.x 版本保留已有 symbol、flag
+含义、结构体布局、所有权约定及打包 status/result flags 的返回形式。结构体扩展必须
+遵循各接口的 `struct_size` 约定；破坏 C ABI 的变更需要同时提升 ABI major 和库的
+语义化大版本。
+
+数值 bug 修复以及模型、数据更新可以在 patch/minor 版本中改变计算结果；稳定接口不等于
+逐位不变的数值。需要复现时，应固定库版本、数据源、路线策略和模型 ID。已知模型与平台
+限制仍属于支持范围的一部分。
+
+可选原生模块使用内部 C++ 链接，必须来自同一套内核构建。这部分链接与 C++ 头文件
+不属于对外稳定二进制 ABI。
 
 ## 生命周期与所有权
 
@@ -108,8 +126,12 @@ C ABI 当前版本为 `10`。版本 3 将标量儒略日参数和结果时间字
 - 调用方传入的顶层结果或选项结构体只要带 `struct_size`，使用前就必须调用对应
   `_init()`；数组中的元素记录由库负责初始化。
 - 数组接口采用 `capacity + out_count`。声明允许时，可用空指针和零容量先查询数量。
-- 调用方只有在返回 `TAIYIN_STATUS_OK` 时才能使用结果；结构化结果包装器不会写回
-  失败的临时结果。传入 diagnostic 时，成功和失败都会更新诊断信息。
+- 返回状态的函数使用 64 位 `taiyin_call_result`：高 32 位为有符号 status，低 32 位
+  为本次调用的 result flags。用 `taiyin_call_result_ok(result)` 或 `result >= 0`
+  判断成功，不能用 `result == TAIYIN_STATUS_OK`，因为成功也可能带 flags。通过
+  `taiyin_call_result_status()` / `taiyin_call_result_flags()` 解码。仅在成功时使用
+  结果；失败时结构化结果包装器不会写回临时结果。传入 diagnostic 时，成功和失败
+  都会更新诊断信息。
 
 ## 并发与自定义回调
 

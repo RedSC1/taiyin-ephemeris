@@ -1,7 +1,7 @@
 # Roadmap
 
 Status: Current
-Last reviewed: 2026-08-09
+Last reviewed: 2026-10-13
 
 Taiyin `1.0.0` is the first core baseline. The runtime and C ABI are
 feature-complete enough for downstream bindings and applications; future work
@@ -39,7 +39,10 @@ The baseline includes:
   visibility calculations, and optional lunar-limb correction;
 - sidereal positions, ayanamsha, ASC/MC, house systems, lunar nodes/apsides,
   fitted lunar apogee, and custom astrology model registration;
-- stable C99 ABI version 7 for FFI and application integration.
+- stable C99 ABI version 11 for FFI and application integration;
+- independently optional BaZi and Ziwei modules, rule catalogs, chart clocks,
+  flow navigation, reverse searches, and user rule modules;
+- separately published Python and Dart core/BaZi/Ziwei packages.
 
 The exact-JD shared result cache has been removed. Shared runtime caching is
 limited to reusable source segments and route-loading coordination; user-level
@@ -47,7 +50,7 @@ memoization belongs in downstream contexts or bindings.
 
 ## Compatibility Policy
 
-- The C ABI is the compatibility boundary. ABI major 7 keeps existing symbols,
+- The C ABI is the compatibility boundary. ABI major 11 keeps existing symbols,
   flag meanings, and structure contracts compatible.
 - Structure growth uses trailing fields guarded by `struct_size`.
 - C++ headers remain implementation-facing and are not a stable binary ABI.
@@ -62,12 +65,14 @@ memoization belongs in downstream contexts or bindings.
 
 ### Bindings And Packaging
 
-1. Dart FFI wrapper and Flutter platform packaging.
-2. Python direct C++ binding through pybind11, with Python-owned localization
-   and input normalization rather than native DLL discovery.
-3. JavaScript/Node.js binding after the native package layout is stable.
-4. CI-built macOS, Linux, Windows, Android, and iOS binaries with install/package
-   smoke tests, symbol checks, checksums, signing, and notices.
+Python pybind11 and Dart FFI packages already provide astronomy, calendar,
+BaZi, and Ziwei APIs. Python wheels cover the published macOS, Linux, and
+Windows architectures. Dart bundles macOS arm64, Linux x64, and Windows x64
+modules; Dart Web is unsupported.
+
+Remaining packaging work includes Flutter/mobile distribution, additional
+Dart Native architectures, and a JavaScript/Node.js wrapper. These do not
+block the 1.0 desktop/native scope.
 
 ### Validation
 
@@ -91,14 +96,14 @@ memoization belongs in downstream contexts or bindings.
 
 ## Public Distribution Gate
 
-The source tree is published through the public repository snapshot; binary
-distribution remains deferred. Before distributing binaries externally:
+The public source tree is synchronized from the private development repository.
+Python and Dart distribute CI-built native binaries. For each release:
 
 - run the full platform matrix and package-install smoke tests;
-- compare exported symbols with the ABI v2 baseline;
+- verify C ABI 11 and match all optional native modules to the core build;
 - include `LICENSE`, `NOTICE`, and packaged-data provenance;
 - publish data checksums and model/source identifiers;
-- prepare a changelog, migration guide, support window, and security contact.
+- update changelogs, dependency pins, and supported-platform documentation.
 
 The detailed binary-release checklist is maintained in the private development
 repository and is not part of this public source snapshot.
