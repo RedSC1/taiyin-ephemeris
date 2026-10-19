@@ -2,7 +2,8 @@
 
 [English README](README.md) · [文档](doc_cn/index.md) · [路线图](ROADMAP.md)
 
-**1.0.0 是首个稳定版本。** 版本化 C99 API 使用 **C ABI 11**；兼容的 1.x
+**1.1.0** 新增原生八字反查与可选的实验性 Wasm 桥接，延续 1.0.0 确立的
+兼容性策略。版本化 C99 API 使用 **C ABI 11**；兼容的 1.x
 版本保留已有 C symbol、flag 和结构体约定。C++ API 属于实现层，不承诺稳定二进制
 ABI。详见[兼容性策略](doc_cn/c_api.md#兼容性策略)。
 

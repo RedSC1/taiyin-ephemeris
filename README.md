@@ -2,7 +2,9 @@
 
 [中文版 README](README_CN.md) · [Documentation](docs/index.md) · [Roadmap](ROADMAP.md)
 
-**Version 1.0.0** is the first stable release. The versioned C99 API uses
+**Version 1.1.0** adds native BaZi reverse lookup and an opt-in experimental
+Wasm bridge, retaining the compatibility policy established in 1.0.0.
+The versioned C99 API uses
 **C ABI 11**; compatible 1.x releases preserve existing C symbols, flags, and
 structure contracts. The C++ API remains implementation-facing and does not
 promise a stable binary ABI. See the [compatibility policy](docs/c_api.md#compatibility-policy).

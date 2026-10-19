@@ -62,7 +62,7 @@ if(TAIYIN_BUILD_MODULAR_C_API)
     set_target_properties(taiyin_bazi PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME taiyin_bazi
-        VERSION 1.0.0
+        VERSION ${PROJECT_VERSION}
         SOVERSION 1
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN YES

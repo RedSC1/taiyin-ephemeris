@@ -64,7 +64,7 @@ if(TAIYIN_BUILD_MODULAR_C_API)
     set_target_properties(taiyin_ziwei PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME taiyin_ziwei
-        VERSION 1.0.0
+        VERSION ${PROJECT_VERSION}
         SOVERSION 1
         C_VISIBILITY_PRESET hidden
         CXX_VISIBILITY_PRESET hidden
