@@ -1,4 +1,5 @@
 set(TAIYIN_BAZI_RULE_SOURCES
+    src/reverse_lookup.cpp
     src/bazi.cpp
     src/bazi_rules.cpp
     src/shen_sha_catalog.cpp
@@ -92,6 +93,11 @@ install(FILES include/taiyin/c/bazi.h
 
 add_executable(test_bazi tests/test_bazi.cpp)
 target_link_libraries(test_bazi PRIVATE taiyin_bazi_extension)
+
+add_executable(test_bazi_reverse tests/test_reverse_lookup.cpp)
+target_link_libraries(test_bazi_reverse PRIVATE taiyin_bazi_extension)
+set_target_properties(test_bazi_reverse PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED YES)
+add_test(NAME bazi_reverse COMMAND test_bazi_reverse)
 
 add_executable(benchmark_bazi_10000 tests/benchmark_bazi_10000.cpp)
 find_package(Threads REQUIRED)

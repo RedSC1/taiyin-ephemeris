@@ -288,6 +288,7 @@ set_target_properties(taiyin_chinese_calendar_extension PROPERTIES
 )
 
 add_library(taiyin_chinese_calendar_ganzhi_extension STATIC
+    src/chinese_calendar/chart_clock.cpp
     src/chinese_calendar/ganzhi.cpp
     src/chinese_calendar/ganzhi_rules.cpp
 )
@@ -345,6 +346,7 @@ if(TAIYIN_BUILD_MODULAR_C_API)
         ${TAIYIN_ASTROLOGY_NATIVE_SOURCES}
         ${TAIYIN_CHINESE_CALENDAR_NATIVE_SOURCES}
         src/chinese_calendar/ganzhi.cpp
+        src/chinese_calendar/chart_clock.cpp
         src/chinese_calendar/ganzhi_rules.cpp
         ${TAIYIN_C_CORE_API_SOURCES}
         ${TAIYIN_C_ASTROLOGY_API_SOURCES}

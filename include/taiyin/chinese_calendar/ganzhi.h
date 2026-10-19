@@ -66,6 +66,14 @@ TAIYIN_GANZHI_SHARED_API Status next_pillar_jie(
     const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
     SolarTermEvent* out_term, SplitJulianDate* out_boundary,
     runtime::EphemerisEvalDiagnostic* diagnostic) noexcept;
+// Interval partition boundary including the forward root-equality floor for
+// astronomical terms. Assigned historical midnights remain strict. The legacy
+// next_pillar_jie point-search contract above is unchanged. out_term.jd_ut
+// always retains the unmodified physical event instant.
+TAIYIN_GANZHI_SHARED_API Status next_pillar_transition(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_ut1,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept;
 
 // Normalizes the resolved virtual clock used by Chinese metaphysics.  This
 // recognizes only the exact scalar/split-JD spellings of a civil-hour

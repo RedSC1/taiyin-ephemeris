@@ -328,6 +328,45 @@ typedef struct taiyin_bazi_xiaoyun {
     uint8_t reserved[3];
 } taiyin_bazi_xiaoyun;
 
+enum taiyin_bazi_clock_mode {
+    TAIYIN_BAZI_CLOCK_FIXED_OFFSET = 0,
+    TAIYIN_BAZI_CLOCK_MEAN_SOLAR = 1,
+    TAIYIN_BAZI_CLOCK_APPARENT_SOLAR = 2
+};
+
+/* All four packed Ganzhi values are required. UT1 is explicit; the fixed
+ * clock adds calendar.utc_offset_minutes to UT1 (not a UTC/DST conversion).
+ * clock_mode: 0=fixed offset, 1=mean solar, 2=apparent solar. */
+typedef struct taiyin_bazi_reverse_request {
+    uint32_t struct_size;
+    taiyin_split_julian_date start_jd_ut1;
+    taiyin_split_julian_date end_jd_ut1;
+    taiyin_ganzhi_four_pillars pillars;
+    int32_t rat_hour_mode;
+    int32_t clock_mode;
+    double longitude_rad;
+} taiyin_bazi_reverse_request;
+
+typedef struct taiyin_bazi_reverse_candidate {
+    uint32_t struct_size;
+    taiyin_split_julian_date start_jd_ut1;
+    taiyin_split_julian_date end_jd_ut1;
+    taiyin_calendar_datetime start_virtual_time;
+    taiyin_calendar_datetime end_virtual_time;
+    taiyin_ganzhi_four_pillars pillars;
+} taiyin_bazi_reverse_candidate;
+
+TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_reverse_request_init(taiyin_bazi_reverse_request*);
+TAIYIN_C_BAZI_API void TAIYIN_C_CALL taiyin_bazi_reverse_candidate_init(taiyin_bazi_reverse_candidate*);
+/* Ordered maximal matching [start,end) intervals, clipped to the search
+ * range. NULL/0 queries the count; a short buffer returns OUT_OF_MEMORY and
+ * the required count without writing any records. Empty/no match succeeds.
+ * Output records need not be initialized. Errors never partially fill out. */
+TAIYIN_C_BAZI_API taiyin_call_result TAIYIN_C_CALL taiyin_bazi_reverse_lookup_at_ut1(
+    const taiyin_chinese_calendar_context*, const taiyin_bazi_reverse_request*,
+    taiyin_bazi_reverse_candidate* out, size_t capacity, size_t* out_count,
+    taiyin_ephemeris_diagnostic* diagnostic);
+
 typedef struct taiyin_bazi_renyuan_siling_segment {
     uint32_t struct_size;
     uint8_t stem_id;

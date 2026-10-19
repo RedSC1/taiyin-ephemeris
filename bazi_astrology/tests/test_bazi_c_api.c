@@ -508,6 +508,45 @@ int main(int argc, char** argv) {
     }
 
     taiyin_bazi_context_destroy(context);
+    {
+        taiyin_bazi_reverse_request request;
+        taiyin_bazi_reverse_candidate candidate, sentinel;
+        taiyin_calendar_datetime local;
+        taiyin_split_julian_date birth, local_jd;
+        size_t count = 0;
+        taiyin_bazi_reverse_request_init(&request);
+        taiyin_calendar_datetime_init(&local);
+        local.year=2003; local.month=3; local.day=13; local.hour=14; local.minute=15;
+        if (taiyin_julian_day_split(&local,&local_jd)<0
+            || taiyin_add_seconds_to_split_jd(&local_jd,-28800,&birth)<0
+            || taiyin_chinese_calendar_calc_four_pillars_ut(calendar_context,&birth,&local,0,&request.pillars,NULL)<0
+            || taiyin_add_seconds_to_split_jd(&birth,-86400,&request.start_jd_ut1)<0
+            || taiyin_add_seconds_to_split_jd(&birth,86400,&request.end_jd_ut1)<0)
+            return fail("reverse fixture");
+        if (taiyin_bazi_reverse_lookup_at_ut1(calendar_context,&request,NULL,0,&count,NULL)<0 || count!=1)
+            return fail("reverse count query");
+        memset(&candidate,0x5a,sizeof(candidate)); sentinel=candidate;
+        if (taiyin_call_result_status(taiyin_bazi_reverse_lookup_at_ut1(calendar_context,&request,&candidate,0,&count,NULL))
+                !=TAIYIN_ERROR_OUT_OF_MEMORY || count!=1 || memcmp(&candidate,&sentinel,sizeof(candidate)))
+            return fail("reverse short buffer is atomic");
+        if (taiyin_bazi_reverse_lookup_at_ut1(calendar_context,&request,&candidate,1,&count,NULL)<0
+            || candidate.struct_size!=sizeof(candidate) || candidate.start_virtual_time.hour!=13
+            || candidate.end_virtual_time.hour!=15 || candidate.pillars.day!=request.pillars.day)
+            return fail("reverse fill result");
+        local.year=100000;
+        if (taiyin_julian_day_split(&local,&request.start_jd_ut1)<0)
+            return fail("empty reverse fixture");
+        request.end_jd_ut1=request.start_jd_ut1;
+        request.clock_mode=TAIYIN_BAZI_CLOCK_APPARENT_SOLAR;
+        sentinel=candidate;
+        count=123;
+        if (taiyin_bazi_reverse_lookup_at_ut1(calendar_context,&request,&candidate,1,&count,NULL)<0
+            || count!=0 || memcmp(&candidate,&sentinel,sizeof(candidate)))
+            return fail("empty reverse succeeds without evaluating uncovered solar clock");
+        request.clock_mode=99;
+        if (taiyin_call_result_status(taiyin_bazi_reverse_lookup_at_ut1(calendar_context,&request,NULL,0,&count,NULL))
+            !=TAIYIN_ERROR_INVALID_ARGUMENT || count!=0) return fail("reverse validation");
+    }
     taiyin_chinese_calendar_context_destroy(calendar_context);
     taiyin_context_destroy(native_context);
     return 0;

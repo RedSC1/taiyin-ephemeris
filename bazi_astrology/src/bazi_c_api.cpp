@@ -6,6 +6,7 @@
 #ifdef TAIYIN_C_HAS_BAZI_EXTENSION
 #include "taiyin/bazi/bazi.h"
 #include "taiyin/bazi/shen_sha_catalog.h"
+#include "taiyin/bazi/reverse_lookup.h"
 #endif
 
 #include <cstring>
@@ -1019,3 +1020,62 @@ taiyin_call_result TAIYIN_C_CALL taiyin_bazi_calc_renyuan_siling(
 }
 
 }  // extern "C"
+
+extern "C" {
+void TAIYIN_C_CALL taiyin_bazi_reverse_request_init(taiyin_bazi_reverse_request* out) {
+    if (!out) return;
+    init_struct(out);
+    taiyin_ganzhi_four_pillars_init(&out->pillars);
+}
+void TAIYIN_C_CALL taiyin_bazi_reverse_candidate_init(taiyin_bazi_reverse_candidate* out) {
+    if (!out) return;
+    init_struct(out);
+    taiyin_calendar_datetime_init(&out->start_virtual_time);
+    taiyin_calendar_datetime_init(&out->end_virtual_time);
+    taiyin_ganzhi_four_pillars_init(&out->pillars);
+}
+taiyin_call_result TAIYIN_C_CALL taiyin_bazi_reverse_lookup_at_ut1(
+    const taiyin_chinese_calendar_context* calendar, const taiyin_bazi_reverse_request* request,
+    taiyin_bazi_reverse_candidate* out, size_t capacity, size_t* count,
+    taiyin_ephemeris_diagnostic* diagnostic) {
+    if (count) *count = 0;
+#ifndef TAIYIN_C_HAS_BAZI_EXTENSION
+    (void)calendar; (void)request; (void)out; (void)capacity; (void)diagnostic;
+    return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_UNSUPPORTED);
+#else
+    if (!calendar || !count || !taiyin_c_internal::valid_struct(request)
+        || !taiyin_c_internal::valid_split_jd(&request->start_jd_ut1)
+        || !taiyin_c_internal::valid_split_jd(&request->end_jd_ut1)
+        || !taiyin_c_internal::valid_struct(&request->pillars)
+        || (!out && capacity) || (diagnostic && !taiyin_c_internal::valid_struct(diagnostic)))
+        return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_INVALID_ARGUMENT);
+    taiyin::bazi::BaziReverseRequest r;
+    r.start_jd_ut1 = taiyin_c_internal::to_cpp_split_jd(request->start_jd_ut1);
+    r.end_jd_ut1 = taiyin_c_internal::to_cpp_split_jd(request->end_jd_ut1);
+    r.pillars = to_cpp_pillars(request->pillars);
+    r.rat_hour_mode = request->rat_hour_mode;
+    r.clock.mode = static_cast<taiyin::chinese_calendar::ChartClockMode>(request->clock_mode);
+    r.clock.longitude_rad = request->longitude_rad;
+    taiyin_c_internal::TrackedCalendarContext tracked(calendar->value);
+    taiyin::runtime::EphemerisEvalDiagnostic d;
+    std::vector<taiyin::bazi::BaziReverseCandidate> candidates;
+    const auto status = taiyin::bazi::reverse_lookup_at_ut1(&tracked.value, r, &candidates, &d);
+    if (diagnostic) taiyin_c_internal::from_cpp_diagnostic(d, diagnostic);
+    if (status != taiyin::TAIYIN_STATUS_OK) return taiyin_c_internal::pack_call_result(status, tracked.flags);
+    *count = candidates.size();
+    if (out && capacity < *count) return taiyin_c_internal::pack_call_result(TAIYIN_ERROR_OUT_OF_MEMORY, tracked.flags);
+    if (out) for (size_t i = 0; i < *count; ++i) {
+        taiyin_bazi_reverse_candidate_init(&out[i]);
+        taiyin_c_internal::from_cpp_split_jd(candidates[i].start_jd_ut1, &out[i].start_jd_ut1);
+        taiyin_c_internal::from_cpp_split_jd(candidates[i].end_jd_ut1, &out[i].end_jd_ut1);
+        taiyin_c_internal::from_cpp_datetime(candidates[i].start_virtual_time, &out[i].start_virtual_time);
+        taiyin_c_internal::from_cpp_datetime(candidates[i].end_virtual_time, &out[i].end_virtual_time);
+        out[i].pillars.year = candidates[i].pillars.year;
+        out[i].pillars.month = candidates[i].pillars.month;
+        out[i].pillars.day = candidates[i].pillars.day;
+        out[i].pillars.hour = candidates[i].pillars.hour;
+    }
+    return taiyin_c_internal::pack_call_result(TAIYIN_STATUS_OK, tracked.flags);
+#endif
+}
+}

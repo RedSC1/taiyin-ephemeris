@@ -618,6 +618,42 @@ int main() {
             "next pillar Jie cannot repeat the previous numerical root", &failures);
     }
 
+    // Keep the legacy point-search contract when adding interval-specific
+    // equality-window boundaries for BaZi. A Ziwei placement that changes at
+    // a modern Jie must remain discoverable in both clock paths.
+    for (int month : {2, 9}) {
+        CalendarDateTime begin = {2026, month, 1, 12, 0, 0.0};
+        SplitJulianDate start; encode_china_standard(begin, &start);
+        chinese_calendar::SolarTermEvent term; SplitJulianDate transition;
+        expect(chinese_calendar::next_pillar_jie(&calendar,start,&term,&transition,&diagnostic)
+            ==TAIYIN_STATUS_OK,"modern placement transition",&failures);
+        CompiledRules custom=loaded.compiled;
+        StarId wc; loaded.registry.find("wenchang",&wc);
+        for (auto& rule : custom.placement.natal) if(rule.star_id==wc) {
+            rule.inputs.assign(1,RuleInputSource::SolarMonthBranch);
+            rule.strides.assign(1,1u); rule.table.resize(12);
+            for (size_t i=0;i<12;++i) rule.table[i]=static_cast<uint8_t>(i);
+        }
+        custom.registry_fingerprint=compiled_rules_fingerprint(custom,loaded.registry.fingerprint());
+        ReverseLookupRequest request;
+        request.start_instant_utc=term.jd_ut-1.0/86400;
+        request.end_instant_utc=term.jd_ut+1.0/86400;
+        reverse_julian_day_split(request.start_instant_utc+8.0/24,&request.start_virtual_time);
+        CalendarDateTime post;
+        reverse_julian_day_split(request.end_instant_utc+8.0/24,&post);
+        ResolvedBirth after;
+        expect(resolve_birth_from_calendar(&calendar,request.end_instant_utc,post,
+            Gender::Male,options,&after,&diagnostic)==TAIYIN_STATUS_OK,"post-Jie birth",&failures);
+        request.query.wenchang_branch=to_index(after.facts.solar_term_pillars.month.branch);
+        std::vector<ReverseLookupCandidate> hits;
+        expect(reverse_lookup_tier1_from_calendar(&calendar,request,custom,loaded.registry,&hits,&diagnostic)
+            ==TAIYIN_STATUS_OK && !hits.empty(),"Ziwei retains modern month-dependent placement",&failures);
+        ChartClock clock;
+        hits.clear();
+        expect(reverse_lookup_tier1_at_ut1(&calendar,request,clock,custom,loaded.registry,&hits,&diagnostic)
+            ==TAIYIN_STATUS_OK && !hits.empty(),"clock-aware Ziwei retains modern placement",&failures);
+    }
+
     // Explicit clocks must be evaluated at both endpoints, never carried as
     // a constant equation-of-time offset from the birth epoch.
     for (int clock_mode = 0; clock_mode < 3; ++clock_mode) {

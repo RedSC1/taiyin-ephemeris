@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Taiyin Wasm minimal-chain experiment</title>
+<style>body{font:16px system-ui;max-width:1000px;margin:32px auto}pre{white-space:pre-wrap}</style>
+<h1>Taiyin C++ → Wasm smoke test</h1>
+<p>Experimental, single-threaded. Same C ABI and OPM2 parser, no Dart changes.</p>
+<pre id="results">Loading…</pre>
+<script type="module">
+import createModule from '../../build-wasm/taiyin_probe.mjs';
+import {createExperimentRuntime, decodeCallResult} from './runtime.mjs';
+const output = document.querySelector('#results');
+const start = performance.now();
+try {
+  const module = await createModule();
+  const instantiated = performance.now();
+  const runtime = createExperimentRuntime(module);
+  const context = runtime.createContext(3);
+  let analytic;
+  try { analytic = runtime.suite(context); }
+  finally { runtime.destroyContext(context); }
+  const files = ['sun', 'moon', 'emb', 'mercury', 'venus', 'mars', 'jupiter',
+                 'saturn', 'uranus', 'neptune', 'pluto'];
+  const dataStart = performance.now();
+  for (const [i, name] of files.entries()) {
+    const response = await fetch(`../../data/ephemerides/opm2/major-bodies/de442-full/${name}.opm2`);
+    if (!response.ok) throw new Error(`Download ${name}: HTTP ${response.status}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (i === 0) {
+      // Exercise Base64 in a real browser, without spreading a large byte array.
+      let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
+      runtime.loadOpm2Base64(`${name}.opm2`, btoa(binary));
+    } else runtime.loadOpm2Bytes(`${name}.opm2`, bytes);
+  }
+  const preciseContext = runtime.createContext(1);
+  let precise, benchmarks;
+  try {
+    precise = runtime.suite(preciseContext);
+    benchmarks = [1, 3, 5, 7, 9, 10].map(bodies => ({bodies,
+      usPerBody: module._probe_benchmark(preciseContext, 500, bodies, 0)}));
+  } finally { runtime.destroyContext(preciseContext); }
+  if (module._probe_opm2_count() !== 11) throw new Error('Missing OPM2 registrations');
+  for (const suite of [analytic, precise]) {
+    if (suite.solarEclipse.status || suite.summerSolstice.status ||
+        suite.calendar[0].values.join(',') !== '2025,1,1,0,30')
+      throw new Error('Unexpected astronomy result');
+  }
+  const packed = module._taiyin_make_call_result(-1004, 0xffffffff);
+  const decoded = decodeCallResult(packed);
+  if (decoded.status !== -1004 || decoded.flags !== 0xffffffff)
+    throw new Error('CallResult lost precision');
+  const report = {status: 'PASS', userAgent: navigator.userAgent,
+    instantiateMs: instantiated - start,
+    dataAndSuiteMs: performance.now() - dataStart,
+    opm2Count: module._probe_opm2_count(), memoryBytes: module.HEAPU8.buffer.byteLength,
+    packedResult: decoded, benchmarks, analytic, precise};
+  output.textContent = JSON.stringify(report, null, 2);
+} catch (error) {
+  output.textContent = `FAIL: ${error.stack ?? error}`;
+}
+</script>

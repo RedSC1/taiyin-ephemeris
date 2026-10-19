@@ -51,10 +51,6 @@ bool use_historical_pillar_terms(
 // assigned day's boundary instant is D - 5/6 in JD(UT).
 constexpr double kProfileDayOffsetDays = 480.0 / 1440.0;
 
-int64_t profile_civil_day(const SplitJulianDate& jd_ut) noexcept {
-    return (jd_ut + kProfileDayOffsetDays + 0.5).day_number;
-}
-
 // In historical pillar mode a term boundary is the assigned civil day's
 // 00:00 (UTC+08), not the modern-ephemeris instant; a pseudo-precise
 // ancient term time would be deceptive.  Returns false when the profile did
@@ -93,11 +89,14 @@ Status calculate_year_pillar(
     if (status != TAIYIN_STATUS_OK) return status;
 
     SplitJulianDate boundary = li_chun.jd_ut;
-    (void) historical_pillar_boundary(context, li_chun, &boundary);
+    const bool assigned = historical_pillar_boundary(context, li_chun, &boundary);
     const double difference_days = instant_utc - boundary;
     if (!std::isfinite(difference_days)) return TAIYIN_ERROR_INVALID_ARGUMENT;
+    // Assigned historical civil midnights have no numerical root uncertainty.
+    // Switch year and month together there, not year several microseconds early.
+    const double tolerance = assigned ? 0.0 : internal::kSolarTermRootEqualityToleranceDays;
     const int32_t pillar_year = virtual_time.year
-        + (difference_days < -internal::kSolarTermRootEqualityToleranceDays ? -1 : 0);
+        + (difference_days < -tolerance ? -1 : 0);
     const int32_t index = positive_mod(pillar_year - kJiaZiYear, 60);
     return make_ganzhi(
         static_cast<uint8_t>(index % 10),
@@ -112,43 +111,45 @@ Status resolve_previous_pillar_jie(
     SplitJulianDate* out_boundary,
     runtime::EphemerisEvalDiagnostic* diagnostic
 ) noexcept {
-    // Historical pillar mode judges by assigned-day granularity, so select
-    // the candidate jie from one day ahead: a term whose precise instant is
-    // later today still starts its pillar month at today's 00:00.
-    SplitJulianDate query_instant = instant_utc;
-    if (use_historical_pillar_terms(context)) {
-        if (!add_days_to_split_jd(instant_utc, 1.0, &query_instant)) {
-            return TAIYIN_ERROR_INVALID_ARGUMENT;
-        }
-    }
     SolarTermEvent previous_jie;
-    Status status = getPrevJie(&context, query_instant, &previous_jie, diagnostic);
+    Status status = getPrevJie(&context, instant_utc, &previous_jie, diagnostic);
     if (status != TAIYIN_STATUS_OK) return status;
-
-    SplitJulianDate boundary = previous_jie.jd_ut;
-    const bool historical =
-        historical_pillar_boundary(context, previous_jie, &boundary);
-    // When the profile answered, the pillar month turns at the assigned
-    // day's 00:00; otherwise the precise instant rules, and a candidate
-    // found via the +1 day query shift may still lie in the future.
-    const bool candidate_in_future = historical
-        ? profile_civil_day(boundary) > profile_civil_day(instant_utc)
-        : previous_jie.jd_ut - instant_utc
-            > internal::kSolarTermRootEqualityToleranceDays;
-    if (candidate_in_future) {
-        SplitJulianDate step_back;
-        if (!add_days_to_split_jd(previous_jie.jd_ut, -10.0, &step_back)) {
-            return TAIYIN_ERROR_INVALID_ARGUMENT;
-        }
-        status = getPrevJie(&context, step_back, &previous_jie, diagnostic);
-        if (status != TAIYIN_STATUS_OK) return status;
-        boundary = previous_jie.jd_ut;
-        (void) historical_pillar_boundary(context, previous_jie, &boundary);
+    if (!use_historical_pillar_terms(context)) {
+        *out_term = previous_jie;
+        *out_boundary = previous_jie.jd_ut;
+        return TAIYIN_STATUS_OK;
     }
+    // Historical assignments may precede OR follow the physical root by
+    // several days. Walk neighbouring Jie by their effective boundaries,
+    // rather than guessing a one-day correction to the query instant. The
+    // one-day steps below only leave a known root to request its neighbour.
+    // The cap guards against non-progress; it is not an assignment offset.
+    for (int i = 0; i < 24; ++i) {
+        SplitJulianDate boundary = previous_jie.jd_ut;
+        const bool assigned = historical_pillar_boundary(context, previous_jie, &boundary);
+        const double tolerance = assigned ? 0.0 : internal::kSolarTermRootEqualityToleranceDays;
+        if (boundary - instant_utc > tolerance) {
+            status = getPrevJie(&context, previous_jie.jd_ut - 1.0,
+                &previous_jie, diagnostic);
+            if (status != TAIYIN_STATUS_OK) return status;
+            continue;
+        }
 
-    *out_term = previous_jie;
-    *out_boundary = boundary;
-    return TAIYIN_STATUS_OK;
+        SolarTermEvent next_jie;
+        status = getNextJie(&context, previous_jie.jd_ut + 1.0, &next_jie, diagnostic);
+        if (status != TAIYIN_STATUS_OK) return status;
+        SplitJulianDate next_boundary = next_jie.jd_ut;
+        const bool next_assigned = historical_pillar_boundary(context, next_jie, &next_boundary);
+        const double next_tolerance = next_assigned ? 0.0 : internal::kSolarTermRootEqualityToleranceDays;
+        if (next_boundary - instant_utc > next_tolerance) {
+            *out_term = previous_jie;
+            *out_boundary = boundary;
+            return TAIYIN_STATUS_OK;
+        }
+        if (next_jie.jd_ut <= previous_jie.jd_ut) return TAIYIN_ERROR_INTERNAL;
+        previous_jie = next_jie;
+    }
+    return TAIYIN_ERROR_INTERNAL;
 }
 
 Status calculate_month_pillar(
@@ -413,10 +414,10 @@ Status previous_pillar_jie(
         *context, instant_utc, out_term, out_boundary, diagnostic);
 }
 
-Status next_pillar_jie(
+static Status next_pillar_jie_impl(
     const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
     SolarTermEvent* out_term, SplitJulianDate* out_boundary,
-    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    runtime::EphemerisEvalDiagnostic* diagnostic, bool transition) noexcept {
     if (context == NULL || out_term == NULL || out_boundary == NULL
         || !split_julian_date_is_finite(instant_utc)) return TAIYIN_ERROR_INVALID_ARGUMENT;
     // Start before the physical root so an assigned historical day that
@@ -430,8 +431,13 @@ Status next_pillar_jie(
         if (status != TAIYIN_STATUS_OK) return status;
         SplitJulianDate boundary = term.jd_ut;
         const bool assigned = historical_pillar_boundary(*context, term, &boundary);
-        const double tolerance = assigned ? 0.0 : internal::kSolarTermRootEqualityToleranceDays;
-        if (boundary - instant_utc > tolerance) {
+        // The forward engine already selects the new month inside this
+        // equality window. Return its transition, not the physical root;
+        // otherwise reverse lookup can include non-matching microseconds.
+        // Assigned historical midnights remain strict civil boundaries.
+        const double tolerance=assigned ? 0.0 : internal::kSolarTermRootEqualityToleranceDays;
+        if (transition) boundary -= tolerance;
+        if (transition ? boundary > instant_utc : boundary-instant_utc > tolerance) {
             *out_term = term;
             *out_boundary = boundary;
             return TAIYIN_STATUS_OK;
@@ -439,6 +445,20 @@ Status next_pillar_jie(
         query = term.jd_ut + 1.0;
     }
     return TAIYIN_ERROR_INTERNAL;
+}
+
+Status next_pillar_jie(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return next_pillar_jie_impl(context,instant_utc,out_term,out_boundary,diagnostic,false);
+}
+
+Status next_pillar_transition(
+    const ChineseCalendarContext* context, const SplitJulianDate& instant_utc,
+    SolarTermEvent* out_term, SplitJulianDate* out_boundary,
+    runtime::EphemerisEvalDiagnostic* diagnostic) noexcept {
+    return next_pillar_jie_impl(context,instant_utc,out_term,out_boundary,diagnostic,true);
 }
 
 }  // namespace chinese_calendar
